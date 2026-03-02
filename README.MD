@@ -16,7 +16,7 @@ holyf-network -v
 
 ```
 
-### macOS (Apple Silicon)
+### macOS (Apple Silicon) - NOT SUPPORTED!
 ```bash
 curl -sL https://github.com/BlackMetalz/holyf-network/releases/latest/download/holyf-network-darwin-arm64 -o /tmp/holyf-network
 chmod +x /tmp/holyf-network

@@ -86,10 +86,10 @@ And yeah, in macOS would display `cannot read /proc/net/tcp (requires Linux)`
 ## Output:
 
 In local:
-![output-epic-2](../images/day01/02.png)
+![output-epic-3](../images/day01/02.png)
 
 Live: I need to commit first before continue update!
-![output-epic-2](../images/day01/03.png)
+![output-epic-3](../images/day01/03.png)
 
 recheck with netstat, look good to me:
 ```bash
@@ -117,3 +117,13 @@ Test way: run binary, click `r` 2 times.
 
 ### Output: 
 Need to commit this first...
+
+![output-epic-4](../images/day01/04.png)
+
+![output-epic-4](../images/day01/05.png)
+
+## Epic 5 - Top Talker Panel
+
+### Parse /proc/net/tcp for individual connections, sort by queue activity, show top 20 with port filter.
+
+### Ouput:

@@ -22,8 +22,10 @@ type App struct {
 	refreshSec int    // Refresh interval in seconds
 
 	// Previous interface stats snapshot for rate calculation.
-	// nil on first reading — rates need two snapshots to compute delta.
 	prevIfaceStats *collector.InterfaceStats
+
+	// Port filter for Top Talkers panel. Empty = show all.
+	portFilter string
 }
 
 // NewApp creates a new TUI application.
@@ -96,6 +98,9 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'r':
 			a.refreshData()
 			return nil
+		case 'f':
+			a.promptPortFilter()
+			return nil
 		}
 	}
 
@@ -148,7 +153,15 @@ func (a *App) refreshData() {
 	} else {
 		rates := collector.CalculateRates(ifaceStats, a.prevIfaceStats)
 		a.panels[1].SetText(renderInterfacePanel(rates))
-		a.prevIfaceStats = &ifaceStats // Save for next delta calculation
+		a.prevIfaceStats = &ifaceStats
+	}
+
+	// Panel 2: Top Talkers
+	talkers, err := collector.CollectTopTalkers(100) // Collect more, filter in render
+	if err != nil {
+		a.panels[2].SetText(fmt.Sprintf("  [red]%v[white]", err))
+	} else {
+		a.panels[2].SetText(renderTalkersPanel(talkers, a.portFilter))
 	}
 
 	// Update status bar
@@ -156,4 +169,48 @@ func (a *App) refreshData() {
 		" [yellow]%s[white] | Updated: [green]just now[white] | Press [yellow]?[white] for help, [yellow]q[white] to quit",
 		a.ifaceName,
 	))
+}
+
+// promptPortFilter shows a simple input dialog for port filtering.
+// Uses tview.InputField as a modal overlay.
+func (a *App) promptPortFilter() {
+	// If filter is already set, clear it
+	if a.portFilter != "" {
+		a.portFilter = ""
+		a.refreshData()
+		return
+	}
+
+	// Create input field
+	input := tview.NewInputField()
+	input.SetLabel("Filter by port: ")
+	input.SetFieldWidth(10)
+	input.SetBorder(true)
+	input.SetTitle(" Port Filter ")
+
+	// Accept only numbers
+	input.SetAcceptanceFunc(tview.InputFieldInteger)
+
+	// On Enter: set filter, close dialog, refresh
+	input.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			a.portFilter = input.GetText()
+		}
+		// On Enter or Escape: close the dialog
+		a.pages.RemovePage("filter")
+		a.refreshData()
+	})
+
+	// Center the input field using Flex spacers
+	modal := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(input, 30, 0, true).
+			AddItem(nil, 0, 1, false),
+			3, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	a.pages.AddPage("filter", modal, true, true)
+	a.app.SetFocus(input)
 }
