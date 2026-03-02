@@ -9,8 +9,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Version of the application. Updated at build time or manually.
-const Version = "0.1.0"
+// Version of the application. Overridden at build time via:
+//
+//	-ldflags "-X github.com/BlackMetalz/holyf-network/cmd.Version=v1.0.0"
+//
+// Must be var (not const) for ldflags to work.
+var Version = "0.1.0-dev"
 
 // CLI flags — stored here so rootCmd.Run() can access them
 var (
