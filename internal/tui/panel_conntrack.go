@@ -52,7 +52,7 @@ func renderConntrackPanel(rates collector.ConntrackRates) string {
 		sb.WriteString(fmt.Sprintf("\n  [red]Drops: %s ⚠ (connections lost!)[white]",
 			formatNumber(int(rates.TotalDrops))))
 	} else {
-		sb.WriteString(fmt.Sprintf("\n  [green]Drops: 0[white]"))
+		sb.WriteString("\n  [green]Drops: 0[white]")
 	}
 
 	return sb.String()

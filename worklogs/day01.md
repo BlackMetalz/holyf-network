@@ -137,7 +137,7 @@ Need to commit this first...
 ### Parse /proc/net/stat/nf_conntrack for insert/delete/drop counts.
 
 ### Ouput:
-![output-epic-5](../images/day01/07.png)
+![output-epic-6](../images/day01/07.png)
 
 # Sprint 4: 
 
@@ -157,3 +157,4 @@ Holy fuck polish, it means remove all comment in code. Holy fucking shit!
 - `q` -> remove goroutine on exit.
 
 ### Output:
+![output-epic-7](../images/day01/08.png)
