@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/BlackMetalz/holyf-network/internal/network"
+	"github.com/BlackMetalz/holyf-network/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -44,13 +45,9 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
-		// For now, just print what we would do (TUI comes in Epic 2)
-		fmt.Printf("HolyF-network v%s\n", Version)
-		fmt.Printf("Interface: %s\n", ifaceName)
-		fmt.Printf("Refresh:   %ds\n", flagRefresh)
-		fmt.Println("\nTUI not implemented yet — coming in Epic 2!")
-
-		return nil
+		// Launch the TUI dashboard
+		app := tui.NewApp(ifaceName, flagRefresh)
+		return app.Run()
 	},
 }
 

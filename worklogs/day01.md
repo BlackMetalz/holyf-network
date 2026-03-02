@@ -43,3 +43,24 @@ Available network interfaces:
   - stf0
   ......
 ```
+
+## Epic 2 (TUI Framework)
+
+So Gemini generated 4 files
+- `internal/tui/app.go`: this is where it create tui app, and handle key event. Build grid 2x2 + status bar.
+- `internal/tui/layout.go`: this is where it create layout for tui app. Struct `App` + key handler.
+- `internal/tui/panels.go`: this is where it create panels for tui app.
+- `internal/tui/help.go`: this is where it create help modal for tui app.
+
+
+Run it: `./holyf-network -i interace-name-here`
+
+`Tab` for change panel!
+`?` for help!
+`q` for quit!
+
+## Output of Epic 2
+
+Demo:
+![output-epic-2](../images/day01/01.png)
+
