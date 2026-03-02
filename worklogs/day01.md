@@ -1,6 +1,6 @@
 # Day 1 - Mar 02, 2026
 
-# Sprint 1: Project Setup & TUI Framework
+# Sprint 1: Project Setup & TUI Framework (CLI + TUI )
 Build TUI and demo first, no real interaction at all. All is mock data, like "Loading..."
 
 ## Epic 1 (CLI Skeleton)
@@ -65,7 +65,7 @@ Demo:
 ![output-epic-2](../images/day01/01.png)
 
 
-# Sprint 2:
+# Sprint 2: Panel 1 + 2
 
 ## Epic 3 Connection states
 
@@ -123,7 +123,7 @@ Need to commit this first...
 ![output-epic-4](../images/day01/05.png)
 
 
-# Sprint 3:
+# Sprint 3: Panel 3+4
 
 ## Epic 5 - Top Talker Panel
 
@@ -137,3 +137,6 @@ Need to commit this first...
 ### Parse /proc/net/stat/nf_conntrack for insert/delete/drop counts.
 
 ### Ouput:
+![output-epic-5](../images/day01/07.png)
+
+# Sprint 4: Real-time + polish
