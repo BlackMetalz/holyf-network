@@ -20,6 +20,10 @@ type App struct {
 	focusIndex int    // Which panel is currently focused (0-3)
 	ifaceName  string // Network interface being monitored
 	refreshSec int    // Refresh interval in seconds
+
+	// Previous interface stats snapshot for rate calculation.
+	// nil on first reading — rates need two snapshots to compute delta.
+	prevIfaceStats *collector.InterfaceStats
 }
 
 // NewApp creates a new TUI application.
@@ -135,6 +139,16 @@ func (a *App) refreshData() {
 		a.panels[0].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
 		a.panels[0].SetText(renderConnectionsPanel(connData))
+	}
+
+	// Panel 1: Interface Stats
+	ifaceStats, err := collector.CollectInterfaceStats(a.ifaceName)
+	if err != nil {
+		a.panels[1].SetText(fmt.Sprintf("  [red]%v[white]", err))
+	} else {
+		rates := collector.CalculateRates(ifaceStats, a.prevIfaceStats)
+		a.panels[1].SetText(renderInterfacePanel(rates))
+		a.prevIfaceStats = &ifaceStats // Save for next delta calculation
 	}
 
 	// Update status bar

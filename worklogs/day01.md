@@ -93,8 +93,27 @@ Live: I need to commit first before continue update!
 
 recheck with netstat, look good to me:
 ```bash
+# THIS IS FOR NETSTAT
 root@kienlt-jump:~# netstat -alpn|grep -w LISTEN | wc -l
 3
 root@kienlt-jump:~# netstat -alpn|grep ESTA | wc -l
 12
+# This is for SS
+root@kienlt-jump:~# ss -tuna -o state established -H| wc -l
+12
+root@kienlt-jump:~# ss -tuna -o state listening -H| wc -l
+3
 ```
+
+## Epic 4 (Interface Stats)
+
+### interface_stats.go — Collects network interface statistics from /sys/class/net/<iface>/statistics/
+
+- Each counter is separated file (`rx_bytes`, `tx_bytes`, `rx_packets`)
+- `CalculateRates()`: compare 2 snapshots to calculate rate/sec. `Need to read 2 times` to get rate, first time will display "Collecting baseline..."
+- `prevIfaceStats` (pointer) - `nil` for the first time, after that it will save old snapshot.
+
+Test way: run binary, click `r` 2 times.
+
+### Output: 
+Need to commit this first...
