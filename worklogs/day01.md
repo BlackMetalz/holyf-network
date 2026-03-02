@@ -162,3 +162,23 @@ Holy fuck polish, it means remove all comment in code. Holy fucking shit!
 # Sprint 5:
 
 ### Epic 8: Implement TCP retransmits feature
+
+### Epic 9: Implement Zoom Panel 
+
+z key → fullscreen focused panel, z/Esc → back to grid	
+
+
+```go
+# main.go
+toggleZoom()
+exitZoom()
+```
+
+### Epic 10:
+
+Arrow keys scroll content in focused panel	
+
+```go
+# layout.go
+SetScrollable(true)
+```

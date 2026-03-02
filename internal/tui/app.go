@@ -18,6 +18,7 @@ type App struct {
 	pages     *tview.Pages
 	panels    []*tview.TextView
 	statusBar *tview.TextView
+	grid      *tview.Grid // Store grid for zoom toggle
 
 	focusIndex int    // Which panel is currently focused (0-3)
 	ifaceName  string // Network interface being monitored
@@ -32,10 +33,13 @@ type App struct {
 	portFilter string
 
 	// Auto-refresh state (Epic 7)
-	stopChan    chan struct{} // Signal to stop refresh goroutine on quit
-	refreshChan chan struct{} // Signal for immediate manual refresh
-	paused      bool          // Whether auto-refresh is paused
-	lastRefresh time.Time     // When data was last collected
+	stopChan    chan struct{}
+	refreshChan chan struct{}
+	paused      bool
+	lastRefresh time.Time
+
+	// Zoom state (V2-4.3)
+	zoomed bool // Whether a panel is zoomed to fullscreen
 }
 
 // NewApp creates a new TUI application.
@@ -55,13 +59,13 @@ func (a *App) Run() error {
 	// Build UI components
 	a.panels = createPanels()
 	a.statusBar = createStatusBar(a.ifaceName)
-	grid := createGrid(a.panels, a.statusBar)
+	a.grid = createGrid(a.panels, a.statusBar)
 	helpModal := createHelpModal()
 
 	// tview.Pages lets us stack "pages" (layers) on top of each other.
 	// "main" is always visible, "help" is shown/hidden on top.
 	a.pages = tview.NewPages()
-	a.pages.AddPage("main", grid, true, true)
+	a.pages.AddPage("main", a.grid, true, true)
 	a.pages.AddPage("help", helpModal, true, false) // resize=true, visible=false
 
 	// Set initial focus highlight
@@ -149,11 +153,21 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 	// Handle key by type
 	switch event.Key() {
 	case tcell.KeyTab:
-		a.focusNext()
+		if !a.zoomed {
+			a.focusNext()
+		}
 		return nil
 
 	case tcell.KeyBacktab: // Shift+Tab
-		a.focusPrev()
+		if !a.zoomed {
+			a.focusPrev()
+		}
+		return nil
+
+	case tcell.KeyEsc:
+		if a.zoomed {
+			a.exitZoom()
+		}
 		return nil
 
 	case tcell.KeyRune:
@@ -180,6 +194,9 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'f':
 			a.promptPortFilter()
 			return nil
+		case 'z':
+			a.toggleZoom()
+			return nil
 		}
 	}
 
@@ -204,6 +221,36 @@ func (a *App) hideHelp() { a.pages.HidePage("help") }
 func (a *App) isHelpVisible() bool {
 	name, _ := a.pages.GetFrontPage()
 	return name == "help"
+}
+
+// toggleZoom switches between grid view and fullscreen focused panel.
+func (a *App) toggleZoom() {
+	if a.zoomed {
+		a.exitZoom()
+		return
+	}
+
+	// Create fullscreen layout: just the focused panel + status bar
+	zoomLayout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(a.panels[a.focusIndex], 0, 1, true).
+		AddItem(a.statusBar, 1, 0, false)
+
+	a.pages.RemovePage("main")
+	a.pages.AddPage("main", zoomLayout, true, true)
+	a.zoomed = true
+	a.updateStatusBar()
+}
+
+// exitZoom returns to the normal 4-panel grid view.
+func (a *App) exitZoom() {
+	// Rebuild grid (panels were removed from old grid)
+	a.grid = createGrid(a.panels, a.statusBar)
+
+	a.pages.RemovePage("main")
+	a.pages.AddPage("main", a.grid, true, true)
+	a.zoomed = false
+	highlightPanel(a.panels, a.focusIndex)
+	a.updateStatusBar()
 }
 
 // refreshData collects data from system and updates all panels.
@@ -270,16 +317,19 @@ func (a *App) updateStatusBar() {
 		}
 	}
 
-	// Build status text
-	pauseText := ""
+	// Build state indicators
+	stateText := ""
 	if a.paused {
-		pauseText = " [red]PAUSED[white] |"
+		stateText += " [red]PAUSED[white] |"
+	}
+	if a.zoomed {
+		stateText += " [aqua]ZOOMED[white] |"
 	}
 
 	a.statusBar.SetText(fmt.Sprintf(
-		" [yellow]%s[white] |%s Updated: [green]%s[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]?[white]=help [dim]q[white]=quit",
+		" [yellow]%s[white] |%s Updated: [green]%s[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
 		a.ifaceName,
-		pauseText,
+		stateText,
 		ago,
 	))
 }

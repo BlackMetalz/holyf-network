@@ -39,6 +39,9 @@ func createPanels() []*tview.TextView {
 		// Enable color tags like [red]text[white]
 		panel.SetDynamicColors(true)
 
+		// Enable scrolling with arrow keys when focused
+		panel.SetScrollable(true)
+
 		panels[i] = panel
 	}
 
