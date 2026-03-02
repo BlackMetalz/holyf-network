@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"fmt"
+
+	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -46,6 +49,9 @@ func (a *App) Run() error {
 	// Set initial focus highlight
 	highlightPanel(a.panels, a.focusIndex)
 
+	// Load initial data into panels
+	a.refreshData()
+
 	// Register global key handler
 	a.app.SetInputCapture(a.handleKeyEvent)
 
@@ -84,8 +90,7 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			a.showHelp()
 			return nil
 		case 'r':
-			// Placeholder for manual refresh (Sprint 2)
-			a.statusBar.SetText(" [yellow]Refreshing...[white] (not implemented yet)")
+			a.refreshData()
 			return nil
 		}
 	}
@@ -120,4 +125,21 @@ func (a *App) hideHelp() {
 func (a *App) isHelpVisible() bool {
 	name, _ := a.pages.GetFrontPage()
 	return name == "help"
+}
+
+// refreshData collects data from system and updates all panels.
+func (a *App) refreshData() {
+	// Panel 0: Connection States
+	connData, err := collector.CollectConnections()
+	if err != nil {
+		a.panels[0].SetText(fmt.Sprintf("  [red]%v[white]", err))
+	} else {
+		a.panels[0].SetText(renderConnectionsPanel(connData))
+	}
+
+	// Update status bar
+	a.statusBar.SetText(fmt.Sprintf(
+		" [yellow]%s[white] | Updated: [green]just now[white] | Press [yellow]?[white] for help, [yellow]q[white] to quit",
+		a.ifaceName,
+	))
 }

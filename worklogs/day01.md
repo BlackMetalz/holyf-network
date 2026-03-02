@@ -52,15 +52,40 @@ So Gemini generated 4 files
 - `internal/tui/panels.go`: this is where it create panels for tui app.
 - `internal/tui/help.go`: this is where it create help modal for tui app.
 
-
+### Run + Key
 Run it: `./holyf-network -i interace-name-here`
 
 `Tab` for change panel!
 `?` for help!
 `q` for quit!
 
-## Output of Epic 2
+### Output of Epic 2
 
 Demo:
 ![output-epic-2](../images/day01/01.png)
 
+
+# Sprint 2:
+
+## Epic 3 Connection states
+
+Gemini generated 2 new files:
+
+`internal/collector/connections.go`: Parser for `/proc/net/tcp` and `/proc/net/tcp6`
+- `tcpStateMap` - map hex code (`01`, `0A`...) into state name (`ESTABLISHED`, `LISTEN`....)
+- `parseProcNetTCP()` - read file and get field index 3 (hex state), count
+- `SortedStates()` - return states in order of displays (`ESTABLISHED` first then `TIME_WAIT`)
+
+`internal/tui/panel_connections.go`: render panel:
+- `renderBar()`: bar graph (████░░░░░), with max count
+- Color coding: `TIME_WAIT` > 1000 --> Yellow, `CLOSE_WAIT` > 100 --> red
+- `formatNumber()`: Add `m` (`1,234,567`)
+
+And yeah, in macOS would display `cannot read /proc/net/tcp (requires Linux)`
+
+## Output:
+
+In local:
+![output-epic-2](../images/day01/02.png)
+
+Live: I need to commit first before continue update!
