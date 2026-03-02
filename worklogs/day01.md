@@ -158,3 +158,7 @@ Holy fuck polish, it means remove all comment in code. Holy fucking shit!
 
 ### Output:
 ![output-epic-7](../images/day01/08.png)
+
+# Sprint 5:
+
+### Epic 8: Implement TCP retransmits feature

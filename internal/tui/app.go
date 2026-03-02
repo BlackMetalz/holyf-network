@@ -26,6 +26,7 @@ type App struct {
 	// Previous snapshots for rate calculation (need 2 readings for delta)
 	prevIfaceStats *collector.InterfaceStats
 	prevConntrack  *collector.ConntrackData
+	prevRetransmit *collector.RetransmitData
 
 	// Port filter for Top Talkers panel. Empty = show all.
 	portFilter string
@@ -209,12 +210,20 @@ func (a *App) isHelpVisible() bool {
 func (a *App) refreshData() {
 	a.lastRefresh = time.Now()
 
-	// Panel 0: Connection States
+	// Panel 0: Connection States + Retransmits
+	var retransRates *collector.RetransmitRates
+	retransData, retransErr := collector.CollectRetransmits()
+	if retransErr == nil {
+		r := collector.CalculateRetransmitRates(retransData, a.prevRetransmit)
+		retransRates = &r
+		a.prevRetransmit = &retransData
+	}
+
 	connData, err := collector.CollectConnections()
 	if err != nil {
 		a.panels[0].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
-		a.panels[0].SetText(renderConnectionsPanel(connData))
+		a.panels[0].SetText(renderConnectionsPanel(connData, retransRates))
 	}
 
 	// Panel 1: Interface Stats

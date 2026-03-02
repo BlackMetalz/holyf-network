@@ -27,8 +27,8 @@ var stateWarnings = map[string]struct {
 const maxBarWidth = 20
 
 // renderConnectionsPanel formats connection state data for the TUI panel.
-// Returns a tview-compatible string with color tags.
-func renderConnectionsPanel(data collector.ConnectionData) string {
+// retrans can be nil if retransmit data is unavailable.
+func renderConnectionsPanel(data collector.ConnectionData, retrans *collector.RetransmitRates) string {
 	sorted := data.SortedStates()
 
 	if len(sorted) == 0 {
@@ -57,7 +57,6 @@ func renderConnectionsPanel(data collector.ConnectionData) string {
 		// Build the bar
 		bar := renderBar(s.Count, maxCount, maxBarWidth)
 
-		// Format: "  ESTABLISHED  1,247  ████████████████████"
 		sb.WriteString(fmt.Sprintf("  [%s]%-12s %6s[white]  %s%s\n",
 			color,
 			s.Name,
@@ -67,8 +66,31 @@ func renderConnectionsPanel(data collector.ConnectionData) string {
 		))
 	}
 
-	// Total at the bottom
+	// Total
 	sb.WriteString(fmt.Sprintf("\n  [bold]Total: %s connections[white]", formatNumber(data.Total)))
+
+	// TCP Retransmits section
+	if retrans != nil {
+		sb.WriteString("\n\n  [bold]── Retransmits ──[white]\n")
+		if retrans.FirstReading {
+			sb.WriteString("  [dim]Rates after next refresh[white]")
+		} else {
+			// Color by severity: < 1% green, 1-5% yellow, > 5% red
+			color := "green"
+			if retrans.RetransPercent > 5 {
+				color = "red"
+			} else if retrans.RetransPercent > 1 {
+				color = "yellow"
+			}
+
+			sb.WriteString(fmt.Sprintf("  [%s]%.0f/sec (%.2f%%)[white]",
+				color, retrans.RetransPerSec, retrans.RetransPercent))
+
+			if retrans.RetransPercent > 5 {
+				sb.WriteString(" [red]⚠ high loss![white]")
+			}
+		}
+	}
 
 	return sb.String()
 }
