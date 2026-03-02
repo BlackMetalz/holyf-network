@@ -89,3 +89,12 @@ In local:
 ![output-epic-2](../images/day01/02.png)
 
 Live: I need to commit first before continue update!
+![output-epic-2](../images/day01/03.png)
+
+recheck with netstat, look good to me:
+```bash
+root@kienlt-jump:~# netstat -alpn|grep -w LISTEN | wc -l
+3
+root@kienlt-jump:~# netstat -alpn|grep ESTA | wc -l
+12
+```

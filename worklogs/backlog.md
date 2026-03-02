@@ -1,0 +1,3 @@
+# 1. Learn about unix socket / connections
+explain:  ss: u_dgr / u_str meaning?
+connection/socket....
