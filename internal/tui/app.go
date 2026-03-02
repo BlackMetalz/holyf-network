@@ -2,13 +2,15 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-// app.go — Main TUI application. Wires together layout, navigation, and help.
+// app.go — Main TUI application. Wires together layout, navigation, help,
+// and auto-refresh via goroutines + channels.
 
 // App holds all TUI state.
 type App struct {
@@ -21,23 +23,29 @@ type App struct {
 	ifaceName  string // Network interface being monitored
 	refreshSec int    // Refresh interval in seconds
 
-	// Previous interface stats snapshot for rate calculation.
+	// Previous snapshots for rate calculation (need 2 readings for delta)
 	prevIfaceStats *collector.InterfaceStats
-
-	// Previous conntrack snapshot for rate calculation.
-	prevConntrack *collector.ConntrackData
+	prevConntrack  *collector.ConntrackData
 
 	// Port filter for Top Talkers panel. Empty = show all.
 	portFilter string
+
+	// Auto-refresh state (Epic 7)
+	stopChan    chan struct{} // Signal to stop refresh goroutine on quit
+	refreshChan chan struct{} // Signal for immediate manual refresh
+	paused      bool          // Whether auto-refresh is paused
+	lastRefresh time.Time     // When data was last collected
 }
 
 // NewApp creates a new TUI application.
 func NewApp(ifaceName string, refreshSec int) *App {
 	return &App{
-		app:        tview.NewApplication(),
-		ifaceName:  ifaceName,
-		refreshSec: refreshSec,
-		focusIndex: 0,
+		app:         tview.NewApplication(),
+		ifaceName:   ifaceName,
+		refreshSec:  refreshSec,
+		focusIndex:  0,
+		stopChan:    make(chan struct{}),
+		refreshChan: make(chan struct{}, 1), // Buffered: so send never blocks
 	}
 }
 
@@ -64,9 +72,67 @@ func (a *App) Run() error {
 	// Register global key handler
 	a.app.SetInputCapture(a.handleKeyEvent)
 
-	// Start the application
+	// Start background goroutines
+	go a.startRefreshLoop()
+	go a.startStatusTicker()
+
+	// Start the application (blocks until app.Stop() is called)
 	a.app.SetRoot(a.pages, true)
 	return a.app.Run()
+}
+
+// startRefreshLoop runs in a goroutine. It periodically refreshes data
+// using time.Ticker and listens for manual refresh signals.
+//
+// Go concepts:
+//   - time.NewTicker: fires at regular intervals
+//   - select: wait on multiple channels simultaneously
+//   - chan struct{}: signal-only channel (zero memory, just a notification)
+//   - QueueUpdateDraw: thread-safe tview update
+func (a *App) startRefreshLoop() {
+	ticker := time.NewTicker(time.Duration(a.refreshSec) * time.Second)
+	defer ticker.Stop() // Always clean up ticker
+
+	for {
+		select {
+		case <-ticker.C:
+			// Timer fired — refresh if not paused
+			if !a.paused {
+				a.app.QueueUpdateDraw(func() {
+					a.refreshData()
+				})
+			}
+
+		case <-a.refreshChan:
+			// Manual refresh requested (r key)
+			ticker.Reset(time.Duration(a.refreshSec) * time.Second) // Reset countdown
+			a.app.QueueUpdateDraw(func() {
+				a.refreshData()
+			})
+
+		case <-a.stopChan:
+			// App is quitting — exit the goroutine
+			return
+		}
+	}
+}
+
+// startStatusTicker updates the "Updated: Xs ago" text every second.
+// Runs in a separate goroutine.
+func (a *App) startStatusTicker() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			a.app.QueueUpdateDraw(func() {
+				a.updateStatusBar()
+			})
+		case <-a.stopChan:
+			return
+		}
+	}
 }
 
 // handleKeyEvent processes all keyboard input.
@@ -93,13 +159,22 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		// tcell.KeyRune means a regular character key (not special key)
 		switch event.Rune() {
 		case 'q':
+			close(a.stopChan) // Signal goroutines to stop
 			a.app.Stop()
 			return nil
 		case '?':
 			a.showHelp()
 			return nil
 		case 'r':
-			a.refreshData()
+			// Send signal to refresh goroutine (non-blocking)
+			select {
+			case a.refreshChan <- struct{}{}:
+			default: // Channel full, refresh already pending
+			}
+			return nil
+		case 'p':
+			a.paused = !a.paused
+			a.updateStatusBar()
 			return nil
 		case 'f':
 			a.promptPortFilter()
@@ -123,17 +198,8 @@ func (a *App) focusPrev() {
 	highlightPanel(a.panels, a.focusIndex)
 }
 
-// showHelp displays the help overlay.
-func (a *App) showHelp() {
-	a.pages.ShowPage("help")
-}
-
-// hideHelp hides the help overlay.
-func (a *App) hideHelp() {
-	a.pages.HidePage("help")
-}
-
-// isHelpVisible checks if the help overlay is currently shown.
+func (a *App) showHelp() { a.pages.ShowPage("help") }
+func (a *App) hideHelp() { a.pages.HidePage("help") }
 func (a *App) isHelpVisible() bool {
 	name, _ := a.pages.GetFrontPage()
 	return name == "help"
@@ -141,6 +207,8 @@ func (a *App) isHelpVisible() bool {
 
 // refreshData collects data from system and updates all panels.
 func (a *App) refreshData() {
+	a.lastRefresh = time.Now()
+
 	// Panel 0: Connection States
 	connData, err := collector.CollectConnections()
 	if err != nil {
@@ -177,10 +245,33 @@ func (a *App) refreshData() {
 		a.prevConntrack = &ctData
 	}
 
-	// Update status bar
+	a.updateStatusBar()
+}
+
+// updateStatusBar updates the bottom status bar with current state.
+func (a *App) updateStatusBar() {
+	// Calculate time since last refresh
+	ago := "never"
+	if !a.lastRefresh.IsZero() {
+		elapsed := time.Since(a.lastRefresh).Truncate(time.Second)
+		if elapsed < 1*time.Second {
+			ago = "just now"
+		} else {
+			ago = elapsed.String() + " ago"
+		}
+	}
+
+	// Build status text
+	pauseText := ""
+	if a.paused {
+		pauseText = " [red]PAUSED[white] |"
+	}
+
 	a.statusBar.SetText(fmt.Sprintf(
-		" [yellow]%s[white] | Updated: [green]just now[white] | Press [yellow]?[white] for help, [yellow]q[white] to quit",
+		" [yellow]%s[white] |%s Updated: [green]%s[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]?[white]=help [dim]q[white]=quit",
 		a.ifaceName,
+		pauseText,
+		ago,
 	))
 }
 

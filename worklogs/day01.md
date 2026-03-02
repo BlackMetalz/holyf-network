@@ -139,4 +139,21 @@ Need to commit this first...
 ### Ouput:
 ![output-epic-5](../images/day01/07.png)
 
-# Sprint 4: Real-time + polish
+# Sprint 4: 
+
+## Epic 7: Real-time + polish
+Holy fuck polish, it means remove all comment in code. Holy fucking shit!
+
+### Auto-refresh
+
+```bash
+./holyf-network -i eth0 -r 5
+```
+
+- Data auto-refresh every 5 seconds
+- Update status bar: `updated: 3s ago...`
+- `p` -> `PAUSED` display red, `p` again --> resume
+- `r` -> refresh immediately
+- `q` -> remove goroutine on exit.
+
+### Output:
