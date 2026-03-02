@@ -24,6 +24,9 @@ type App struct {
 	// Previous interface stats snapshot for rate calculation.
 	prevIfaceStats *collector.InterfaceStats
 
+	// Previous conntrack snapshot for rate calculation.
+	prevConntrack *collector.ConntrackData
+
 	// Port filter for Top Talkers panel. Empty = show all.
 	portFilter string
 }
@@ -157,11 +160,21 @@ func (a *App) refreshData() {
 	}
 
 	// Panel 2: Top Talkers
-	talkers, err := collector.CollectTopTalkers(100) // Collect more, filter in render
+	talkers, err := collector.CollectTopTalkers(100)
 	if err != nil {
 		a.panels[2].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
 		a.panels[2].SetText(renderTalkersPanel(talkers, a.portFilter))
+	}
+
+	// Panel 3: Conntrack
+	ctData, err := collector.CollectConntrack()
+	if err != nil {
+		a.panels[3].SetText(fmt.Sprintf("  [red]%v[white]", err))
+	} else {
+		ctRates := collector.CalculateConntrackRates(ctData, a.prevConntrack)
+		a.panels[3].SetText(renderConntrackPanel(ctRates))
+		a.prevConntrack = &ctData
 	}
 
 	// Update status bar

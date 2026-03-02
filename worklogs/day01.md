@@ -122,8 +122,18 @@ Need to commit this first...
 
 ![output-epic-4](../images/day01/05.png)
 
+
+# Sprint 3:
+
 ## Epic 5 - Top Talker Panel
 
 ### Parse /proc/net/tcp for individual connections, sort by queue activity, show top 20 with port filter.
+
+### Ouput:
+![output-epic-5](../images/day01/06.png)
+
+## Epic 6 - Conntrack Panel
+
+### Parse /proc/net/stat/nf_conntrack for insert/delete/drop counts.
 
 ### Ouput:
