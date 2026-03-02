@@ -216,7 +216,10 @@ func (a *App) focusPrev() {
 	highlightPanel(a.panels, a.focusIndex)
 }
 
-func (a *App) showHelp() { a.pages.ShowPage("help") }
+func (a *App) showHelp() {
+	a.pages.SendToFront("help") // Ensure help renders above main after zoom reorder
+	a.pages.ShowPage("help")
+}
 func (a *App) hideHelp() { a.pages.HidePage("help") }
 func (a *App) isHelpVisible() bool {
 	name, _ := a.pages.GetFrontPage()
@@ -237,6 +240,7 @@ func (a *App) toggleZoom() {
 
 	a.pages.RemovePage("main")
 	a.pages.AddPage("main", zoomLayout, true, true)
+
 	a.zoomed = true
 	a.updateStatusBar()
 }
@@ -248,6 +252,7 @@ func (a *App) exitZoom() {
 
 	a.pages.RemovePage("main")
 	a.pages.AddPage("main", a.grid, true, true)
+
 	a.zoomed = false
 	highlightPanel(a.panels, a.focusIndex)
 	a.updateStatusBar()

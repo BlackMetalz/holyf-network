@@ -174,7 +174,7 @@ toggleZoom()
 exitZoom()
 ```
 
-### Epic 10:
+### Epic 10: Scroll Panels
 
 Arrow keys scroll content in focused panel	
 
@@ -182,3 +182,10 @@ Arrow keys scroll content in focused panel
 # layout.go
 SetScrollable(true)
 ```
+
+### Output of Sprint 5:
+![output-epic-7](../images/day01/09.png)
+
+Zoomed:
+
+![output-epic-7](../images/day01/10.png)
