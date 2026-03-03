@@ -51,7 +51,7 @@ func renderConntrackPanel(rates collector.ConntrackRates) string {
 	if !rates.StatsAvailable {
 		sb.WriteString("\n  [dim]Drops: N/A[white]")
 	} else if rates.TotalDrops > 0 {
-		sb.WriteString(fmt.Sprintf("\n  [red]Drops: %s ⚠ (connections lost!)[white]",
+		sb.WriteString(fmt.Sprintf("\n  [red]Drops: %s ⚠ (lost since boot)[white]",
 			formatNumber(int(rates.TotalDrops))))
 	} else {
 		sb.WriteString("\n  [green]Drops: 0[white]")

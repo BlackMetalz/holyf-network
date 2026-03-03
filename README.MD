@@ -8,6 +8,9 @@ Yes, fucking yes.
 # Download
 
 ### Requirements
+
+Required root to run this tool:
+
 ```bash
 apt install conntrack
 ```

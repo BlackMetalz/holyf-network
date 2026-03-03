@@ -24,6 +24,7 @@ func main() {
 	payload := flag.String("payload", "ping\n", "Payload to write")
 	keepAlive := flag.Duration("keepalive", 30*time.Second, "TCP keepalive period")
 	progressEvery := flag.Int("progress-every", 1000, "Print progress every N attempts")
+	delay := flag.Duration("delay", 0, "Delay between creating concurrent connections (ramp-up)")
 	flag.Parse()
 
 	if *total <= 0 || *concurrency <= 0 {
@@ -80,6 +81,9 @@ func main() {
 
 	for i := 0; i < *total; i++ {
 		jobs <- struct{}{}
+		if *delay > 0 {
+			time.Sleep(*delay)
+		}
 	}
 	close(jobs)
 	wg.Wait()
