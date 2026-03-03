@@ -2,7 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"net"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -428,6 +430,11 @@ type peerKillTarget struct {
 	Count     int
 }
 
+const (
+	defaultBlockMinutes = 10
+	maxBlockMinutes     = 1440
+)
+
 // promptKillPeer confirms and applies a temporary firewall block for a peer.
 func (a *App) promptKillPeer() {
 	if a.focusIndex != 2 {
@@ -435,25 +442,144 @@ func (a *App) promptKillPeer() {
 		return
 	}
 
-	target, ok := a.selectPeerKillTarget()
-	if !ok {
-		a.setStatusNote("No peer candidate in current Top Connections view", 5*time.Second)
-		return
-	}
-	spec := actions.PeerBlockSpec{PeerIP: target.PeerIP, LocalPort: target.LocalPort}
-	if a.hasActiveBlock(spec) {
-		a.setStatusNote(fmt.Sprintf("Already blocked %s:%d", target.PeerIP, target.LocalPort), 5*time.Second)
-		return
+	filteredPort := 0
+	if a.portFilter != "" {
+		parsed, err := strconv.Atoi(strings.TrimSpace(a.portFilter))
+		if err != nil || parsed < 1 || parsed > 65535 {
+			a.setStatusNote("Current port filter must be 1-65535", 5*time.Second)
+			return
+		}
+		filteredPort = parsed
 	}
 
-	duration := 10 * time.Minute
-	label := "Block 10m"
+	suggested, hasSuggested := a.selectPeerKillTarget()
+	defaultPeer := ""
+	defaultPort := ""
+	helpText := fmt.Sprintf("Enter peer IP + local port + block minutes (default %d).", defaultBlockMinutes)
+	if hasSuggested {
+		defaultPeer = suggested.PeerIP
+		defaultPort = strconv.Itoa(suggested.LocalPort)
+		helpText = fmt.Sprintf("Suggested: %s -> local port %d (%d matches in view).", suggested.PeerIP, suggested.LocalPort, suggested.Count)
+	}
+	if filteredPort > 0 {
+		defaultPort = strconv.Itoa(filteredPort)
+		if hasSuggested {
+			helpText = fmt.Sprintf("Port filter active: local port %d. Suggested peer: %s (%d matches).", filteredPort, suggested.PeerIP, suggested.Count)
+		} else {
+			helpText = fmt.Sprintf("Port filter active: local port %d. Enter peer IP to block.", filteredPort)
+		}
+	}
+
+	peerInput := tview.NewInputField().
+		SetLabel("Peer IP: ").
+		SetFieldWidth(30).
+		SetText(defaultPeer)
+
+	form := tview.NewForm().AddFormItem(peerInput)
+	formHeight := 8
+
+	var portInput *tview.InputField
+	if filteredPort == 0 {
+		portInput = tview.NewInputField().
+			SetLabel("Local port: ").
+			SetFieldWidth(8).
+			SetText(defaultPort)
+		portInput.SetAcceptanceFunc(tview.InputFieldInteger)
+		form.AddFormItem(portInput)
+		formHeight++
+	}
+
+	minutesInput := tview.NewInputField().
+		SetLabel("Block minutes: ").
+		SetFieldWidth(6).
+		SetText(strconv.Itoa(defaultBlockMinutes))
+	minutesInput.SetAcceptanceFunc(tview.InputFieldInteger)
+	form.AddFormItem(minutesInput)
+	formHeight++
+
+	form.AddButton("Next", func() {
+		peerIP, ok := parsePeerIPInput(peerInput.GetText())
+		if !ok {
+			a.setStatusNote("Invalid peer IP", 5*time.Second)
+			return
+		}
+
+		port := filteredPort
+		if filteredPort == 0 {
+			parsedPort, err := strconv.Atoi(strings.TrimSpace(portInput.GetText()))
+			if err != nil || parsedPort < 1 || parsedPort > 65535 {
+				a.setStatusNote("Invalid local port", 5*time.Second)
+				return
+			}
+			port = parsedPort
+		}
+
+		minutes, err := strconv.Atoi(strings.TrimSpace(minutesInput.GetText()))
+		if err != nil || minutes < 1 || minutes > maxBlockMinutes {
+			a.setStatusNote(fmt.Sprintf("Block minutes must be 1-%d", maxBlockMinutes), 5*time.Second)
+			return
+		}
+		duration := time.Duration(minutes) * time.Minute
+
+		target := peerKillTarget{
+			PeerIP:    peerIP,
+			LocalPort: port,
+			Count:     a.countPeerMatches(peerIP, port),
+		}
+		spec := actions.PeerBlockSpec{PeerIP: target.PeerIP, LocalPort: target.LocalPort}
+		if a.hasActiveBlock(spec) {
+			a.setStatusNote(fmt.Sprintf("Already blocked %s:%d", target.PeerIP, target.LocalPort), 5*time.Second)
+			return
+		}
+
+		a.pages.RemovePage("kill-peer-form")
+		a.promptKillPeerConfirm(target, duration)
+	})
+	form.AddButton("Cancel", func() {
+		a.pages.RemovePage("kill-peer-form")
+		a.app.SetFocus(a.panels[a.focusIndex])
+	})
+	form.SetBorder(true)
+	form.SetTitle(" Kill Peer ")
+
+	helpLine := tview.NewTextView().
+		SetDynamicColors(true).
+		SetText("  [dim]" + helpText + "[white]")
+
+	modal := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+				AddItem(helpLine, 1, 0, false).
+				AddItem(form, formHeight, 0, true),
+				72, 0, true).
+			AddItem(nil, 0, 1, false),
+			10, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	a.pages.AddPage("kill-peer-form", modal, true, true)
+	a.app.SetFocus(peerInput)
+}
+
+func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duration) {
+	label := "Block " + formatBlockDuration(duration)
+	minutes := int(duration / time.Minute)
 	text := fmt.Sprintf(
-		"Block peer %s -> local port %d for 10 minutes?\n\nMatches in current view: %d\nThis inserts a DROP rule and deletes active conntrack flows.",
+		"Block peer %s -> local port %d for %d minutes?\n\nMatches in current view: %d\nThis inserts a DROP rule and deletes active conntrack flows.",
 		target.PeerIP,
 		target.LocalPort,
+		minutes,
 		target.Count,
 	)
+	if target.Count == 0 {
+		text = fmt.Sprintf(
+			"Block peer %s -> local port %d for %d minutes?\n\nMatches in current view: 0 (manual target)\nThis inserts a DROP rule and deletes active conntrack flows.",
+			target.PeerIP,
+			target.LocalPort,
+			minutes,
+		)
+	}
 
 	modal := tview.NewModal().
 		SetText(text).
@@ -531,6 +657,25 @@ func (a *App) selectPeerKillTarget() (peerKillTarget, bool) {
 	return candidates[0].target, true
 }
 
+func (a *App) countPeerMatches(peerIP string, localPort int) int {
+	if len(a.latestTalkers) == 0 {
+		return 0
+	}
+
+	filtered := a.latestTalkers
+	if a.portFilter != "" {
+		filtered = filterByPort(filtered, a.portFilter)
+	}
+
+	count := 0
+	for _, conn := range filtered {
+		if normalizeIP(conn.RemoteIP) == peerIP && conn.LocalPort == localPort {
+			count++
+		}
+	}
+	return count
+}
+
 func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration) {
 	spec := actions.PeerBlockSpec{
 		PeerIP:    target.PeerIP,
@@ -551,7 +696,7 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 	}
 
 	a.app.QueueUpdateDraw(func() {
-		a.setStatusNote(fmt.Sprintf("Blocked %s:%d for 10m%s", target.PeerIP, target.LocalPort, dropWarning), 8*time.Second)
+		a.setStatusNote(fmt.Sprintf("Blocked %s:%d for %s%s", target.PeerIP, target.LocalPort, formatBlockDuration(duration), dropWarning), 8*time.Second)
 		a.refreshData()
 	})
 
@@ -591,6 +736,33 @@ func shortStatus(s string, max int) string {
 		return s[:max]
 	}
 	return s[:max-3] + "..."
+}
+
+func formatBlockDuration(duration time.Duration) string {
+	minutes := int(duration / time.Minute)
+	if minutes > 0 {
+		return fmt.Sprintf("%dm", minutes)
+	}
+	seconds := int(duration / time.Second)
+	if seconds < 1 {
+		seconds = 1
+	}
+	return fmt.Sprintf("%ds", seconds)
+}
+
+func parsePeerIPInput(raw string) (string, bool) {
+	peerIP := strings.TrimSpace(raw)
+	peerIP = strings.TrimPrefix(peerIP, "[")
+	peerIP = strings.TrimSuffix(peerIP, "]")
+	peerIP = strings.TrimPrefix(peerIP, "::ffff:")
+	parsed := net.ParseIP(peerIP)
+	if parsed == nil {
+		return "", false
+	}
+	if v4 := parsed.To4(); v4 != nil {
+		return v4.String(), true
+	}
+	return parsed.String(), true
 }
 
 func blockKey(spec actions.PeerBlockSpec) string {

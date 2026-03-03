@@ -13,7 +13,7 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]p[white]           Pause/Resume auto-refresh
 [yellow]s[white]           Toggle sensitive IP mask
 [yellow]f[white]           Filter (in Top Connections)
-[yellow]k[white]           Block top peer (Top Connections)
+[yellow]k[white]           Block peer (input form)
 [yellow]?[white]           Toggle this help
 [yellow]q[white]           Quit
 
