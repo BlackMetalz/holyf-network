@@ -476,7 +476,8 @@ func (a *App) promptKillPeer() {
 		SetText(defaultPeer)
 
 	form := tview.NewForm().AddFormItem(peerInput)
-	formHeight := 8
+	form.SetItemPadding(0)
+	form.SetButtonsAlign(tview.AlignRight)
 
 	var portInput *tview.InputField
 	if filteredPort == 0 {
@@ -486,7 +487,6 @@ func (a *App) promptKillPeer() {
 			SetText(defaultPort)
 		portInput.SetAcceptanceFunc(tview.InputFieldInteger)
 		form.AddFormItem(portInput)
-		formHeight++
 	}
 
 	minutesInput := tview.NewInputField().
@@ -495,7 +495,6 @@ func (a *App) promptKillPeer() {
 		SetText(strconv.Itoa(defaultBlockMinutes))
 	minutesInput.SetAcceptanceFunc(tview.InputFieldInteger)
 	form.AddFormItem(minutesInput)
-	formHeight++
 
 	form.AddButton("Next", func() {
 		peerIP, ok := parsePeerIPInput(peerInput.GetText())
@@ -544,7 +543,13 @@ func (a *App) promptKillPeer() {
 
 	helpLine := tview.NewTextView().
 		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft).
 		SetText("  [dim]" + helpText + "[white]")
+
+	modalHeight := 11
+	if filteredPort == 0 {
+		modalHeight = 12
+	}
 
 	modal := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
@@ -552,10 +557,10 @@ func (a *App) promptKillPeer() {
 			AddItem(nil, 0, 1, false).
 			AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
 				AddItem(helpLine, 1, 0, false).
-				AddItem(form, formHeight, 0, true),
-				72, 0, true).
+				AddItem(form, 0, 1, true),
+				84, 0, true).
 			AddItem(nil, 0, 1, false),
-			10, 0, true).
+			modalHeight, 0, true).
 		AddItem(nil, 0, 1, false)
 
 	a.pages.AddPage("kill-peer-form", modal, true, true)
@@ -566,7 +571,7 @@ func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duratio
 	label := "Block " + formatBlockDuration(duration)
 	minutes := int(duration / time.Minute)
 	text := fmt.Sprintf(
-		"Block peer %s -> local port %d for %d minutes?\n\nMatches in current view: %d\nThis inserts a DROP rule and deletes active conntrack flows.",
+		"Block peer %s -> local port %d for %d minutes?\n\nMatches in current view: %d\nThis inserts a firewall block rule and attempts to terminate active flows.",
 		target.PeerIP,
 		target.LocalPort,
 		minutes,
@@ -574,7 +579,7 @@ func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duratio
 	)
 	if target.Count == 0 {
 		text = fmt.Sprintf(
-			"Block peer %s -> local port %d for %d minutes?\n\nMatches in current view: 0 (manual target)\nThis inserts a DROP rule and deletes active conntrack flows.",
+			"Block peer %s -> local port %d for %d minutes?\n\nMatches in current view: 0 (manual target)\nThis inserts a firewall block rule and attempts to terminate active flows.",
 			target.PeerIP,
 			target.LocalPort,
 			minutes,
@@ -692,7 +697,7 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 
 	dropWarning := ""
 	if err := actions.DropPeerConnections(spec); err != nil {
-		dropWarning = " (flow-drop skipped)"
+		dropWarning = " (flow-drop partial)"
 	}
 
 	a.app.QueueUpdateDraw(func() {

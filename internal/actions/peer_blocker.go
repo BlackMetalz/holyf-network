@@ -17,7 +17,7 @@ type PeerBlockSpec struct {
 
 const ruleComment = "holyf-network-peer-block"
 
-// BlockPeer inserts a DROP rule for peer IP -> local TCP port.
+// BlockPeer inserts a TCP reset REJECT rule for peer IP -> local TCP port.
 func BlockPeer(spec PeerBlockSpec) error {
 	ip, peerIP, err := validateSpec(spec)
 	if err != nil {
@@ -37,7 +37,8 @@ func BlockPeer(spec PeerBlockSpec) error {
 		"--dport", port,
 		"-m", "comment",
 		"--comment", ruleComment,
-		"-j", "DROP",
+		"-j", "REJECT",
+		"--reject-with", "tcp-reset",
 	}
 
 	if err := runCommand(bin, args...); err != nil {
@@ -47,7 +48,7 @@ func BlockPeer(spec PeerBlockSpec) error {
 	return nil
 }
 
-// UnblockPeer removes a previously inserted DROP rule.
+// UnblockPeer removes a previously inserted block rule.
 func UnblockPeer(spec PeerBlockSpec) error {
 	ip, peerIP, err := validateSpec(spec)
 	if err != nil {
@@ -67,7 +68,8 @@ func UnblockPeer(spec PeerBlockSpec) error {
 		"--dport", port,
 		"-m", "comment",
 		"--comment", ruleComment,
-		"-j", "DROP",
+		"-j", "REJECT",
+		"--reject-with", "tcp-reset",
 	}
 
 	if err := runCommand(bin, args...); err != nil {
@@ -84,32 +86,92 @@ func DropPeerConnections(spec PeerBlockSpec) error {
 		return err
 	}
 
-	if _, err := exec.LookPath("conntrack"); err != nil {
+	port := strconv.Itoa(spec.LocalPort)
+	ssErr := killSocketByPeerAndPort(ip, peerIP, port)
+	ctErr := deleteConntrackFlows(ip, peerIP, port)
+
+	// At least one mechanism succeeded.
+	if ssErr == nil || ctErr == nil {
 		return nil
 	}
 
-	port := strconv.Itoa(spec.LocalPort)
-	args := []string{
-		"-D",
-		"-p", "tcp",
-		"-s", peerIP,
-		"--dport", port,
-	}
-	if ip.To4() == nil {
-		args = append(args, "-f", "ipv6")
+	return fmt.Errorf("%s; %s", ssErr.Error(), ctErr.Error())
+}
+
+func killSocketByPeerAndPort(ip net.IP, peerIP, port string) error {
+	if _, err := exec.LookPath("ss"); err != nil {
+		return fmt.Errorf("ss: command not found")
 	}
 
-	out, err := exec.Command("conntrack", args...).CombinedOutput()
-	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		// Not fatal: nothing to delete.
-		if strings.Contains(msg, "0 flow entries have been deleted") {
+	base := []string{}
+	if ip.To4() != nil {
+		base = append(base, "-4")
+	} else {
+		base = append(base, "-6")
+	}
+	base = append(base, "-K")
+
+	// Try multiple tuple directions. iproute2 filter semantics differ across versions.
+	candidates := [][]string{
+		{"dst", peerIP, "sport", "=", ":" + port},
+		{"src", peerIP, "dport", "=", ":" + port},
+		{"dst", peerIP, "dport", "=", ":" + port},
+		{"src", peerIP, "sport", "=", ":" + port},
+	}
+
+	var lastErr string
+	for _, c := range candidates {
+		args := append(append([]string{}, base...), c...)
+		out, err := exec.Command("ss", args...).CombinedOutput()
+		if err == nil {
 			return nil
 		}
-		return fmt.Errorf("conntrack delete failed: %s", strings.TrimSpace(msg))
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		lastErr = msg
 	}
 
-	return nil
+	if lastErr == "" {
+		lastErr = "unknown error"
+	}
+	return fmt.Errorf("ss: %s", lastErr)
+}
+
+func deleteConntrackFlows(ip net.IP, peerIP, port string) error {
+	if _, err := exec.LookPath("conntrack"); err != nil {
+		return fmt.Errorf("conntrack: command not found")
+	}
+
+	common := []string{"-D", "-p", "tcp"}
+	if ip.To4() == nil {
+		common = append(common, "-f", "ipv6")
+	}
+	commands := [][]string{
+		append(append([]string{}, common...), "-s", peerIP, "--dport", port),
+		append(append([]string{}, common...), "-d", peerIP, "--sport", port),
+	}
+
+	var errs []string
+	for _, args := range commands {
+		out, err := exec.Command("conntrack", args...).CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		msg := strings.TrimSpace(string(out))
+		if strings.Contains(msg, "0 flow entries have been deleted") {
+			continue
+		}
+		if msg == "" {
+			msg = err.Error()
+		}
+		errs = append(errs, msg)
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("conntrack: %s", strings.Join(errs, " | "))
 }
 
 func validateSpec(spec PeerBlockSpec) (ip net.IP, normalized string, err error) {
