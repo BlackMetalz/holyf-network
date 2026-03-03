@@ -13,7 +13,6 @@ curl -sL https://github.com/BlackMetalz/holyf-network/releases/latest/download/h
 chmod +x /tmp/holyf-network
 sudo mv /tmp/holyf-network /usr/local/bin/holyf-network
 holyf-network -v
-
 ```
 
 ### macOS (Apple Silicon) - NOT SUPPORTED!
@@ -22,4 +21,13 @@ curl -sL https://github.com/BlackMetalz/holyf-network/releases/latest/download/h
 chmod +x /tmp/holyf-network
 sudo mv /tmp/holyf-network /usr/local/bin/holyf-network
 holyf-network -v
+```
+
+# Usage
+```bash
+# Default refresh rate is 30 seconds
+holyf-network
+
+# Set refresh rate to 5 seconds
+holyf-network -r 5
 ```
