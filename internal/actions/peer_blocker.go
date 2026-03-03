@@ -178,17 +178,14 @@ func QueryAndKillPeerSockets(spec PeerBlockSpec) error {
 //
 //	Recv-Q  Send-Q  Local Address:Port  Peer Address:Port  Process
 //	0       0       10.0.0.1:8080       10.0.0.2:54321     users:(("nginx",pid=1234,fd=5))
-func queryEstablishedSockets(ip net.IP, peerIP, localPort string) ([]SocketTuple, error) {
+func queryEstablishedSockets(_ net.IP, peerIP, localPort string) ([]SocketTuple, error) {
 	if _, err := exec.LookPath("ss"); err != nil {
 		return nil, fmt.Errorf("ss: command not found")
 	}
 
-	family := "-4"
-	if ip.To4() == nil {
-		family = "-6"
-	}
-
-	out, err := exec.Command("ss", family, "-tnp", "state", "established").CombinedOutput()
+	// Do NOT pass -4 or -6: services like sshd listen on [::] which creates
+	// IPv4-mapped IPv6 sockets (::ffff:x.x.x.x). Using -4 would miss them.
+	out, err := exec.Command("ss", "-tnp", "state", "established").CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("ss query: %w", err)
 	}
@@ -511,12 +508,26 @@ func runCommand(name string, args ...string) error {
 
 func normalizeIPForSS(raw string) (string, bool, error) {
 	ipStr := strings.TrimSpace(raw)
-	ipStr = strings.TrimPrefix(ipStr, "::ffff:")
-	ip := net.ParseIP(ipStr)
+
+	// If the address has an ::ffff: prefix it came from an IPv4-mapped IPv6
+	// socket. The kernel keeps these in the IPv6 space, so we must preserve
+	// the prefix and use ss -6 -K to kill them.
+	hasMappedPrefix := strings.HasPrefix(ipStr, "::ffff:")
+
+	stripped := strings.TrimPrefix(ipStr, "::ffff:")
+	ip := net.ParseIP(stripped)
 	if ip == nil {
-		return "", false, fmt.Errorf("invalid ip: %s", raw)
+		ip = net.ParseIP(ipStr)
+		if ip == nil {
+			return "", false, fmt.Errorf("invalid ip: %s", raw)
+		}
 	}
+
 	if v4 := ip.To4(); v4 != nil {
+		if hasMappedPrefix {
+			// IPv4-mapped IPv6 — treat as IPv6 for ss -K.
+			return "::ffff:" + v4.String(), false, nil
+		}
 		return v4.String(), true, nil
 	}
 	return ip.String(), false, nil
