@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -66,7 +67,7 @@ type App struct {
 	// Auto-refresh state (Epic 7)
 	stopChan    chan struct{}
 	refreshChan chan struct{}
-	paused      bool
+	paused      atomic.Bool
 	lastRefresh time.Time
 	// Tracks temporary auto-pause while the kill-peer flow is open.
 	killFlowAutoPaused bool
@@ -161,7 +162,7 @@ func (a *App) startRefreshLoop() {
 		select {
 		case <-ticker.C:
 			// Timer fired — refresh if not paused
-			if !a.paused {
+			if !a.paused.Load() {
 				a.app.QueueUpdateDraw(func() {
 					a.refreshData()
 				})
@@ -271,7 +272,7 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			}
 			return nil
 		case 'p':
-			a.paused = !a.paused
+			a.paused.Store(!a.paused.Load())
 			a.updateStatusBar()
 			return nil
 		case 's':
@@ -515,7 +516,7 @@ func (a *App) updateStatusBar() {
 
 	// Build state indicators
 	stateText := ""
-	if a.paused {
+	if a.paused.Load() {
 		stateText += " [red]PAUSED[white] |"
 	}
 	if a.zoomed {
@@ -992,7 +993,9 @@ func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duratio
 			}
 
 			a.setStatusNote(fmt.Sprintf("Blocking %s:%d...", target.PeerIP, target.LocalPort), 4*time.Second)
-			go a.blockPeerForDuration(target, duration)
+			// Snapshot latestTalkers on UI goroutine to avoid data race.
+			snapshotTalkers := append([]collector.Connection(nil), a.latestTalkers...)
+			go a.blockPeerForDuration(target, duration, snapshotTalkers)
 		})
 	modal.SetTitle(" Kill Peer ")
 	modal.SetBorder(true)
@@ -1337,7 +1340,55 @@ func (a *App) matchingBlockTuples(peerIP string, localPort int) []actions.Socket
 	return tuples
 }
 
-func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration) {
+// matchingBlockTuplesFromSnapshot is like matchingBlockTuples but operates on
+// a pre-captured snapshot of connections. Safe to call from any goroutine.
+func matchingBlockTuplesFromSnapshot(conns []collector.Connection, peerIP string, localPort int) []actions.SocketTuple {
+	if len(conns) == 0 {
+		return nil
+	}
+
+	normalizedPeer := normalizeIP(peerIP)
+	seen := make(map[string]struct{})
+	tuples := make([]actions.SocketTuple, 0, 8)
+
+	for _, conn := range conns {
+		if conn.LocalPort != localPort {
+			continue
+		}
+		if !strings.EqualFold(conn.State, "ESTABLISHED") {
+			continue
+		}
+
+		remoteIP := normalizeIP(conn.RemoteIP)
+		if remoteIP != normalizedPeer {
+			continue
+		}
+
+		localIP := normalizeIP(conn.LocalIP)
+		if localIP == "" || conn.RemotePort < 1 || conn.RemotePort > 65535 {
+			continue
+		}
+
+		key := fmt.Sprintf("%s|%d|%s|%d", localIP, conn.LocalPort, remoteIP, conn.RemotePort)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		tuples = append(tuples, actions.SocketTuple{
+			LocalIP:    localIP,
+			LocalPort:  conn.LocalPort,
+			RemoteIP:   remoteIP,
+			RemotePort: conn.RemotePort,
+		})
+	}
+
+	return tuples
+}
+
+// blockPeerForDuration runs in a background goroutine. snapshotTalkers is a
+// copy of latestTalkers captured on the UI goroutine to avoid a data race.
+func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration, snapshotTalkers []collector.Connection) {
 	spec := actions.PeerBlockSpec{
 		PeerIP:    target.PeerIP,
 		LocalPort: target.LocalPort,
@@ -1360,7 +1411,7 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 		Summary:   fmt.Sprintf("Blocked %s:%d | processing...", spec.PeerIP, spec.LocalPort),
 	})
 
-	tuples := a.matchingBlockTuples(target.PeerIP, target.LocalPort)
+	tuples := matchingBlockTuplesFromSnapshot(snapshotTalkers, target.PeerIP, target.LocalPort)
 	beforeCount, beforeCountErr := actions.CountEstablishedPeerSockets(spec)
 	socketErr := actions.QueryAndKillPeerSockets(spec)
 	if socketErr != nil {
@@ -1720,10 +1771,10 @@ func (a *App) snapshotDisplayActiveBlocks() []activeBlockEntry {
 }
 
 func (a *App) enterKillFlowPause() {
-	if a.paused {
+	if a.paused.Load() {
 		return
 	}
-	a.paused = true
+	a.paused.Store(true)
 	a.killFlowAutoPaused = true
 	a.updateStatusBar()
 }
@@ -1733,6 +1784,6 @@ func (a *App) exitKillFlowPause() {
 		return
 	}
 	a.killFlowAutoPaused = false
-	a.paused = false
+	a.paused.Store(false)
 	a.updateStatusBar()
 }
