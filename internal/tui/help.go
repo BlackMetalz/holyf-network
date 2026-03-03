@@ -18,6 +18,7 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]Enter[white]       Block selected row
 [yellow]k[white]           Block peer (selected/default)
 [yellow]b[white]           Show blocked peers
+[yellow]h[white]           Show action log (latest 10)
 [yellow]?[white]           Toggle this help
 [yellow]q[white]           Quit
 

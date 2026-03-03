@@ -53,6 +53,10 @@ type App struct {
 	statusNote      string
 	statusNoteUntil time.Time
 
+	// Recent action history (for modal "h").
+	actionLogMu sync.Mutex
+	actionLogs  []string
+
 	// Active peer blocks for cleanup on shutdown.
 	blockMu      sync.Mutex
 	activeBlocks map[string]activeBlockEntry
@@ -103,6 +107,7 @@ func NewApp(
 		stopChan:         make(chan struct{}),
 		refreshChan:      make(chan struct{}, 1), // Buffered: so send never blocks
 		healthThresholds: healthThresholds,
+		actionLogs:       make([]string, 0, 32),
 	}
 }
 
@@ -282,6 +287,9 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case 'b':
 			a.promptBlockedPeers()
+			return nil
+		case 'h':
+			a.promptActionLog()
 			return nil
 		case 'z':
 			a.toggleZoom()
@@ -571,10 +579,12 @@ func statusHotkeysForPage(page string) (styled string, plain string) {
 	case "blocked-peers":
 		return "[dim]Up/Down[white]=select [dim]Enter[white]=remove [dim]Del[white]=remove [dim]Tab[white]=buttons [dim]Esc[white]=close",
 			"Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"
+	case "action-log":
+		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "blocked-peers-remove-result", "block-summary":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim]r p f k b z ? q[white]", "r p f k b z ? q"
+		return "[dim]r p f k b h z ? q[white]", "r p f k b h z ? q"
 	}
 }
 
@@ -682,6 +692,60 @@ func (a *App) promptTextFilter() {
 	a.pages.AddPage("search", modal, true, true)
 	a.updateStatusBar()
 	a.app.SetFocus(input)
+}
+
+func (a *App) promptActionLog() {
+	logs := a.recentActionLogs(10)
+
+	var body strings.Builder
+	if len(logs) == 0 {
+		body.WriteString("  No actions yet")
+	} else {
+		for i, entry := range logs {
+			body.WriteString("  ")
+			body.WriteString(entry)
+			if i < len(logs)-1 {
+				body.WriteString("\n")
+			}
+		}
+	}
+
+	view := tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(false).
+		SetTextAlign(tview.AlignLeft).
+		SetText(body.String())
+	view.SetBorder(true)
+	view.SetTitle(" Action Log (latest 10) ")
+
+	closeModal := func() {
+		a.pages.RemovePage("action-log")
+		a.app.SetFocus(a.panels[a.focusIndex])
+		a.updateStatusBar()
+	}
+
+	view.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc, tcell.KeyEnter:
+			closeModal()
+			return nil
+		}
+		return event
+	})
+
+	modal := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(view, 100, 0, true).
+			AddItem(nil, 0, 1, false),
+			16, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	a.pages.RemovePage("action-log")
+	a.pages.AddPage("action-log", modal, true, true)
+	a.updateStatusBar()
+	a.app.SetFocus(view)
 }
 
 func (a *App) applyTopConnectionFilters(conns []collector.Connection) []collector.Connection {
@@ -1004,10 +1068,12 @@ func (a *App) promptBlockedPeers() {
 		spec := blocks[selectedIndex].Spec
 		if err := actions.UnblockPeer(spec); err != nil {
 			a.setStatusNote("Unblock failed: "+shortStatus(err.Error(), 64), 8*time.Second)
+			a.addActionLog(fmt.Sprintf("remove block %s:%d failed: %s", spec.PeerIP, spec.LocalPort, shortStatus(err.Error(), 60)))
 			return
 		}
 		a.removeActiveBlock(spec)
 		a.setStatusNote(fmt.Sprintf("Unblocked %s:%d", spec.PeerIP, spec.LocalPort), 6*time.Second)
+		a.addActionLog(fmt.Sprintf("removed block %s:%d", spec.PeerIP, spec.LocalPort))
 
 		remaining := a.snapshotDisplayActiveBlocks()
 		if len(remaining) == 0 {
@@ -1271,6 +1337,7 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 	expiresAt := blockedAt.Add(duration)
 
 	if err := actions.BlockPeer(spec); err != nil {
+		a.addActionLog(fmt.Sprintf("block %s:%d failed: %s", spec.PeerIP, spec.LocalPort, shortStatus(err.Error(), 60)))
 		a.app.QueueUpdateDraw(func() {
 			a.setStatusNote("Block failed: "+shortStatus(err.Error(), 64), 8*time.Second)
 		})
@@ -1307,6 +1374,7 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 	}
 	actionSummary := buildBlockActionSummary(spec, duration, beforeCount, beforeCountErr, afterCount, afterCountErr, socketErr, flowErr)
 	a.updateActiveBlockSummary(spec, actionSummary)
+	a.addActionLog(actionSummary)
 
 	a.app.QueueUpdateDraw(func() {
 		a.setStatusNote(fmt.Sprintf("Blocked %s:%d for %s%s", target.PeerIP, target.LocalPort, formatBlockDuration(duration), dropWarning), 8*time.Second)
@@ -1326,12 +1394,14 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 	}
 
 	if err := actions.UnblockPeer(spec); err != nil {
+		a.addActionLog(fmt.Sprintf("auto-unblock %s:%d failed: %s", spec.PeerIP, spec.LocalPort, shortStatus(err.Error(), 60)))
 		a.app.QueueUpdateDraw(func() {
 			a.setStatusNote("Auto-unblock failed: "+shortStatus(err.Error(), 64), 8*time.Second)
 		})
 		return
 	}
 	a.removeActiveBlock(spec)
+	a.addActionLog(fmt.Sprintf("auto-unblocked %s:%d (expired)", spec.PeerIP, spec.LocalPort))
 
 	a.app.QueueUpdateDraw(func() {
 		a.setStatusNote(fmt.Sprintf("Unblocked %s:%d", target.PeerIP, target.LocalPort), 6*time.Second)
@@ -1343,6 +1413,45 @@ func (a *App) setStatusNote(note string, ttl time.Duration) {
 	a.statusNote = strings.TrimSpace(note)
 	a.statusNoteUntil = time.Now().Add(ttl)
 	a.updateStatusBar()
+}
+
+func (a *App) addActionLog(message string) {
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		return
+	}
+
+	line := fmt.Sprintf("%s %s", time.Now().Format("15:04:05"), shortStatus(msg, 180))
+
+	a.actionLogMu.Lock()
+	a.actionLogs = append(a.actionLogs, line)
+	if len(a.actionLogs) > 200 {
+		a.actionLogs = append([]string(nil), a.actionLogs[len(a.actionLogs)-200:]...)
+	}
+	a.actionLogMu.Unlock()
+}
+
+func (a *App) recentActionLogs(limit int) []string {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	a.actionLogMu.Lock()
+	defer a.actionLogMu.Unlock()
+
+	total := len(a.actionLogs)
+	if total == 0 {
+		return nil
+	}
+	if limit > total {
+		limit = total
+	}
+
+	out := make([]string, 0, limit)
+	for i := total - 1; i >= total-limit; i-- {
+		out = append(out, a.actionLogs[i])
+	}
+	return out
 }
 
 func shortStatus(s string, max int) string {
