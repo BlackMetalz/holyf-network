@@ -3,6 +3,7 @@ package collector
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -14,7 +15,7 @@ import (
 // Data sources:
 //   /proc/sys/net/netfilter/nf_conntrack_count — current entries
 //   /proc/sys/net/netfilter/nf_conntrack_max   — maximum entries
-//   /proc/net/stat/nf_conntrack                — insert/delete/drop counters
+//   conntrack -S                               — insert/drop counters (requires conntrack-tools)
 
 // ConntrackData holds conntrack table information.
 type ConntrackData struct {
@@ -22,12 +23,12 @@ type ConntrackData struct {
 	Max          int     // Maximum allowed
 	UsagePercent float64 // Current/Max * 100
 
-	// Counters from /proc/net/stat/nf_conntrack (cumulative since boot)
+	// Counters (cumulative since boot). -1 means unavailable.
 	Inserts int64 // Total new connections tracked
-	Deletes int64 // Total connections removed
 	Drops   int64 // Connections dropped (table full!)
 
-	Timestamp time.Time
+	StatsAvailable bool // Whether insert/drop counters were readable
+	Timestamp      time.Time
 }
 
 // ConntrackRates holds calculated per-second rates.
@@ -37,19 +38,21 @@ type ConntrackRates struct {
 	UsagePercent float64
 
 	InsertsPerSec float64 // New connections per second
-	DeletesPerSec float64 // Destroyed connections per second
 	DropsPerSec   float64 // Dropped per second (should be 0!)
 
 	// Raw drop count — any drops are bad
 	TotalDrops int64
 
-	FirstReading bool
+	StatsAvailable bool // Whether rate data is available
+	FirstReading   bool
 }
 
-// CollectConntrack reads conntrack data from /proc.
+// CollectConntrack reads conntrack data from /proc and conntrack command.
 func CollectConntrack() (ConntrackData, error) {
 	data := ConntrackData{
 		Timestamp: time.Now(),
+		Inserts:   -1,
+		Drops:     -1,
 	}
 
 	// Read current count
@@ -73,8 +76,13 @@ func CollectConntrack() (ConntrackData, error) {
 		data.UsagePercent = float64(data.Current) / float64(data.Max) * 100
 	}
 
-	// Read counters from /proc/net/stat/nf_conntrack
-	data.Inserts, data.Deletes, data.Drops = readConntrackStats()
+	// Read counters from `conntrack -S` (requires conntrack-tools package)
+	inserts, drops, ok := readConntrackCommand()
+	if ok {
+		data.Inserts = inserts
+		data.Drops = drops
+		data.StatsAvailable = true
+	}
 
 	return data, nil
 }
@@ -94,55 +102,64 @@ func readSingleInt(path string) (int, error) {
 	return value, nil
 }
 
-// readConntrackStats parses /proc/net/stat/nf_conntrack for insert/delete/drop counts.
+// readConntrackCommand runs `conntrack -S` to get insert/drop counters.
 //
-// File format:
+// Output format (one line per CPU):
 //
-//	entries  searched found new    invalid ignore delete delete_list insert insert_failed drop ...
-//	45231    12345678 1234  5678   0       1234   5600   0           5678   0             0
+//	cpu=0   found=0 invalid=20 insert=0 insert_failed=3 drop=204829 early_drop=13 ...
+//	cpu=1   found=0 invalid=0  insert=0 insert_failed=0 drop=0      early_drop=0  ...
 //
-// We sum across all CPU lines (there's one line per CPU).
-func readConntrackStats() (inserts, deletes, drops int64) {
-	content, err := os.ReadFile("/proc/net/stat/nf_conntrack")
+// We sum insert and drop across all CPUs.
+// Returns (inserts, drops, ok). ok=false if conntrack command not found.
+func readConntrackCommand() (inserts, drops int64, ok bool) {
+	out, err := exec.Command("conntrack", "-S").Output()
 	if err != nil {
-		return 0, 0, 0
+		return 0, 0, false
 	}
 
-	lines := strings.Split(string(content), "\n")
-	for i, line := range lines {
-		if i == 0 {
-			continue // Skip header
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) < 11 {
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
 
-		// Field indices (0-based, hex values):
-		// [8] = insert, [6] = delete, [10] = drop
-		ins, _ := strconv.ParseInt(fields[8], 16, 64)
-		del, _ := strconv.ParseInt(fields[6], 16, 64)
-		drp, _ := strconv.ParseInt(fields[10], 16, 64)
+		// Parse key=value pairs
+		fields := strings.Fields(line)
+		for _, field := range fields {
+			parts := strings.SplitN(field, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
 
-		inserts += ins
-		deletes += del
-		drops += drp
+			val, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				continue
+			}
+
+			switch parts[0] {
+			case "insert":
+				inserts += val
+			case "drop":
+				drops += val
+			}
+		}
 	}
 
-	return inserts, deletes, drops
+	return inserts, drops, true
 }
 
 // CalculateConntrackRates computes per-second rates from two snapshots.
 func CalculateConntrackRates(current ConntrackData, previous *ConntrackData) ConntrackRates {
 	rates := ConntrackRates{
-		Current:      current.Current,
-		Max:          current.Max,
-		UsagePercent: current.UsagePercent,
-		TotalDrops:   current.Drops,
+		Current:        current.Current,
+		Max:            current.Max,
+		UsagePercent:   current.UsagePercent,
+		TotalDrops:     current.Drops,
+		StatsAvailable: current.StatsAvailable,
 	}
 
-	if previous == nil {
+	if previous == nil || !current.StatsAvailable {
 		rates.FirstReading = true
 		return rates
 	}
@@ -154,7 +171,6 @@ func CalculateConntrackRates(current ConntrackData, previous *ConntrackData) Con
 	}
 
 	rates.InsertsPerSec = float64(current.Inserts-previous.Inserts) / elapsed
-	rates.DeletesPerSec = float64(current.Deletes-previous.Deletes) / elapsed
 	rates.DropsPerSec = float64(current.Drops-previous.Drops) / elapsed
 
 	return rates

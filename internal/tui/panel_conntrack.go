@@ -37,18 +37,20 @@ func renderConntrackPanel(rates collector.ConntrackRates) string {
 		sb.WriteString("  [yellow]Conntrack usage above 50%[white]\n\n")
 	}
 
-	// New/Destroyed rates (Story 6.3)
-	if rates.FirstReading {
+	// New rate and drops
+	if !rates.StatsAvailable {
+		sb.WriteString("  [dim]Stats unavailable (install conntrack-tools)[white]\n")
+	} else if rates.FirstReading {
 		sb.WriteString("  [dim]Rates available after next refresh[white]\n")
 	} else {
 		sb.WriteString(fmt.Sprintf("  [bold]New/sec:[white]       %s\n",
 			formatRate(rates.InsertsPerSec)))
-		sb.WriteString(fmt.Sprintf("  [bold]Destroyed/sec:[white] %s\n",
-			formatRate(rates.DeletesPerSec)))
 	}
 
 	// Drops — any drops are BAD
-	if rates.TotalDrops > 0 {
+	if !rates.StatsAvailable {
+		sb.WriteString("\n  [dim]Drops: N/A[white]")
+	} else if rates.TotalDrops > 0 {
 		sb.WriteString(fmt.Sprintf("\n  [red]Drops: %s ⚠ (connections lost!)[white]",
 			formatNumber(int(rates.TotalDrops))))
 	} else {

@@ -7,6 +7,11 @@ Yes, fucking yes.
 
 # Download
 
+### Requirements
+```bash
+apt install conntrack
+```
+
 ### Ubuntu/Linux (amd64)
 ```bash
 curl -sL https://github.com/BlackMetalz/holyf-network/releases/latest/download/holyf-network-linux-amd64 -o /tmp/holyf-network
