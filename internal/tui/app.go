@@ -849,6 +849,50 @@ func (a *App) promptBlockedPeers() {
 		a.app.SetFocus(a.panels[a.focusIndex])
 	}
 
+	showRemoveResultPopup := func(message string, onClose func()) {
+		shownAt := time.Now()
+		closePopup := func() {
+			a.pages.RemovePage("blocked-peers-remove-result")
+			if onClose != nil {
+				onClose()
+			}
+		}
+
+		modal := tview.NewModal().
+			SetText(message).
+			AddButtons([]string{"OK"}).
+			SetDoneFunc(func(_ int, _ string) {
+				// Ignore the first Enter right after opening to avoid
+				// accidentally closing immediately from the Remove button keypress.
+				if time.Since(shownAt) < 200*time.Millisecond {
+					return
+				}
+				closePopup()
+			})
+		modal.SetTitle(" Remove Block ")
+		modal.SetBorder(true)
+		modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if time.Since(shownAt) < 200*time.Millisecond {
+				return nil
+			}
+			switch event.Key() {
+			case tcell.KeyEsc:
+				closePopup()
+				return nil
+			}
+			if event.Key() == tcell.KeyRune && event.Rune() == 'q' {
+				closePopup()
+				return nil
+			}
+			return event
+		})
+
+		a.pages.RemovePage("blocked-peers-remove-result")
+		a.pages.AddPage("blocked-peers-remove-result", modal, true, true)
+		a.pages.SendToFront("blocked-peers-remove-result")
+		a.app.SetFocus(modal)
+	}
+
 	var refreshList func(nextIndex int)
 	removeSelected := func() {
 		if selectedIndex < 0 || selectedIndex >= len(blocks) {
@@ -862,7 +906,26 @@ func (a *App) promptBlockedPeers() {
 		}
 		a.removeActiveBlock(spec)
 		a.setStatusNote(fmt.Sprintf("Unblocked %s:%d", spec.PeerIP, spec.LocalPort), 6*time.Second)
+
+		remaining := a.snapshotDisplayActiveBlocks()
+		if len(remaining) == 0 {
+			closeModal()
+			showRemoveResultPopup(
+				fmt.Sprintf("Removed block %s:%d", spec.PeerIP, spec.LocalPort),
+				func() {
+					a.app.SetFocus(a.panels[a.focusIndex])
+				},
+			)
+			return
+		}
+
 		refreshList(selectedIndex)
+		showRemoveResultPopup(
+			fmt.Sprintf("Removed block %s:%d", spec.PeerIP, spec.LocalPort),
+			func() {
+				a.app.SetFocus(list)
+			},
+		)
 	}
 
 	list.SetChangedFunc(func(index int, _ string, _ string, _ rune) {
