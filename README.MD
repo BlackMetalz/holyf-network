@@ -1,9 +1,9 @@
 # Network Visibility tool
-For learning Go purpose and a tool that I can use daily for network monitor.
+For learning Go purpose and a tool that I can use daily for network monitor when a server has alert related to network issues!
 I'm suck at Linux Network!
 
 # Vibe Code
-Yes, fucking yes. But with review and worklogs
+Yes, fucking yes.
 
 # Download
 

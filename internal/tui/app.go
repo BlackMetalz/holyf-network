@@ -29,7 +29,7 @@ type App struct {
 	prevConntrack  *collector.ConntrackData
 	prevRetransmit *collector.RetransmitData
 
-	// Port filter for Top Talkers panel. Empty = show all.
+	// Port filter for Top Connections panel. Empty = show all.
 	portFilter string
 
 	// Auto-refresh state (Epic 7)
@@ -288,7 +288,7 @@ func (a *App) refreshData() {
 		a.prevIfaceStats = &ifaceStats
 	}
 
-	// Panel 2: Top Talkers
+	// Panel 2: Top Connections
 	talkers, err := collector.CollectTopTalkers(100)
 	if err != nil {
 		a.panels[2].SetText(fmt.Sprintf("  [red]%v[white]", err))

@@ -21,7 +21,7 @@ type panelInfo struct {
 var defaultPanels = []panelInfo{
 	{title: " Connection States ", text: "  Loading..."},
 	{title: " Interface Stats ", text: "  Loading..."},
-	{title: " Top Talkers ", text: "  Loading..."},
+	{title: " Top Connections ", text: "  Loading..."},
 	{title: " Conntrack ", text: "  Loading..."},
 }
 
@@ -69,7 +69,7 @@ func createStatusBar(interfaceName string) *tview.TextView {
 //
 //	┌─ Connection States ──┬─ Interface Stats ────┐
 //	│                      │                      │
-//	├─ Top Talkers ────────┼─ Conntrack ──────────┤
+//	├─ Top Connections ────┼─ Conntrack ──────────┤
 //	│                      │                      │
 //	└──────────────────────┴──────────────────────┘
 //	 <status bar>

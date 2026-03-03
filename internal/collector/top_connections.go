@@ -3,12 +3,13 @@ package collector
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 )
 
-// top_talkers.go — Parses /proc/net/tcp to find the most active connections.
+// top_connections.go — Parses /proc/net/tcp to find the most active connections.
 // Uses tx_queue + rx_queue as activity proxy (accurate bytes need eBPF in v3).
 
 // Connection represents a single TCP connection from /proc/net/tcp.
@@ -18,13 +19,17 @@ type Connection struct {
 	RemoteIP   string
 	RemotePort int
 	State      string
-	TxQueue    int64 // Bytes waiting to be sent
-	RxQueue    int64 // Bytes waiting to be read
-	Activity   int64 // TxQueue + RxQueue (sort key)
+	TxQueue    int64  // Bytes waiting to be sent
+	RxQueue    int64  // Bytes waiting to be read
+	Activity   int64  // TxQueue + RxQueue (sort key)
+	Inode      string // Socket inode number (for PID lookup)
+	PID        int    // Process ID owning this socket (0 = unknown)
+	ProcName   string // Process name from /proc/[pid]/comm
 }
 
 // CollectTopTalkers parses /proc/net/tcp + tcp6 and returns
 // the top N connections sorted by queue activity (descending).
+// Each connection is enriched with PID and process name when available.
 func CollectTopTalkers(limit int) ([]Connection, error) {
 	var allConns []Connection
 
@@ -42,6 +47,15 @@ func CollectTopTalkers(limit int) ([]Connection, error) {
 
 	if !parsed {
 		return nil, fmt.Errorf("cannot read /proc/net/tcp (requires Linux)")
+	}
+
+	// Build inode→PID map once, then enrich all connections
+	inodeMap := buildInodeToPIDMap()
+	for i := range allConns {
+		if pid, ok := inodeMap[allConns[i].Inode]; ok {
+			allConns[i].PID = pid
+			allConns[i].ProcName = getProcessName(pid)
+		}
 	}
 
 	// Sort by activity (tx_queue + rx_queue) descending
@@ -114,6 +128,12 @@ func parseTCPConnections(filePath string) ([]Connection, error) {
 		// Parse queue sizes
 		txQueue, rxQueue := parseQueueSizes(fields[4])
 
+		// Parse inode (field index 9)
+		inode := ""
+		if len(fields) > 9 {
+			inode = fields[9]
+		}
+
 		conns = append(conns, Connection{
 			LocalIP:    localIP,
 			LocalPort:  localPort,
@@ -123,6 +143,7 @@ func parseTCPConnections(filePath string) ([]Connection, error) {
 			TxQueue:    txQueue,
 			RxQueue:    rxQueue,
 			Activity:   txQueue + rxQueue,
+			Inode:      inode,
 		})
 	}
 
@@ -243,4 +264,65 @@ func parseQueueSizes(field string) (int64, int64) {
 	tx, _ := strconv.ParseInt(parts[0], 16, 64)
 	rx, _ := strconv.ParseInt(parts[1], 16, 64)
 	return tx, rx
+}
+
+// buildInodeToPIDMap scans /proc/[pid]/fd/ to build a map from socket inode → PID.
+//
+// How it works:
+//  1. List all /proc/[pid] directories (numeric names = process IDs)
+//  2. For each PID, list /proc/[pid]/fd/ (file descriptors)
+//  3. Each fd is a symlink; socket fds point to "socket:[12345]" where 12345 is the inode
+//  4. Match the inode number to our Connection.Inode field
+//
+// Requires root to read other processes' fd directories.
+// Errors are silently ignored (permission denied, process exited, etc.)
+func buildInodeToPIDMap() map[string]int {
+	result := make(map[string]int)
+
+	// List all /proc entries
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return result
+	}
+
+	for _, entry := range entries {
+		// Only process numeric directory names (PIDs)
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+
+		// List all file descriptors for this PID
+		fdDir := filepath.Join("/proc", entry.Name(), "fd")
+		fds, err := os.ReadDir(fdDir)
+		if err != nil {
+			continue // Permission denied or process exited
+		}
+
+		for _, fd := range fds {
+			// Read the symlink target, e.g. "socket:[12345]"
+			link, err := os.Readlink(filepath.Join(fdDir, fd.Name()))
+			if err != nil {
+				continue
+			}
+
+			// Extract inode from "socket:[12345]"
+			if strings.HasPrefix(link, "socket:[") && strings.HasSuffix(link, "]") {
+				inode := link[8 : len(link)-1] // Strip "socket:[" and "]"
+				result[inode] = pid
+			}
+		}
+	}
+
+	return result
+}
+
+// getProcessName reads the process name from /proc/[pid]/comm.
+// Returns empty string if the process no longer exists or can't be read.
+func getProcessName(pid int) string {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }

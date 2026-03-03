@@ -7,7 +7,7 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 )
 
-// panel_talkers.go — Renders the Top Talkers panel content.
+// panel_talkers.go — Renders the Top Connections panel content.
 
 // renderTalkersPanel formats the top connections for the TUI panel.
 // If portFilter is set, only connections matching that port are shown.
@@ -55,7 +55,17 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string) string 
 			stateColor = "red"
 		}
 
-		// Format: "  127.0.0.1:3306 ↔ 10.0.0.5:45123  256  ESTABLISHED"
+		// Format PID/process info: "1234/nginx" or "-"
+		procInfo := "-"
+		if conn.PID > 0 {
+			if conn.ProcName != "" {
+				procInfo = fmt.Sprintf("%d/%s", conn.PID, conn.ProcName)
+			} else {
+				procInfo = fmt.Sprintf("%d", conn.PID)
+			}
+		}
+
+		// Format: "  1234/nginx  127.0.0.1:3306 ↔ 10.0.0.5:45123  ESTABLISHED  256"
 		local := fmt.Sprintf("%s:%d", conn.LocalIP, conn.LocalPort)
 		remote := fmt.Sprintf("%s:%d", conn.RemoteIP, conn.RemotePort)
 
@@ -72,8 +82,8 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string) string 
 			queueStr = fmt.Sprintf(" [yellow]%s[white]", formatBytes(conn.Activity))
 		}
 
-		sb.WriteString(fmt.Sprintf("  %-21s ↔ %-21s [%s]%-11s[white]%s\n",
-			local, remote, stateColor, conn.State, queueStr,
+		sb.WriteString(fmt.Sprintf("  [aqua]%-14s[white] %-21s ↔ %-21s [%s]%-11s[white]%s\n",
+			procInfo, local, remote, stateColor, conn.State, queueStr,
 		))
 	}
 
