@@ -25,7 +25,7 @@ type SocketTuple struct {
 
 const ruleComment = "holyf-network-peer-block"
 
-// BlockPeer inserts a TCP reset REJECT rule for peer IP -> local TCP port.
+// BlockPeer inserts INPUT+OUTPUT DROP rules for peer IP on the target local port.
 func BlockPeer(spec PeerBlockSpec) error {
 	ip, peerIP, err := validateSpec(spec)
 	if err != nil {
@@ -38,19 +38,40 @@ func BlockPeer(spec PeerBlockSpec) error {
 	}
 
 	port := strconv.Itoa(spec.LocalPort)
-	args := []string{
+	comment := ruleCommentForPort(port)
+	inputArgs := []string{
 		"-I", "INPUT",
 		"-s", peerIP,
 		"-p", "tcp",
 		"--dport", port,
 		"-m", "comment",
-		"--comment", ruleComment,
-		"-j", "REJECT",
-		"--reject-with", "tcp-reset",
+		"--comment", comment,
+		"-j", "DROP",
+	}
+	outputArgs := []string{
+		"-I", "OUTPUT",
+		"-d", peerIP,
+		"-p", "tcp",
+		"--sport", port,
+		"-m", "comment",
+		"--comment", comment,
+		"-j", "DROP",
 	}
 
-	if err := runCommand(bin, args...); err != nil {
+	if err := runCommand(bin, inputArgs...); err != nil {
 		return fmt.Errorf("cannot block peer %s:%s: %w", peerIP, port, err)
+	}
+	if err := runCommand(bin, outputArgs...); err != nil {
+		_ = runCommand(bin,
+			"-D", "INPUT",
+			"-s", peerIP,
+			"-p", "tcp",
+			"--dport", port,
+			"-m", "comment",
+			"--comment", comment,
+			"-j", "DROP",
+		)
+		return fmt.Errorf("cannot block peer %s:%s output path: %w", peerIP, port, err)
 	}
 
 	return nil
@@ -69,19 +90,35 @@ func UnblockPeer(spec PeerBlockSpec) error {
 	}
 
 	port := strconv.Itoa(spec.LocalPort)
-	args := []string{
+	comment := ruleCommentForPort(port)
+	inputArgs := []string{
 		"-D", "INPUT",
 		"-s", peerIP,
 		"-p", "tcp",
 		"--dport", port,
 		"-m", "comment",
-		"--comment", ruleComment,
-		"-j", "REJECT",
-		"--reject-with", "tcp-reset",
+		"--comment", comment,
+		"-j", "DROP",
+	}
+	outputArgs := []string{
+		"-D", "OUTPUT",
+		"-d", peerIP,
+		"-p", "tcp",
+		"--sport", port,
+		"-m", "comment",
+		"--comment", comment,
+		"-j", "DROP",
 	}
 
-	if err := runCommand(bin, args...); err != nil {
-		return fmt.Errorf("cannot unblock peer %s:%s: %w", peerIP, port, err)
+	var errs []string
+	if err := runCommand(bin, inputArgs...); err != nil && !isRuleMissingError(err) {
+		errs = append(errs, err.Error())
+	}
+	if err := runCommand(bin, outputArgs...); err != nil && !isRuleMissingError(err) {
+		errs = append(errs, err.Error())
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("cannot unblock peer %s:%s: %s", peerIP, port, strings.Join(errs, "; "))
 	}
 
 	return nil
@@ -241,22 +278,24 @@ func deleteConntrackFlows(ip net.IP, peerIP, port string) error {
 		return fmt.Errorf("conntrack: command not found")
 	}
 
-	common := []string{"-D", "-p", "tcp"}
+	commonTCP := []string{"-D", "-p", "tcp"}
 	if ip.To4() == nil {
-		common = append(common, "-f", "ipv6")
+		commonTCP = append(commonTCP, "-f", "ipv6")
 	}
 	commands := [][]string{
-		append(append([]string{}, common...), "-s", peerIP, "--dport", port),
-		append(append([]string{}, common...), "-d", peerIP, "--sport", port),
-		append(append([]string{}, common...), "-d", peerIP, "--dport", port),
-		append(append([]string{}, common...), "-s", peerIP, "--sport", port),
+		append(append([]string{}, commonTCP...), "-s", peerIP, "--dport", port),
+		append(append([]string{}, commonTCP...), "-d", peerIP, "--sport", port),
+		append(append([]string{}, commonTCP...), "-d", peerIP, "--dport", port),
+		append(append([]string{}, commonTCP...), "-s", peerIP, "--sport", port),
 	}
 
 	var errs []string
+	deleted := false
 	for _, args := range commands {
 		out, err := exec.Command("conntrack", args...).CombinedOutput()
 		if err == nil {
-			return nil
+			deleted = true
+			continue
 		}
 		msg := strings.TrimSpace(string(out))
 		if strings.Contains(msg, "0 flow entries have been deleted") {
@@ -267,10 +306,19 @@ func deleteConntrackFlows(ip net.IP, peerIP, port string) error {
 		}
 		errs = append(errs, msg)
 	}
-	if len(errs) == 0 {
+	if deleted || len(errs) == 0 {
 		return nil
 	}
 	return fmt.Errorf("conntrack: %s", strings.Join(errs, " | "))
+}
+
+func isRuleMissingError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "Bad rule") ||
+		strings.Contains(msg, "No chain/target/match by that name")
 }
 
 func validateSpec(spec PeerBlockSpec) (ip net.IP, normalized string, err error) {
@@ -330,4 +378,8 @@ func normalizeIPForSS(raw string) (string, bool, error) {
 		return v4.String(), true, nil
 	}
 	return ip.String(), false, nil
+}
+
+func ruleCommentForPort(port string) string {
+	return ruleComment + ":" + port
 }
