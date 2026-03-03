@@ -297,8 +297,12 @@ func (a *App) focusPrev() {
 func (a *App) showHelp() {
 	a.pages.SendToFront("help") // Ensure help renders above main after zoom reorder
 	a.pages.ShowPage("help")
+	a.updateStatusBar()
 }
-func (a *App) hideHelp() { a.pages.HidePage("help") }
+func (a *App) hideHelp() {
+	a.pages.HidePage("help")
+	a.updateStatusBar()
+}
 func (a *App) isHelpVisible() bool {
 	name, _ := a.pages.GetFrontPage()
 	return name == "help"
@@ -494,19 +498,23 @@ func (a *App) updateStatusBar() {
 		stateText += fmt.Sprintf(" [yellow]%s[white] |", a.statusNote)
 	}
 
+	page := a.frontPageName()
+	hotkeysStyled, hotkeysPlain := statusHotkeysForPage(page)
 	leftStyled := fmt.Sprintf(
-		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]s[white]=mask-ip [dim]f[white]=port/clear [dim]/[white]=search [dim]k[white]=kill-peer [dim]b[white]=blocked [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
+		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | %s",
 		a.ifaceName,
 		stateText,
 		ago,
 		a.refreshSec,
+		hotkeysStyled,
 	)
 	leftPlain := fmt.Sprintf(
-		" %s |%s Updated: %s | Refresh: %ds | r=refresh p=pause s=mask-ip f=port/clear /=search k=kill-peer b=blocked z=zoom ?=help q=quit",
+		" %s |%s Updated: %s | Refresh: %ds | %s",
 		a.ifaceName,
 		stripStatusColors(stateText),
 		ago,
 		a.refreshSec,
+		hotkeysPlain,
 	)
 	versionLabel := "holyf-network " + a.appVersion
 	rightStyled := " [dim]" + versionLabel + "[white]"
@@ -522,6 +530,39 @@ func (a *App) updateStatusBar() {
 	}
 
 	a.statusBar.SetText(text)
+}
+
+func (a *App) frontPageName() string {
+	if a.pages == nil {
+		return "main"
+	}
+	name, _ := a.pages.GetFrontPage()
+	if strings.TrimSpace(name) == "" {
+		return "main"
+	}
+	return name
+}
+
+func statusHotkeysForPage(page string) (styled string, plain string) {
+	switch page {
+	case "help":
+		return "[dim]any key[white]=close", "any key=close"
+	case "filter":
+		return "[dim]Enter[white]=apply [dim]Esc[white]=cancel", "Enter=apply Esc=cancel"
+	case "search":
+		return "[dim]Enter[white]=apply [dim]Esc[white]=cancel", "Enter=apply Esc=cancel"
+	case "kill-peer-form":
+		return "[dim]Tab[white]=field [dim]Enter[white]=next [dim]Esc[white]=cancel", "Tab=field Enter=next Esc=cancel"
+	case "kill-peer":
+		return "[dim]<-/->[white]=choose [dim]Enter[white]=confirm [dim]Esc[white]=cancel", "<-/->=choose Enter=confirm Esc=cancel"
+	case "blocked-peers":
+		return "[dim]Up/Down[white]=select [dim]Enter[white]=remove [dim]Del[white]=remove [dim]Tab[white]=buttons [dim]Esc[white]=close",
+			"Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"
+	case "blocked-peers-remove-result", "block-summary":
+		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
+	default:
+		return "[dim]r p f k b z ? q[white]", "r p f k b z ? q"
+	}
 }
 
 func stripStatusColors(s string) string {
@@ -566,6 +607,8 @@ func (a *App) promptPortFilter() {
 		}
 		// On Enter or Escape: close the dialog
 		a.pages.RemovePage("filter")
+		a.app.SetFocus(a.panels[a.focusIndex])
+		a.updateStatusBar()
 		a.refreshData()
 	})
 
@@ -580,6 +623,7 @@ func (a *App) promptPortFilter() {
 		AddItem(nil, 0, 1, false)
 
 	a.pages.AddPage("filter", modal, true, true)
+	a.updateStatusBar()
 	a.app.SetFocus(input)
 }
 
@@ -610,6 +654,7 @@ func (a *App) promptTextFilter() {
 		}
 		a.pages.RemovePage("search")
 		a.app.SetFocus(a.panels[a.focusIndex])
+		a.updateStatusBar()
 	})
 
 	modal := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -622,6 +667,7 @@ func (a *App) promptTextFilter() {
 		AddItem(nil, 0, 1, false)
 
 	a.pages.AddPage("search", modal, true, true)
+	a.updateStatusBar()
 	a.app.SetFocus(input)
 }
 
@@ -712,7 +758,7 @@ func (a *App) promptKillPeer() {
 	minutesInput.SetAcceptanceFunc(tview.InputFieldInteger)
 	form.AddFormItem(minutesInput)
 
-	form.AddButton("Next", func() {
+	submit := func() {
 		peerIP, ok := parsePeerIPInput(peerInput.GetText())
 		if !ok {
 			a.setStatusNote("Invalid peer IP", 5*time.Second)
@@ -748,17 +794,54 @@ func (a *App) promptKillPeer() {
 		}
 
 		a.pages.RemovePage("kill-peer-form")
+		a.updateStatusBar()
 		a.promptKillPeerConfirm(target, duration)
+	}
+
+	form.AddButton("Next", func() {
+		submit()
 	})
 	form.AddButton("Cancel", func() {
 		a.pages.RemovePage("kill-peer-form")
 		a.app.SetFocus(a.panels[a.focusIndex])
 		a.exitKillFlowPause()
+		a.updateStatusBar()
 	})
 	form.SetCancelFunc(func() {
 		a.pages.RemovePage("kill-peer-form")
 		a.app.SetFocus(a.panels[a.focusIndex])
 		a.exitKillFlowPause()
+		a.updateStatusBar()
+	})
+	inputCount := 2
+	if filteredPort == 0 {
+		inputCount = 3
+	}
+	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			a.pages.RemovePage("kill-peer-form")
+			a.app.SetFocus(a.panels[a.focusIndex])
+			a.exitKillFlowPause()
+			a.updateStatusBar()
+			return nil
+		case tcell.KeyTab:
+			currentItem, _ := form.GetFocusedItemIndex()
+			if currentItem < 0 || currentItem >= inputCount {
+				currentItem = -1
+			}
+			next := currentItem + 1
+			if next >= inputCount {
+				next = 0
+			}
+			form.SetFocus(next)
+			a.app.SetFocus(form)
+			return nil
+		case tcell.KeyEnter:
+			submit()
+			return nil
+		}
+		return event
 	})
 	form.SetBorder(true)
 	form.SetTitle(" Kill Peer ")
@@ -786,6 +869,7 @@ func (a *App) promptKillPeer() {
 		AddItem(nil, 0, 1, false)
 
 	a.pages.AddPage("kill-peer-form", modal, true, true)
+	a.updateStatusBar()
 	form.SetFocus(0)
 	a.app.SetFocus(form)
 }
@@ -816,6 +900,7 @@ func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duratio
 			a.pages.RemovePage("kill-peer")
 			a.app.SetFocus(a.panels[a.focusIndex])
 			a.exitKillFlowPause()
+			a.updateStatusBar()
 			if button != label {
 				return
 			}
@@ -827,6 +912,7 @@ func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duratio
 	modal.SetBorder(true)
 
 	a.pages.AddPage("kill-peer", modal, true, true)
+	a.updateStatusBar()
 	a.app.SetFocus(modal)
 }
 
@@ -847,12 +933,14 @@ func (a *App) promptBlockedPeers() {
 	closeModal := func() {
 		a.pages.RemovePage("blocked-peers")
 		a.app.SetFocus(a.panels[a.focusIndex])
+		a.updateStatusBar()
 	}
 
 	showRemoveResultPopup := func(message string, onClose func()) {
 		shownAt := time.Now()
 		closePopup := func() {
 			a.pages.RemovePage("blocked-peers-remove-result")
+			a.updateStatusBar()
 			if onClose != nil {
 				onClose()
 			}
@@ -890,6 +978,7 @@ func (a *App) promptBlockedPeers() {
 		a.pages.RemovePage("blocked-peers-remove-result")
 		a.pages.AddPage("blocked-peers-remove-result", modal, true, true)
 		a.pages.SendToFront("blocked-peers-remove-result")
+		a.updateStatusBar()
 		a.app.SetFocus(modal)
 	}
 
@@ -1026,6 +1115,7 @@ func (a *App) promptBlockedPeers() {
 		AddItem(nil, 0, 1, false)
 
 	a.pages.AddPage("blocked-peers", modal, true, true)
+	a.updateStatusBar()
 	a.app.SetFocus(list)
 }
 
@@ -1342,6 +1432,7 @@ func (a *App) showBlockSummaryPopup(summary string) {
 		AddButtons([]string{"OK"}).
 		SetDoneFunc(func(_ int, _ string) {
 			a.pages.RemovePage("block-summary")
+			a.updateStatusBar()
 			a.app.SetFocus(a.panels[a.focusIndex])
 		})
 	modal.SetTitle(" Block Summary ")
@@ -1349,6 +1440,7 @@ func (a *App) showBlockSummaryPopup(summary string) {
 
 	a.pages.RemovePage("block-summary")
 	a.pages.AddPage("block-summary", modal, true, true)
+	a.updateStatusBar()
 	a.app.SetFocus(modal)
 }
 
