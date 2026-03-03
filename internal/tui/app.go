@@ -978,6 +978,9 @@ func (a *App) promptBlockedPeers() {
 		case tcell.KeyEsc:
 			closeModal()
 			return nil
+		case tcell.KeyEnter:
+			removeSelected()
+			return nil
 		case tcell.KeyTab:
 			a.app.SetFocus(form)
 			return nil
