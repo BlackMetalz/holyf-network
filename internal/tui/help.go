@@ -17,6 +17,7 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]Up/Down[white]     Select row (Top Connections)
 [yellow]Enter[white]       Block selected row
 [yellow]k[white]           Block peer (selected/default)
+[yellow]o[white]           Cycle sort (Queue→State→Peer→Process)
 [yellow]b[white]           Show blocked peers
 [yellow]h[white]           Show action log (latest 10)
 [yellow]?[white]           Toggle this help

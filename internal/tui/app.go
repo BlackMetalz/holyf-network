@@ -48,6 +48,8 @@ type App struct {
 	latestTalkers []collector.Connection
 	// Selected row in Top Connections (within currently visible rows).
 	selectedTalkerIndex int
+	// Sort mode for Top Connections. Default: SortByQueue.
+	sortMode SortMode
 
 	// Short-lived status note shown in status bar.
 	statusNote      string
@@ -291,6 +293,11 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'h':
 			a.promptActionLog()
 			return nil
+		case 'o':
+			a.sortMode = NextSortMode(a.sortMode)
+			a.selectedTalkerIndex = 0
+			a.renderTopConnectionsPanel()
+			return nil
 		case 'z':
 			a.toggleZoom()
 			return nil
@@ -432,6 +439,7 @@ func (a *App) visibleTopConnections() []collector.Connection {
 	}
 
 	filtered := a.applyTopConnectionFilters(a.latestTalkers)
+	sortConnections(filtered, a.sortMode)
 
 	limit := a.topConnectionsDisplayLimit()
 	if len(filtered) > limit {
@@ -464,6 +472,7 @@ func (a *App) renderTopConnectionsPanel() {
 		a.topConnectionsDisplayLimit(),
 		a.sensitiveIP,
 		a.selectedTalkerIndex,
+		a.sortMode,
 	))
 }
 
@@ -584,7 +593,7 @@ func statusHotkeysForPage(page string) (styled string, plain string) {
 	case "blocked-peers-remove-result", "block-summary":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim]r p f k b h z ? q[white]", "r p f k b h z ? q"
+		return "[dim]r p f k o b h z ? q[white]", "r p f k o b h z ? q"
 	}
 }
 

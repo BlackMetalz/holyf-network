@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
@@ -9,10 +10,83 @@ import (
 
 // panel_top_connections.go — Renders the Top Connections panel content.
 
+// SortMode controls how Top Connections are sorted.
+type SortMode int
+
+const (
+	SortByQueue   SortMode = iota // tx_queue + rx_queue descending
+	SortByState                   // state name alphabetical, then activity desc
+	SortByPeer                    // group by remote IP, highest connection count first
+	SortByProcess                 // process name alphabetical, then activity desc
+)
+
+// Label returns a short display name for the status bar chip.
+func (m SortMode) Label() string {
+	switch m {
+	case SortByQueue:
+		return "QUEUE"
+	case SortByState:
+		return "STATE"
+	case SortByPeer:
+		return "PEER"
+	case SortByProcess:
+		return "PROCESS"
+	default:
+		return "QUEUE"
+	}
+}
+
+// NextSortMode cycles to the next sort mode.
+func NextSortMode(m SortMode) SortMode {
+	return (m + 1) % 4
+}
+
+// sortConnections sorts a slice in-place according to the given mode.
+func sortConnections(conns []collector.Connection, mode SortMode) {
+	switch mode {
+	case SortByQueue:
+		sort.SliceStable(conns, func(i, j int) bool {
+			return conns[i].Activity > conns[j].Activity
+		})
+	case SortByState:
+		sort.SliceStable(conns, func(i, j int) bool {
+			if conns[i].State != conns[j].State {
+				return conns[i].State < conns[j].State
+			}
+			return conns[i].Activity > conns[j].Activity
+		})
+	case SortByPeer:
+		// Count connections per remote IP, then sort by count desc.
+		counts := make(map[string]int)
+		for _, c := range conns {
+			counts[normalizeIP(c.RemoteIP)]++
+		}
+		sort.SliceStable(conns, func(i, j int) bool {
+			ci := counts[normalizeIP(conns[i].RemoteIP)]
+			cj := counts[normalizeIP(conns[j].RemoteIP)]
+			if ci != cj {
+				return ci > cj
+			}
+			if normalizeIP(conns[i].RemoteIP) != normalizeIP(conns[j].RemoteIP) {
+				return normalizeIP(conns[i].RemoteIP) < normalizeIP(conns[j].RemoteIP)
+			}
+			return conns[i].Activity > conns[j].Activity
+		})
+	case SortByProcess:
+		sort.SliceStable(conns, func(i, j int) bool {
+			pi, pj := conns[i].ProcName, conns[j].ProcName
+			if pi != pj {
+				return pi < pj
+			}
+			return conns[i].Activity > conns[j].Activity
+		})
+	}
+}
+
 // renderTalkersPanel formats the top connections for the TUI panel.
 // If portFilter is set, only connections matching that port are shown.
 // maxRows controls how many connections to display (use more when zoomed).
-func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int) string {
+func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode) string {
 	var sb strings.Builder
 
 	filterChip := "ALL"
@@ -29,12 +103,13 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string, textFil
 	}
 
 	sb.WriteString(fmt.Sprintf(
-		"  [dim]Chips:[white] [yellow]Filter=%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=QUEUE[white]\n",
+		"  [dim]Chips:[white] [yellow]Filter=%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white]\n",
 		filterChip,
 		maskChip,
 		searchChip,
+		sortMode.Label(),
 	))
-	sb.WriteString("  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear[white]\n\n")
+	sb.WriteString("  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, o=sort[white]\n\n")
 
 	if len(conns) == 0 {
 		sb.WriteString("  No active connections found")
@@ -53,6 +128,10 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string, textFil
 		sb.WriteString("  No connections matching current filters")
 		return sb.String()
 	}
+
+	// Apply sort on the filtered result set.
+	sortConnections(filtered, sortMode)
+
 	if selectedIndex < 0 {
 		selectedIndex = 0
 	}
