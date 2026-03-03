@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/BlackMetalz/holyf-network/internal/actions"
 	"github.com/BlackMetalz/holyf-network/internal/collector"
@@ -61,6 +62,8 @@ type App struct {
 	// Zoom state (V2-4.3)
 	zoomed bool // Whether a panel is zoomed to fullscreen
 }
+
+const statusVersionLabel = "holyf-network v0.0.1"
 
 // NewApp creates a new TUI application.
 func NewApp(ifaceName string, refreshSec int, sensitiveIP bool) *App {
@@ -384,13 +387,45 @@ func (a *App) updateStatusBar() {
 		stateText += fmt.Sprintf(" [yellow]%s[white] |", a.statusNote)
 	}
 
-	a.statusBar.SetText(fmt.Sprintf(
+	leftStyled := fmt.Sprintf(
 		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]s[white]=mask-ip [dim]f[white]=filter [dim]k[white]=kill-peer [dim]b[white]=blocked [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
 		a.ifaceName,
 		stateText,
 		ago,
 		a.refreshSec,
-	))
+	)
+	leftPlain := fmt.Sprintf(
+		" %s |%s Updated: %s | Refresh: %ds | r=refresh p=pause s=mask-ip f=filter k=kill-peer b=blocked z=zoom ?=help q=quit",
+		a.ifaceName,
+		stripStatusColors(stateText),
+		ago,
+		a.refreshSec,
+	)
+	rightStyled := " [dim]" + statusVersionLabel + "[white]"
+	rightPlain := " " + statusVersionLabel
+
+	text := leftStyled
+	_, _, width, _ := a.statusBar.GetInnerRect()
+	if width > 0 {
+		pad := width - utf8.RuneCountInString(leftPlain) - utf8.RuneCountInString(rightPlain)
+		if pad > 0 {
+			text = leftStyled + strings.Repeat(" ", pad) + rightStyled
+		}
+	}
+
+	a.statusBar.SetText(text)
+}
+
+func stripStatusColors(s string) string {
+	replacer := strings.NewReplacer(
+		"[red]", "",
+		"[green]", "",
+		"[yellow]", "",
+		"[aqua]", "",
+		"[white]", "",
+		"[dim]", "",
+	)
+	return replacer.Replace(s)
 }
 
 // promptPortFilter shows a simple input dialog for port filtering.

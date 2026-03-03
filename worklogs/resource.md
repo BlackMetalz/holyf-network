@@ -56,3 +56,7 @@ Resource: https://datatracker.ietf.org/doc/html/rfc9293.html (published 2022) (s
 - `LAST-ACK`: App local/your app already closed, waiting for final ACK from peer.
 - `FIN-WAIT-1/2, LAST-ACK, CLOSING`: on going close
 
+# SS command
+
+### Kill established connection.
+ss -4 -K src 172.25.110.116 sport = :35782 dst 172.25.110.76 dport = :22
