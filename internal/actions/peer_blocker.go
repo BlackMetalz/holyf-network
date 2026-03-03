@@ -143,6 +143,148 @@ func DropPeerConnections(spec PeerBlockSpec) error {
 	return fmt.Errorf("%s; %s", ssErr.Error(), ctErr.Error())
 }
 
+// QueryAndKillPeerSockets queries ss in real-time for established connections
+// matching the peer IP and local port, then kills each one with ss -K.
+// This is more reliable than using a cached snapshot because it captures
+// connections that were established after the last TUI refresh.
+func QueryAndKillPeerSockets(spec PeerBlockSpec) error {
+	ip, peerIP, err := validateSpec(spec)
+	if err != nil {
+		return err
+	}
+
+	port := strconv.Itoa(spec.LocalPort)
+
+	// Query established connections in real-time.
+	tuples, queryErr := queryEstablishedSockets(ip, peerIP, port)
+	if queryErr != nil {
+		// Fallback: try the broad kill approach.
+		return killSocketByPeerAndPort(ip, peerIP, port)
+	}
+
+	if len(tuples) == 0 {
+		// No matching sockets found — nothing to kill.
+		return nil
+	}
+
+	// Kill each discovered socket.
+	return KillSockets(tuples)
+}
+
+// queryEstablishedSockets runs `ss -tnp state established` and parses the
+// output to find connections matching peerIP and localPort.
+//
+// ss output format (header + data lines):
+//
+//	Recv-Q  Send-Q  Local Address:Port  Peer Address:Port  Process
+//	0       0       10.0.0.1:8080       10.0.0.2:54321     users:(("nginx",pid=1234,fd=5))
+func queryEstablishedSockets(ip net.IP, peerIP, localPort string) ([]SocketTuple, error) {
+	if _, err := exec.LookPath("ss"); err != nil {
+		return nil, fmt.Errorf("ss: command not found")
+	}
+
+	family := "-4"
+	if ip.To4() == nil {
+		family = "-6"
+	}
+
+	out, err := exec.Command("ss", family, "-tnp", "state", "established").CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("ss query: %w", err)
+	}
+
+	normalizedPeer := strings.TrimPrefix(peerIP, "::ffff:")
+	lines := strings.Split(string(out), "\n")
+	seen := make(map[string]struct{})
+	var tuples []SocketTuple
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "Recv-Q") {
+			continue
+		}
+
+		localAddr, remoteAddr, ok := parseSSLine(line)
+		if !ok {
+			continue
+		}
+
+		localIP, localP, ok := splitHostPort(localAddr)
+		if !ok || localP != localPort {
+			continue
+		}
+
+		remoteIP, remoteP, ok := splitHostPort(remoteAddr)
+		if !ok {
+			continue
+		}
+
+		// Normalize and compare peer IP.
+		normalizedRemote := strings.TrimPrefix(remoteIP, "::ffff:")
+		if normalizedRemote != normalizedPeer {
+			continue
+		}
+
+		localPortInt, err := strconv.Atoi(localP)
+		if err != nil {
+			continue
+		}
+		remotePortInt, err := strconv.Atoi(remoteP)
+		if err != nil {
+			continue
+		}
+
+		key := fmt.Sprintf("%s|%d|%s|%d", localIP, localPortInt, remoteIP, remotePortInt)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		tuples = append(tuples, SocketTuple{
+			LocalIP:    localIP,
+			LocalPort:  localPortInt,
+			RemoteIP:   remoteIP,
+			RemotePort: remotePortInt,
+		})
+	}
+
+	return tuples, nil
+}
+
+// parseSSLine extracts local and remote address fields from a single ss output line.
+// Expected format: "Recv-Q Send-Q Local:Port Peer:Port [Process]"
+// Fields are whitespace-separated; we need fields at index 2 and 3
+// (0=RecvQ, 1=SendQ, 2=Local, 3=Peer).
+func parseSSLine(line string) (localAddr, remoteAddr string, ok bool) {
+	fields := strings.Fields(line)
+	if len(fields) < 4 {
+		return "", "", false
+	}
+	return fields[2], fields[3], true
+}
+
+// splitHostPort splits "addr:port" handling IPv6 bracket notation.
+// Examples: "10.0.0.1:8080" -> ("10.0.0.1", "8080")
+//
+//	"[::1]:8080"    -> ("::1", "8080")
+func splitHostPort(addrPort string) (host, port string, ok bool) {
+	// IPv6 bracket notation: [::1]:port
+	if strings.HasPrefix(addrPort, "[") {
+		idx := strings.LastIndex(addrPort, "]:")
+		if idx < 0 {
+			return "", "", false
+		}
+		return addrPort[1:idx], addrPort[idx+2:], true
+	}
+
+	// IPv4 or bare IPv6: last colon separates host and port.
+	idx := strings.LastIndex(addrPort, ":")
+	if idx < 0 {
+		return "", "", false
+	}
+	return addrPort[:idx], addrPort[idx+1:], true
+}
+
 // KillSockets tries to close exact established sockets with ss -K.
 // Returns nil if at least one socket was closed or if there are no tuples.
 func KillSockets(tuples []SocketTuple) error {

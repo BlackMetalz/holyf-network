@@ -856,7 +856,11 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 	a.addActiveBlock(spec)
 
 	tuples := a.matchingBlockTuples(target.PeerIP, target.LocalPort)
-	socketErr := actions.KillSockets(tuples)
+	socketErr := actions.QueryAndKillPeerSockets(spec)
+	if socketErr != nil {
+		// Fallback: try killing with cached tuples from the TUI snapshot.
+		socketErr = actions.KillSockets(tuples)
+	}
 	flowErr := actions.DropPeerConnections(spec)
 
 	dropWarningParts := make([]string, 0, 2)
