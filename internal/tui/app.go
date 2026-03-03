@@ -55,6 +55,8 @@ type App struct {
 	refreshChan chan struct{}
 	paused      bool
 	lastRefresh time.Time
+	// Tracks temporary auto-pause while the kill-peer flow is open.
+	killFlowAutoPaused bool
 
 	// Zoom state (V2-4.3)
 	zoomed bool // Whether a panel is zoomed to fullscreen
@@ -169,6 +171,10 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		a.hideHelp()
 		return nil
 	}
+	// When non-help overlays are visible (forms/modals), let focused widget handle keys.
+	if a.isOverlayVisible() {
+		return event
+	}
 
 	// Handle key by type
 	switch event.Key() {
@@ -222,6 +228,9 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'k':
 			a.promptKillPeer()
 			return nil
+		case 'b':
+			a.promptBlockedPeers()
+			return nil
 		case 'z':
 			a.toggleZoom()
 			return nil
@@ -252,6 +261,10 @@ func (a *App) hideHelp() { a.pages.HidePage("help") }
 func (a *App) isHelpVisible() bool {
 	name, _ := a.pages.GetFrontPage()
 	return name == "help"
+}
+func (a *App) isOverlayVisible() bool {
+	name, _ := a.pages.GetFrontPage()
+	return name != "main" && name != "help"
 }
 
 // toggleZoom switches between grid view and fullscreen focused panel.
@@ -372,7 +385,7 @@ func (a *App) updateStatusBar() {
 	}
 
 	a.statusBar.SetText(fmt.Sprintf(
-		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]s[white]=mask-ip [dim]f[white]=filter [dim]k[white]=kill-peer [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
+		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]s[white]=mask-ip [dim]f[white]=filter [dim]k[white]=kill-peer [dim]b[white]=blocked [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
 		a.ifaceName,
 		stateText,
 		ago,
@@ -451,6 +464,7 @@ func (a *App) promptKillPeer() {
 		}
 		filteredPort = parsed
 	}
+	a.enterKillFlowPause()
 
 	suggested, hasSuggested := a.selectPeerKillTarget()
 	defaultPeer := ""
@@ -537,6 +551,12 @@ func (a *App) promptKillPeer() {
 	form.AddButton("Cancel", func() {
 		a.pages.RemovePage("kill-peer-form")
 		a.app.SetFocus(a.panels[a.focusIndex])
+		a.exitKillFlowPause()
+	})
+	form.SetCancelFunc(func() {
+		a.pages.RemovePage("kill-peer-form")
+		a.app.SetFocus(a.panels[a.focusIndex])
+		a.exitKillFlowPause()
 	})
 	form.SetBorder(true)
 	form.SetTitle(" Kill Peer ")
@@ -564,7 +584,8 @@ func (a *App) promptKillPeer() {
 		AddItem(nil, 0, 1, false)
 
 	a.pages.AddPage("kill-peer-form", modal, true, true)
-	a.app.SetFocus(peerInput)
+	form.SetFocus(0)
+	a.app.SetFocus(form)
 }
 
 func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duration) {
@@ -592,6 +613,7 @@ func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duratio
 		SetDoneFunc(func(_ int, button string) {
 			a.pages.RemovePage("kill-peer")
 			a.app.SetFocus(a.panels[a.focusIndex])
+			a.exitKillFlowPause()
 			if button != label {
 				return
 			}
@@ -604,6 +626,100 @@ func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duratio
 
 	a.pages.AddPage("kill-peer", modal, true, true)
 	a.app.SetFocus(modal)
+}
+
+func (a *App) promptBlockedPeers() {
+	blocks := a.snapshotActiveBlocks()
+	if len(blocks) == 0 {
+		a.setStatusNote("No active blocked peers", 4*time.Second)
+		return
+	}
+
+	options := make([]string, 0, len(blocks))
+	for _, spec := range blocks {
+		options = append(options, formatBlockedSpec(spec))
+	}
+
+	selectedIndex := 0
+	dropDown := tview.NewDropDown().
+		SetLabel("Blocked: ").
+		SetFieldWidth(44).
+		SetOptions(options, func(_ string, index int) {
+			selectedIndex = index
+		})
+	dropDown.SetCurrentOption(0)
+
+	closeModal := func() {
+		a.pages.RemovePage("blocked-peers")
+		a.app.SetFocus(a.panels[a.focusIndex])
+	}
+
+	refreshDropDown := func(nextIndex int) {
+		blocks = a.snapshotActiveBlocks()
+		if len(blocks) == 0 {
+			closeModal()
+			a.setStatusNote("No active blocked peers", 4*time.Second)
+			a.refreshData()
+			return
+		}
+
+		opts := make([]string, 0, len(blocks))
+		for _, spec := range blocks {
+			opts = append(opts, formatBlockedSpec(spec))
+		}
+
+		if nextIndex < 0 {
+			nextIndex = 0
+		}
+		if nextIndex >= len(opts) {
+			nextIndex = len(opts) - 1
+		}
+		selectedIndex = nextIndex
+		dropDown.SetOptions(opts, func(_ string, index int) {
+			selectedIndex = index
+		})
+		dropDown.SetCurrentOption(nextIndex)
+	}
+
+	form := tview.NewForm().
+		AddFormItem(dropDown).
+		AddButton("Remove", func() {
+			if selectedIndex < 0 || selectedIndex >= len(blocks) {
+				a.setStatusNote("No blocked peer selected", 4*time.Second)
+				return
+			}
+			spec := blocks[selectedIndex]
+			if err := actions.UnblockPeer(spec); err != nil {
+				a.setStatusNote("Unblock failed: "+shortStatus(err.Error(), 64), 8*time.Second)
+				return
+			}
+			a.removeActiveBlock(spec)
+			a.setStatusNote(fmt.Sprintf("Unblocked %s:%d", spec.PeerIP, spec.LocalPort), 6*time.Second)
+			refreshDropDown(selectedIndex)
+		}).
+		AddButton("Close", func() {
+			closeModal()
+		})
+	form.SetBorder(true)
+	form.SetTitle(" Blocked Peers ")
+	form.SetButtonsAlign(tview.AlignRight)
+	form.SetItemPadding(0)
+	form.SetCancelFunc(func() {
+		closeModal()
+	})
+
+	modal := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(form, 84, 0, true).
+			AddItem(nil, 0, 1, false),
+			7, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	a.pages.AddPage("blocked-peers", modal, true, true)
+	form.SetFocus(0)
+	a.app.SetFocus(form)
 }
 
 // selectPeerKillTarget picks the most frequent peer->localPort tuple.
@@ -697,7 +813,7 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 
 	dropWarning := ""
 	if err := actions.DropPeerConnections(spec); err != nil {
-		dropWarning = " (flow-drop partial)"
+		dropWarning = " (flow-drop partial: " + shortStatus(err.Error(), 36) + ")"
 	}
 
 	a.app.QueueUpdateDraw(func() {
@@ -710,6 +826,9 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 	select {
 	case <-timer.C:
 	case <-a.stopChan:
+		return
+	}
+	if !a.hasActiveBlock(spec) {
 		return
 	}
 
@@ -770,6 +889,10 @@ func parsePeerIPInput(raw string) (string, bool) {
 	return parsed.String(), true
 }
 
+func formatBlockedSpec(spec actions.PeerBlockSpec) string {
+	return fmt.Sprintf("%s -> :%d", spec.PeerIP, spec.LocalPort)
+}
+
 func blockKey(spec actions.PeerBlockSpec) string {
 	return fmt.Sprintf("%s|%d", spec.PeerIP, spec.LocalPort)
 }
@@ -805,4 +928,40 @@ func (a *App) hasActiveBlock(spec actions.PeerBlockSpec) bool {
 	defer a.blockMu.Unlock()
 	_, exists := a.activeBlocks[blockKey(spec)]
 	return exists
+}
+
+func (a *App) snapshotActiveBlocks() []actions.PeerBlockSpec {
+	a.blockMu.Lock()
+	defer a.blockMu.Unlock()
+
+	items := make([]actions.PeerBlockSpec, 0, len(a.activeBlocks))
+	for _, spec := range a.activeBlocks {
+		items = append(items, spec)
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].PeerIP != items[j].PeerIP {
+			return items[i].PeerIP < items[j].PeerIP
+		}
+		return items[i].LocalPort < items[j].LocalPort
+	})
+	return items
+}
+
+func (a *App) enterKillFlowPause() {
+	if a.paused {
+		return
+	}
+	a.paused = true
+	a.killFlowAutoPaused = true
+	a.updateStatusBar()
+}
+
+func (a *App) exitKillFlowPause() {
+	if !a.killFlowAutoPaused {
+		return
+	}
+	a.killFlowAutoPaused = false
+	a.paused = false
+	a.updateStatusBar()
 }

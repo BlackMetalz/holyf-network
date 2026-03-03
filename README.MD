@@ -45,4 +45,5 @@ holyf-network --sensitive-ip
 # Runtime toggle inside TUI
 # Press `s` to turn sensitive IP masking on/off
 # Press `k` on Top Connections to input peer IP/local port + block minutes (default: 10)
+# Press `b` to list active blocks and remove selected peer block
 ```

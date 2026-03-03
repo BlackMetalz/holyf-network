@@ -14,6 +14,7 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]s[white]           Toggle sensitive IP mask
 [yellow]f[white]           Filter (in Top Connections)
 [yellow]k[white]           Block peer (input form)
+[yellow]b[white]           Show blocked peers
 [yellow]?[white]           Toggle this help
 [yellow]q[white]           Quit
 

@@ -118,19 +118,25 @@ func killSocketByPeerAndPort(ip net.IP, peerIP, port string) error {
 		{"dst", peerIP, "dport", "=", ":" + port},
 		{"src", peerIP, "sport", "=", ":" + port},
 	}
+	statePrefixes := [][]string{
+		{"state", "established"},
+		{},
+	}
 
 	var lastErr string
-	for _, c := range candidates {
-		args := append(append([]string{}, base...), c...)
-		out, err := exec.Command("ss", args...).CombinedOutput()
-		if err == nil {
-			return nil
+	for _, prefix := range statePrefixes {
+		for _, c := range candidates {
+			args := append(append(append([]string{}, base...), prefix...), c...)
+			out, err := exec.Command("ss", args...).CombinedOutput()
+			if err == nil {
+				return nil
+			}
+			msg := strings.TrimSpace(string(out))
+			if msg == "" {
+				msg = err.Error()
+			}
+			lastErr = msg
 		}
-		msg := strings.TrimSpace(string(out))
-		if msg == "" {
-			msg = err.Error()
-		}
-		lastErr = msg
 	}
 
 	if lastErr == "" {
@@ -151,6 +157,8 @@ func deleteConntrackFlows(ip net.IP, peerIP, port string) error {
 	commands := [][]string{
 		append(append([]string{}, common...), "-s", peerIP, "--dport", port),
 		append(append([]string{}, common...), "-d", peerIP, "--sport", port),
+		append(append([]string{}, common...), "-d", peerIP, "--dport", port),
+		append(append([]string{}, common...), "-s", peerIP, "--sport", port),
 	}
 
 	var errs []string
