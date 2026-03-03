@@ -145,8 +145,10 @@ func DropPeerConnections(spec PeerBlockSpec) error {
 
 // QueryAndKillPeerSockets queries ss in real-time for established connections
 // matching the peer IP and local port, then kills each one with ss -K.
-// This is more reliable than using a cached snapshot because it captures
-// connections that were established after the last TUI refresh.
+//
+// Because ss -K always returns exit 0 (even if no socket was killed), we use a
+// brute-force strategy: try multiple family/address formats, then re-query to
+// verify sockets are actually gone.
 func QueryAndKillPeerSockets(spec PeerBlockSpec) error {
 	ip, peerIP, err := validateSpec(spec)
 	if err != nil {
@@ -155,20 +157,64 @@ func QueryAndKillPeerSockets(spec PeerBlockSpec) error {
 
 	port := strconv.Itoa(spec.LocalPort)
 
-	// Query established connections in real-time.
-	tuples, queryErr := queryEstablishedSockets(ip, peerIP, port)
-	if queryErr != nil {
-		// Fallback: try the broad kill approach.
-		return killSocketByPeerAndPort(ip, peerIP, port)
+	// Phase 1: Broad kill — try every family/address combination.
+	// This covers plain IPv4, IPv4-mapped IPv6 (::ffff:), and pure IPv6.
+	broadKillPeerSockets(peerIP, port)
+
+	// Phase 2: Exact kill — query ss for remaining sockets, kill each one.
+	tuples, _ := queryEstablishedSockets(ip, peerIP, port)
+	if len(tuples) > 0 {
+		_ = KillSockets(tuples)
 	}
 
-	if len(tuples) == 0 {
-		// No matching sockets found — nothing to kill.
-		return nil
+	// Phase 3: Verify — re-query to check if sockets survived.
+	remaining, verifyErr := queryEstablishedSockets(ip, peerIP, port)
+	if verifyErr != nil {
+		return nil // can't verify, assume success
+	}
+	if len(remaining) > 0 {
+		return fmt.Errorf("%d sockets still alive after kill", len(remaining))
+	}
+	return nil
+}
+
+// broadKillPeerSockets tries ss -K with every reasonable combination of
+// address family (-4, -6, unspecified) and address format (plain IPv4 vs
+// IPv4-mapped IPv6). This shotgun approach handles edge cases where sshd
+// listens on [::] creating IPv4-mapped IPv6 sockets.
+func broadKillPeerSockets(peerIP, port string) {
+	if _, err := exec.LookPath("ss"); err != nil {
+		return
 	}
 
-	// Kill each discovered socket.
-	return KillSockets(tuples)
+	stripped := strings.TrimPrefix(peerIP, "::ffff:")
+	mapped := "::ffff:" + stripped
+
+	type combo struct {
+		family string // "", "-4", or "-6"
+		addr   string
+	}
+	combos := []combo{
+		{"-4", stripped},
+		{"-6", mapped},
+		{"", stripped},
+		{"", mapped},
+	}
+
+	for _, c := range combos {
+		for _, filter := range [][]string{
+			{"dst", c.addr, "sport", "=", ":" + port},
+			{"src", c.addr, "dport", "=", ":" + port},
+		} {
+			args := []string{}
+			if c.family != "" {
+				args = append(args, c.family)
+			}
+			args = append(args, "-K")
+			args = append(args, filter...)
+			exec.Command("ss", args...).Run() //nolint:errcheck // ss -K always returns 0
+		}
+	}
 }
 
 // queryEstablishedSockets runs `ss -tnp state established` and parses the
