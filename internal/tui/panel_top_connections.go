@@ -350,3 +350,189 @@ func truncateRight(s string, width int) string {
 	}
 	return s[:width-3] + "..."
 }
+
+// PeerGroup represents aggregated connections for a single remote IP.
+type PeerGroup struct {
+	PeerIP     string
+	Count      int
+	TotalQueue int64
+	LocalPorts map[int]struct{}
+	States     map[string]int
+	TopProc    string // most common process name
+}
+
+// buildPeerGroups aggregates connections by remote IP.
+func buildPeerGroups(conns []collector.Connection) []PeerGroup {
+	byPeer := make(map[string]*PeerGroup)
+	procCount := make(map[string]map[string]int) // peerIP -> procName -> count
+
+	for _, conn := range conns {
+		peer := normalizeIP(conn.RemoteIP)
+		g, exists := byPeer[peer]
+		if !exists {
+			g = &PeerGroup{
+				PeerIP:     peer,
+				LocalPorts: make(map[int]struct{}),
+				States:     make(map[string]int),
+			}
+			byPeer[peer] = g
+			procCount[peer] = make(map[string]int)
+		}
+		g.Count++
+		g.TotalQueue += conn.Activity
+		g.LocalPorts[conn.LocalPort] = struct{}{}
+		g.States[conn.State]++
+		if conn.ProcName != "" {
+			procCount[peer][conn.ProcName]++
+		}
+	}
+
+	groups := make([]PeerGroup, 0, len(byPeer))
+	for _, g := range byPeer {
+		// Find most common process.
+		bestCount := 0
+		for proc, cnt := range procCount[g.PeerIP] {
+			if cnt > bestCount {
+				bestCount = cnt
+				g.TopProc = proc
+			}
+		}
+		groups = append(groups, *g)
+	}
+
+	sort.SliceStable(groups, func(i, j int) bool {
+		if groups[i].Count != groups[j].Count {
+			return groups[i].Count > groups[j].Count
+		}
+		return groups[i].TotalQueue > groups[j].TotalQueue
+	})
+
+	return groups
+}
+
+// renderPeerGroupPanel renders the per-peer aggregate view.
+func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int) string {
+	var sb strings.Builder
+
+	filterChip := "ALL"
+	if strings.TrimSpace(portFilter) != "" {
+		filterChip = ":" + strings.TrimSpace(portFilter)
+	}
+	searchChip := "ALL"
+	if strings.TrimSpace(textFilter) != "" {
+		searchChip = truncateRight(strings.TrimSpace(textFilter), 20)
+	}
+
+	sb.WriteString(fmt.Sprintf(
+		"  [dim]Chips:[white] [yellow]Filter=%s[white] | [yellow]Search=%s[white] | [aqua]View=GROUP[white]\n",
+		filterChip,
+		searchChip,
+	))
+	sb.WriteString("  [dim]Use ↑/↓ select, g=connections view, /=search, f=port/clear[white]\n\n")
+
+	if len(conns) == 0 {
+		sb.WriteString("  No active connections found")
+		return sb.String()
+	}
+
+	// Apply filters first, then group.
+	filtered := conns
+	if portFilter != "" {
+		filtered = filterByPort(conns, portFilter)
+	}
+	if textFilter != "" {
+		filtered = filterByText(filtered, textFilter)
+	}
+	if len(filtered) == 0 {
+		sb.WriteString("  No connections matching current filters")
+		return sb.String()
+	}
+
+	groups := buildPeerGroups(filtered)
+	if selectedIndex < 0 {
+		selectedIndex = 0
+	}
+	if selectedIndex >= len(groups) {
+		selectedIndex = len(groups) - 1
+	}
+
+	const (
+		peerColWidth    = 24
+		countColWidth   = 7
+		queueColWidth   = 10
+		processColWidth = 14
+	)
+
+	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %-*s %s[white]\n",
+		peerColWidth, "PEER",
+		countColWidth, "CONNS",
+		queueColWidth, "QUEUE",
+		processColWidth, "PROCESS",
+		"PORTS",
+	))
+
+	for i, g := range groups {
+		if i >= maxRows {
+			sb.WriteString(fmt.Sprintf("\n  [dim]... and %d more peers[white]", len(groups)-maxRows))
+			break
+		}
+
+		peer := g.PeerIP
+		if sensitiveIP {
+			peer = maskIP(peer)
+		}
+		peer = truncateRight(peer, peerColWidth)
+
+		queueStr := "[dim]0B[white]"
+		if g.TotalQueue > 0 {
+			queueStr = fmt.Sprintf("[yellow]%s[white]", formatBytes(g.TotalQueue))
+		}
+
+		procStr := "[dim]-[white]"
+		if g.TopProc != "" {
+			procStr = truncateRight(g.TopProc, processColWidth)
+		}
+
+		// Show up to 4 unique local ports.
+		portList := make([]int, 0, len(g.LocalPorts))
+		for p := range g.LocalPorts {
+			portList = append(portList, p)
+		}
+		sort.Ints(portList)
+		portStrs := make([]string, 0, 4)
+		for j, p := range portList {
+			if j >= 4 {
+				portStrs = append(portStrs, fmt.Sprintf("+%d", len(portList)-4))
+				break
+			}
+			portStrs = append(portStrs, fmt.Sprintf("%d", p))
+		}
+		portsDisplay := strings.Join(portStrs, ",")
+
+		// Color count by severity.
+		countColor := "white"
+		if g.Count >= 50 {
+			countColor = "red"
+		} else if g.Count >= 10 {
+			countColor = "yellow"
+		}
+
+		prefix := "  "
+		if i == selectedIndex {
+			prefix = " [yellow]>[white]"
+		}
+
+		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %*s %-*s %s\n",
+			prefix,
+			peerColWidth, peer,
+			countColor, countColWidth, g.Count,
+			queueColWidth, queueStr,
+			processColWidth, procStr,
+			portsDisplay,
+		))
+	}
+
+	sb.WriteString(fmt.Sprintf("\n  [dim]%d peers, %d total connections[white]", len(groups), len(filtered)))
+
+	return sb.String()
+}

@@ -51,6 +51,8 @@ type App struct {
 	selectedTalkerIndex int
 	// Sort mode for Top Connections. Default: SortByQueue.
 	sortMode SortMode
+	// Group view mode: when true, show per-peer aggregates instead of individual connections.
+	groupView bool
 
 	// Short-lived status note shown in status bar.
 	statusNote      string
@@ -299,6 +301,11 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			a.selectedTalkerIndex = 0
 			a.renderTopConnectionsPanel()
 			return nil
+		case 'g':
+			a.groupView = !a.groupView
+			a.selectedTalkerIndex = 0
+			a.renderTopConnectionsPanel()
+			return nil
 		case 'z':
 			a.toggleZoom()
 			return nil
@@ -466,6 +473,17 @@ func (a *App) clampTopConnectionSelection() {
 
 func (a *App) renderTopConnectionsPanel() {
 	a.clampTopConnectionSelection()
+	if a.groupView {
+		a.panels[2].SetText(renderPeerGroupPanel(
+			a.latestTalkers,
+			a.portFilter,
+			a.textFilter,
+			a.topConnectionsDisplayLimit(),
+			a.sensitiveIP,
+			a.selectedTalkerIndex,
+		))
+		return
+	}
 	a.panels[2].SetText(renderTalkersPanel(
 		a.latestTalkers,
 		a.portFilter,
@@ -594,7 +612,7 @@ func statusHotkeysForPage(page string) (styled string, plain string) {
 	case "blocked-peers-remove-result", "block-summary":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim]r p f k o b h z ? q[white]", "r p f k o b h z ? q"
+		return "[dim]r p f k o g b h z ? q[white]", "r p f k o g b h z ? q"
 	}
 }
 
