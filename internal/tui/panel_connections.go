@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
+	"github.com/BlackMetalz/holyf-network/internal/config"
 )
 
 // panel_connections.go — Renders the Connection States panel content.
@@ -28,12 +29,13 @@ const maxBarWidth = 20
 
 // renderConnectionsPanel formats connection state data for the TUI panel.
 // retrans can be nil if retransmit data is unavailable.
-func renderConnectionsPanel(data collector.ConnectionData, retrans *collector.RetransmitRates) string {
+func renderConnectionsPanel(
+	data collector.ConnectionData,
+	retrans *collector.RetransmitRates,
+	conntrack *collector.ConntrackRates,
+	thresholds config.HealthThresholds,
+) string {
 	sorted := data.SortedStates()
-
-	if len(sorted) == 0 {
-		return "  No connections found"
-	}
 
 	// Find the maximum count for scaling bars
 	maxCount := 0
@@ -44,6 +46,13 @@ func renderConnectionsPanel(data collector.ConnectionData, retrans *collector.Re
 	}
 
 	var sb strings.Builder
+	sb.WriteString(renderHealthStrip(retrans, conntrack, thresholds))
+	sb.WriteString("\n\n")
+
+	if len(sorted) == 0 {
+		sb.WriteString("  No connections found")
+		return sb.String()
+	}
 
 	for _, s := range sorted {
 		// Determine color based on warning thresholds
@@ -93,6 +102,113 @@ func renderConnectionsPanel(data collector.ConnectionData, retrans *collector.Re
 	}
 
 	return sb.String()
+}
+
+type healthLevel int
+
+const (
+	healthUnknown healthLevel = iota
+	healthOK
+	healthWarn
+	healthCrit
+)
+
+func renderHealthStrip(
+	retrans *collector.RetransmitRates,
+	conntrack *collector.ConntrackRates,
+	thresholds config.HealthThresholds,
+) string {
+	overall := healthUnknown
+
+	retransValue := "n/a"
+	retransColor := "dim"
+	retransLevel := healthUnknown
+	if retrans != nil && !retrans.FirstReading {
+		retransLevel = classifyMetric(retrans.RetransPercent, thresholds.RetransPercent)
+		retransColor = colorForHealthLevel(retransLevel)
+		retransValue = fmt.Sprintf("%.1f%%", retrans.RetransPercent)
+		overall = maxHealthLevel(overall, retransLevel)
+	}
+
+	dropsValue := "n/a"
+	dropsColor := "dim"
+	dropsLevel := healthUnknown
+	if conntrack != nil && conntrack.StatsAvailable && !conntrack.FirstReading {
+		drops := conntrack.DropsPerSec
+		if drops < 0 {
+			drops = 0
+		}
+		dropsLevel = classifyMetric(drops, thresholds.DropsPerSec)
+		dropsColor = colorForHealthLevel(dropsLevel)
+		dropsValue = fmt.Sprintf("%.0f/s", drops)
+		overall = maxHealthLevel(overall, dropsLevel)
+	}
+
+	conntrackValue := "n/a"
+	conntrackColor := "dim"
+	conntrackLevel := healthUnknown
+	if conntrack != nil && conntrack.Max > 0 {
+		conntrackLevel = classifyMetric(conntrack.UsagePercent, thresholds.ConntrackPercent)
+		conntrackColor = colorForHealthLevel(conntrackLevel)
+		conntrackValue = fmt.Sprintf("%.0f%%", conntrack.UsagePercent)
+		overall = maxHealthLevel(overall, conntrackLevel)
+	}
+
+	headLabel := "HEALTH UNKNOWN"
+	headColor := "dim"
+	switch overall {
+	case healthOK:
+		headLabel = "HEALTH OK"
+		headColor = "green"
+	case healthWarn:
+		headLabel = "HEALTH WARN"
+		headColor = "yellow"
+	case healthCrit:
+		headLabel = "HEALTH CRIT"
+		headColor = "red"
+	}
+
+	return fmt.Sprintf(
+		"  [%s]%s[white]  Retrans:[%s]%s[white] | Drops:[%s]%s[white] | Conntrack:[%s]%s[white]",
+		headColor,
+		headLabel,
+		retransColor,
+		retransValue,
+		dropsColor,
+		dropsValue,
+		conntrackColor,
+		conntrackValue,
+	)
+}
+
+func classifyMetric(value float64, threshold config.ThresholdBand) healthLevel {
+	if value >= threshold.Crit {
+		return healthCrit
+	}
+	if value >= threshold.Warn {
+		return healthWarn
+	}
+	return healthOK
+}
+
+func colorForHealthLevel(level healthLevel) string {
+	switch level {
+	case healthCrit:
+		return "red"
+	case healthWarn:
+		return "yellow"
+	case healthOK:
+		return "green"
+	default:
+		return "dim"
+	}
+}
+
+func maxHealthLevel(a, b healthLevel) healthLevel {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // renderBar creates a visual bar graph using block characters.

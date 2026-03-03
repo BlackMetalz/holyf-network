@@ -6,6 +6,7 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/BlackMetalz/holyf-network/internal/network"
 	"github.com/BlackMetalz/holyf-network/internal/tui"
 	"github.com/spf13/cobra"
@@ -24,6 +25,7 @@ var (
 	flagRefresh        int
 	flagListInterfaces bool
 	flagSensitiveIP    bool
+	flagHealthConfig   string
 )
 
 // rootCmd is the base command. When the user runs "holyf-network" without
@@ -52,8 +54,30 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
+		healthThresholds := config.DefaultHealthThresholds()
+		loadedThresholds, err := config.LoadHealthThresholds(flagHealthConfig)
+		if err != nil {
+			if os.IsNotExist(err) {
+				loadedThresholds = healthThresholds
+			} else {
+				fmt.Fprintf(os.Stderr,
+					"Warning: cannot load health thresholds from %q: %v (using defaults)\n",
+					flagHealthConfig,
+					err,
+				)
+			}
+		} else {
+			healthThresholds = loadedThresholds
+		}
+
 		// Launch the TUI dashboard
-		app := tui.NewApp(ifaceName, flagRefresh, flagSensitiveIP, resolveBuildVersion(Version))
+		app := tui.NewApp(
+			ifaceName,
+			flagRefresh,
+			flagSensitiveIP,
+			resolveBuildVersion(Version),
+			healthThresholds,
+		)
 		return app.Run()
 	},
 }
@@ -85,6 +109,7 @@ func init() {
 	rootCmd.Flags().IntVarP(&flagRefresh, "refresh", "r", 30, "Refresh interval in seconds (1-300)")
 	rootCmd.Flags().BoolVar(&flagListInterfaces, "list-interfaces", false, "List available network interfaces and exit")
 	rootCmd.Flags().BoolVar(&flagSensitiveIP, "sensitive-ip", false, "Hide the first 2 IP octets/groups in Top Connections (for demos)")
+	rootCmd.Flags().StringVar(&flagHealthConfig, "health-config", "config/health_thresholds.toml", "Health strip thresholds TOML file")
 }
 
 // listInterfaces prints all available network interfaces.

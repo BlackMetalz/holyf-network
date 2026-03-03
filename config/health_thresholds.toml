@@ -1,0 +1,11 @@
+[retrans_percent]
+warn = 2.0
+crit = 5.0
+
+[drops_per_sec]
+warn = 10
+crit = 50
+
+[conntrack_percent]
+warn = 70
+crit = 85

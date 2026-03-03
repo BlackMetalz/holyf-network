@@ -12,6 +12,7 @@ import (
 
 	"github.com/BlackMetalz/holyf-network/internal/actions"
 	"github.com/BlackMetalz/holyf-network/internal/collector"
+	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -66,6 +67,8 @@ type App struct {
 
 	// Zoom state (V2-4.3)
 	zoomed bool // Whether a panel is zoomed to fullscreen
+
+	healthThresholds config.HealthThresholds
 }
 
 type activeBlockEntry struct {
@@ -76,22 +79,30 @@ type activeBlockEntry struct {
 }
 
 // NewApp creates a new TUI application.
-func NewApp(ifaceName string, refreshSec int, sensitiveIP bool, appVersion string) *App {
+func NewApp(
+	ifaceName string,
+	refreshSec int,
+	sensitiveIP bool,
+	appVersion string,
+	healthThresholds config.HealthThresholds,
+) *App {
 	version := strings.TrimSpace(appVersion)
 	if version == "" {
 		version = "dev"
 	}
+	healthThresholds.Normalize()
 
 	return &App{
-		app:          tview.NewApplication(),
-		ifaceName:    ifaceName,
-		refreshSec:   refreshSec,
-		appVersion:   version,
-		focusIndex:   0,
-		sensitiveIP:  sensitiveIP,
-		activeBlocks: make(map[string]activeBlockEntry),
-		stopChan:     make(chan struct{}),
-		refreshChan:  make(chan struct{}, 1), // Buffered: so send never blocks
+		app:              tview.NewApplication(),
+		ifaceName:        ifaceName,
+		refreshSec:       refreshSec,
+		appVersion:       version,
+		focusIndex:       0,
+		sensitiveIP:      sensitiveIP,
+		activeBlocks:     make(map[string]activeBlockEntry),
+		stopChan:         make(chan struct{}),
+		refreshChan:      make(chan struct{}, 1), // Buffered: so send never blocks
+		healthThresholds: healthThresholds,
 	}
 }
 
@@ -348,6 +359,18 @@ func (a *App) exitZoom() {
 func (a *App) refreshData() {
 	a.lastRefresh = time.Now()
 
+	// Collect conntrack early so panel 0 health strip can use it too.
+	var conntrackRates *collector.ConntrackRates
+	ctData, err := collector.CollectConntrack()
+	if err != nil {
+		a.panels[3].SetText(fmt.Sprintf("  [red]%v[white]", err))
+	} else {
+		rates := collector.CalculateConntrackRates(ctData, a.prevConntrack)
+		conntrackRates = &rates
+		a.panels[3].SetText(renderConntrackPanel(rates))
+		a.prevConntrack = &ctData
+	}
+
 	// Panel 0: Connection States + Retransmits
 	var retransRates *collector.RetransmitRates
 	retransData, retransErr := collector.CollectRetransmits()
@@ -361,7 +384,7 @@ func (a *App) refreshData() {
 	if err != nil {
 		a.panels[0].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
-		a.panels[0].SetText(renderConnectionsPanel(connData, retransRates))
+		a.panels[0].SetText(renderConnectionsPanel(connData, retransRates, conntrackRates, a.healthThresholds))
 	}
 
 	// Panel 1: Interface Stats
@@ -383,16 +406,6 @@ func (a *App) refreshData() {
 	} else {
 		a.latestTalkers = talkers
 		a.renderTopConnectionsPanel()
-	}
-
-	// Panel 3: Conntrack
-	ctData, err := collector.CollectConntrack()
-	if err != nil {
-		a.panels[3].SetText(fmt.Sprintf("  [red]%v[white]", err))
-	} else {
-		ctRates := collector.CalculateConntrackRates(ctData, a.prevConntrack)
-		a.panels[3].SetText(renderConntrackPanel(ctRates))
-		a.prevConntrack = &ctData
 	}
 
 	a.updateStatusBar()

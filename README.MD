@@ -42,3 +42,26 @@ holyf-network -r 5
 # Press `?` to show help
 # Press `q` to quit
 ```
+
+Default threshold file:
+
+```toml
+# config/health_thresholds.toml
+[retrans_percent]
+warn = 2.0
+crit = 5.0
+
+[drops_per_sec]
+warn = 10
+crit = 50
+
+[conntrack_percent]
+warn = 70
+crit = 85
+```
+
+In case you want to custom threshold:
+```bash
+# Use custom health strip thresholds
+holyf-network --health-config /etc/holyf-network/health_thresholds.toml
+```
