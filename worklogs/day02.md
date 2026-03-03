@@ -32,3 +32,13 @@ Using demo client/server.
 
 We can see max Conntrack
 ![demo-day02](../images/day02/01.png)
+
+And even better output in top connections (renamed from top talkers), it fits more than ever! (truncate line that has more than 15 chars)
+```go
+		// Truncate to fit column width
+		if len(procInfo) > 18 {
+			procInfo = procInfo[:15] + "..."
+		}
+```
+
+![demo-day02](../images/day02/02.png)

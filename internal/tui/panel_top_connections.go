@@ -11,7 +11,8 @@ import (
 
 // renderTalkersPanel formats the top connections for the TUI panel.
 // If portFilter is set, only connections matching that port are shown.
-func renderTalkersPanel(conns []collector.Connection, portFilter string) string {
+// maxRows controls how many connections to display (use more when zoomed).
+func renderTalkersPanel(conns []collector.Connection, portFilter string, maxRows int) string {
 	var sb strings.Builder
 
 	// Show active filter
@@ -44,8 +45,8 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string) string 
 
 	// Render each connection
 	for i, conn := range filtered {
-		if i >= 20 {
-			sb.WriteString(fmt.Sprintf("\n  [dim]... and %d more[white]", len(filtered)-20))
+		if i >= maxRows {
+			sb.WriteString(fmt.Sprintf("\n  [dim]... and %d more[white]", len(filtered)-maxRows))
 			break
 		}
 
@@ -97,7 +98,7 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string) string 
 	}
 
 	// Show total count
-	sb.WriteString(fmt.Sprintf("\n  [dim]Showing %d of %d connections[white]", min(len(filtered), 20), len(filtered)))
+	sb.WriteString(fmt.Sprintf("\n  [dim]Showing %d of %d connections[white]", min(len(filtered), maxRows), len(filtered)))
 
 	return sb.String()
 }

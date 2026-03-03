@@ -293,7 +293,11 @@ func (a *App) refreshData() {
 	if err != nil {
 		a.panels[2].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
-		a.panels[2].SetText(renderTalkersPanel(talkers, a.portFilter))
+		displayLimit := 20
+		if a.zoomed {
+			displayLimit = 100
+		}
+		a.panels[2].SetText(renderTalkersPanel(talkers, a.portFilter, displayLimit))
 	}
 
 	// Panel 3: Conntrack
