@@ -38,7 +38,7 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string) string 
 	}
 
 	// Header row
-	sb.WriteString(fmt.Sprintf("  [dim]%-14s %-21s   %-21s %-11s %s[white]\n",
+	sb.WriteString(fmt.Sprintf("  [dim]%-18s %-21s   %-21s %-11s %s[white]\n",
 		"PROCESS", "LOCAL", "REMOTE", "STATE", "QUEUE",
 	))
 
@@ -69,6 +69,10 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string) string 
 				procInfo = fmt.Sprintf("%d", conn.PID)
 			}
 		}
+		// Truncate to fit column width
+		if len(procInfo) > 18 {
+			procInfo = procInfo[:15] + "..."
+		}
 
 		// Format: "  1234/nginx  127.0.0.1:3306 ↔ 10.0.0.5:45123  ESTABLISHED  256"
 		local := fmt.Sprintf("%s:%d", conn.LocalIP, conn.LocalPort)
@@ -87,7 +91,7 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string) string 
 			queueStr = fmt.Sprintf(" [yellow]%s[white]", formatBytes(conn.Activity))
 		}
 
-		sb.WriteString(fmt.Sprintf("  [aqua]%-14s[white] %-21s ↔ %-21s [%s]%-11s[white]%s\n",
+		sb.WriteString(fmt.Sprintf("  [aqua]%-18s[white] %-21s ↔ %-21s [%s]%-11s[white]%s\n",
 			procInfo, local, remote, stateColor, conn.State, queueStr,
 		))
 	}
