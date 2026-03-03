@@ -143,6 +143,22 @@ func DropPeerConnections(spec PeerBlockSpec) error {
 	return fmt.Errorf("%s; %s", ssErr.Error(), ctErr.Error())
 }
 
+// CountEstablishedPeerSockets returns the number of established sockets that
+// currently match peer IP + local port.
+func CountEstablishedPeerSockets(spec PeerBlockSpec) (int, error) {
+	ip, peerIP, err := validateSpec(spec)
+	if err != nil {
+		return 0, err
+	}
+
+	port := strconv.Itoa(spec.LocalPort)
+	tuples, err := queryEstablishedSockets(ip, peerIP, port)
+	if err != nil {
+		return 0, err
+	}
+	return len(tuples), nil
+}
+
 // QueryAndKillPeerSockets queries ss in real-time for established connections
 // matching the peer IP and local port, then kills each one with ss -K.
 //

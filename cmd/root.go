@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
+	"strings"
 
 	"github.com/BlackMetalz/holyf-network/internal/network"
 	"github.com/BlackMetalz/holyf-network/internal/tui"
@@ -30,7 +32,7 @@ var rootCmd = &cobra.Command{
 	Use:     "holyf-network",
 	Short:   "Network monitoring TUI dashboard",
 	Long:    "HolyF-network - A terminal UI dashboard for monitoring network health on Linux servers.",
-	Version: Version,
+	Version: resolveBuildVersion(Version),
 
 	// RunE is like Run but returns an error. Cobra prints it for us.
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -51,7 +53,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		// Launch the TUI dashboard
-		app := tui.NewApp(ifaceName, flagRefresh, flagSensitiveIP)
+		app := tui.NewApp(ifaceName, flagRefresh, flagSensitiveIP, resolveBuildVersion(Version))
 		return app.Run()
 	},
 }
@@ -59,6 +61,19 @@ var rootCmd = &cobra.Command{
 // Execute is called by main.go. It runs the root command.
 func Execute() error {
 	return rootCmd.Execute()
+}
+
+func resolveBuildVersion(defaultVersion string) string {
+	version := strings.TrimSpace(defaultVersion)
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if buildVersion := strings.TrimSpace(info.Main.Version); buildVersion != "" && buildVersion != "(devel)" {
+			version = buildVersion
+		}
+	}
+	if version == "" {
+		return "dev"
+	}
+	return version
 }
 
 // init() runs automatically when the package is loaded.

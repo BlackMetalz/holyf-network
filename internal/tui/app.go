@@ -30,6 +30,7 @@ type App struct {
 	focusIndex int    // Which panel is currently focused (0-3)
 	ifaceName  string // Network interface being monitored
 	refreshSec int    // Refresh interval in seconds
+	appVersion string
 
 	// Previous snapshots for rate calculation (need 2 readings for delta)
 	prevIfaceStats *collector.InterfaceStats
@@ -51,7 +52,7 @@ type App struct {
 
 	// Active peer blocks for cleanup on shutdown.
 	blockMu      sync.Mutex
-	activeBlocks map[string]actions.PeerBlockSpec
+	activeBlocks map[string]activeBlockEntry
 
 	// Auto-refresh state (Epic 7)
 	stopChan    chan struct{}
@@ -65,17 +66,28 @@ type App struct {
 	zoomed bool // Whether a panel is zoomed to fullscreen
 }
 
-const statusVersionLabel = "holyf-network v0.0.1"
+type activeBlockEntry struct {
+	Spec      actions.PeerBlockSpec
+	StartedAt time.Time
+	ExpiresAt time.Time
+	Summary   string
+}
 
 // NewApp creates a new TUI application.
-func NewApp(ifaceName string, refreshSec int, sensitiveIP bool) *App {
+func NewApp(ifaceName string, refreshSec int, sensitiveIP bool, appVersion string) *App {
+	version := strings.TrimSpace(appVersion)
+	if version == "" {
+		version = "dev"
+	}
+
 	return &App{
 		app:          tview.NewApplication(),
 		ifaceName:    ifaceName,
 		refreshSec:   refreshSec,
+		appVersion:   version,
 		focusIndex:   0,
 		sensitiveIP:  sensitiveIP,
-		activeBlocks: make(map[string]actions.PeerBlockSpec),
+		activeBlocks: make(map[string]activeBlockEntry),
 		stopChan:     make(chan struct{}),
 		refreshChan:  make(chan struct{}, 1), // Buffered: so send never blocks
 	}
@@ -493,8 +505,9 @@ func (a *App) updateStatusBar() {
 		ago,
 		a.refreshSec,
 	)
-	rightStyled := " [dim]" + statusVersionLabel + "[white]"
-	rightPlain := " " + statusVersionLabel
+	versionLabel := "holyf-network " + a.appVersion
+	rightStyled := " [dim]" + versionLabel + "[white]"
+	rightPlain := " " + versionLabel
 
 	text := leftStyled
 	_, _, width, _ := a.statusBar.GetInnerRect()
@@ -766,18 +779,33 @@ func (a *App) promptBlockedPeers() {
 	}
 
 	options := make([]string, 0, len(blocks))
-	for _, spec := range blocks {
-		options = append(options, formatBlockedSpec(spec))
+	for _, entry := range blocks {
+		options = append(options, formatBlockedSpec(entry.Spec))
 	}
 
 	selectedIndex := 0
+	summaryView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft)
+
+	updateSummary := func() {
+		if selectedIndex < 0 || selectedIndex >= len(blocks) {
+			summaryView.SetText("  [dim]No blocked peer selected.[white]")
+			return
+		}
+		entry := blocks[selectedIndex]
+		summaryView.SetText("  " + formatActiveBlockDetail(entry))
+	}
+
 	dropDown := tview.NewDropDown().
 		SetLabel("Blocked: ").
 		SetFieldWidth(44).
 		SetOptions(options, func(_ string, index int) {
 			selectedIndex = index
+			updateSummary()
 		})
 	dropDown.SetCurrentOption(0)
+	updateSummary()
 
 	closeModal := func() {
 		a.pages.RemovePage("blocked-peers")
@@ -794,8 +822,8 @@ func (a *App) promptBlockedPeers() {
 		}
 
 		opts := make([]string, 0, len(blocks))
-		for _, spec := range blocks {
-			opts = append(opts, formatBlockedSpec(spec))
+		for _, entry := range blocks {
+			opts = append(opts, formatBlockedSpec(entry.Spec))
 		}
 
 		if nextIndex < 0 {
@@ -807,8 +835,10 @@ func (a *App) promptBlockedPeers() {
 		selectedIndex = nextIndex
 		dropDown.SetOptions(opts, func(_ string, index int) {
 			selectedIndex = index
+			updateSummary()
 		})
 		dropDown.SetCurrentOption(nextIndex)
+		updateSummary()
 	}
 
 	form := tview.NewForm().
@@ -818,7 +848,7 @@ func (a *App) promptBlockedPeers() {
 				a.setStatusNote("No blocked peer selected", 4*time.Second)
 				return
 			}
-			spec := blocks[selectedIndex]
+			spec := blocks[selectedIndex].Spec
 			if err := actions.UnblockPeer(spec); err != nil {
 				a.setStatusNote("Unblock failed: "+shortStatus(err.Error(), 64), 8*time.Second)
 				return
@@ -830,21 +860,26 @@ func (a *App) promptBlockedPeers() {
 		AddButton("Close", func() {
 			closeModal()
 		})
-	form.SetBorder(true)
-	form.SetTitle(" Blocked Peers ")
+	form.SetBorder(false)
 	form.SetButtonsAlign(tview.AlignRight)
 	form.SetItemPadding(0)
 	form.SetCancelFunc(func() {
 		closeModal()
 	})
 
+	content := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(summaryView, 2, 0, false).
+		AddItem(form, 0, 1, true)
+	content.SetBorder(true)
+	content.SetTitle(" Blocked Peers ")
+
 	modal := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
 		AddItem(tview.NewFlex().
 			AddItem(nil, 0, 1, false).
-			AddItem(form, 84, 0, true).
+			AddItem(content, 98, 0, true).
 			AddItem(nil, 0, 1, false),
-			7, 0, true).
+			9, 0, true).
 		AddItem(nil, 0, 1, false)
 
 	a.pages.AddPage("blocked-peers", modal, true, true)
@@ -993,6 +1028,8 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 		PeerIP:    target.PeerIP,
 		LocalPort: target.LocalPort,
 	}
+	blockedAt := time.Now()
+	expiresAt := blockedAt.Add(duration)
 
 	if err := actions.BlockPeer(spec); err != nil {
 		a.app.QueueUpdateDraw(func() {
@@ -1000,15 +1037,23 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 		})
 		return
 	}
-	a.addActiveBlock(spec)
+
+	a.addActiveBlock(activeBlockEntry{
+		Spec:      spec,
+		StartedAt: blockedAt,
+		ExpiresAt: expiresAt,
+		Summary:   fmt.Sprintf("Blocked %s:%d | processing...", spec.PeerIP, spec.LocalPort),
+	})
 
 	tuples := a.matchingBlockTuples(target.PeerIP, target.LocalPort)
+	beforeCount, beforeCountErr := actions.CountEstablishedPeerSockets(spec)
 	socketErr := actions.QueryAndKillPeerSockets(spec)
 	if socketErr != nil {
 		// Fallback: try killing with cached tuples from the TUI snapshot.
 		socketErr = actions.KillSockets(tuples)
 	}
 	flowErr := actions.DropPeerConnections(spec)
+	afterCount, afterCountErr := actions.CountEstablishedPeerSockets(spec)
 
 	dropWarningParts := make([]string, 0, 2)
 	if socketErr != nil {
@@ -1021,9 +1066,12 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 	if len(dropWarningParts) > 0 {
 		dropWarning = " (drop partial: " + strings.Join(dropWarningParts, "; ") + ")"
 	}
+	actionSummary := buildBlockActionSummary(spec, duration, beforeCount, beforeCountErr, afterCount, afterCountErr, socketErr, flowErr)
+	a.updateActiveBlockSummary(spec, actionSummary)
 
 	a.app.QueueUpdateDraw(func() {
 		a.setStatusNote(fmt.Sprintf("Blocked %s:%d for %s%s", target.PeerIP, target.LocalPort, formatBlockDuration(duration), dropWarning), 8*time.Second)
+		a.showBlockSummaryPopup(actionSummary)
 		a.refreshData()
 	})
 
@@ -1080,6 +1128,90 @@ func formatBlockDuration(duration time.Duration) string {
 	return fmt.Sprintf("%ds", seconds)
 }
 
+func formatRemainingDuration(duration time.Duration) string {
+	if duration <= 0 {
+		return "00:00"
+	}
+
+	totalSeconds := int(duration.Round(time.Second) / time.Second)
+	if totalSeconds < 0 {
+		totalSeconds = 0
+	}
+
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
+	if hours > 0 {
+		return fmt.Sprintf("%dh%02dm", hours, minutes)
+	}
+	return fmt.Sprintf("%02d:%02d", minutes, seconds)
+}
+
+func buildBlockActionSummary(
+	spec actions.PeerBlockSpec,
+	duration time.Duration,
+	beforeCount int,
+	beforeErr error,
+	afterCount int,
+	afterErr error,
+	socketErr error,
+	flowErr error,
+) string {
+	killPart := "killed ?/? flows"
+	if beforeErr == nil && afterErr == nil {
+		if beforeCount < 0 {
+			beforeCount = 0
+		}
+		if afterCount < 0 {
+			afterCount = 0
+		}
+		if afterCount > beforeCount {
+			afterCount = beforeCount
+		}
+		killPart = fmt.Sprintf("killed %d/%d flows", beforeCount-afterCount, beforeCount)
+	} else if beforeErr == nil {
+		killPart = fmt.Sprintf("killed ?/%d flows", beforeCount)
+	}
+
+	dropPart := "drop ok"
+	if socketErr != nil && flowErr != nil {
+		dropPart = "drop partial"
+	}
+
+	return fmt.Sprintf(
+		"Blocked %s:%d | %s | %s | expires in %s",
+		spec.PeerIP,
+		spec.LocalPort,
+		killPart,
+		dropPart,
+		formatRemainingDuration(duration),
+	)
+}
+
+func formatActiveBlockDetail(entry activeBlockEntry) string {
+	summary := strings.TrimSpace(entry.Summary)
+	if summary == "" {
+		summary = fmt.Sprintf("Blocked %s:%d", entry.Spec.PeerIP, entry.Spec.LocalPort)
+	}
+	return fmt.Sprintf("[dim]Summary:[white] %s\n[dim]Expires in:[white] %s", summary, formatRemainingDuration(time.Until(entry.ExpiresAt)))
+}
+
+func (a *App) showBlockSummaryPopup(summary string) {
+	modal := tview.NewModal().
+		SetText(summary).
+		AddButtons([]string{"OK"}).
+		SetDoneFunc(func(_ int, _ string) {
+			a.pages.RemovePage("block-summary")
+			a.app.SetFocus(a.panels[a.focusIndex])
+		})
+	modal.SetTitle(" Block Summary ")
+	modal.SetBorder(true)
+
+	a.pages.RemovePage("block-summary")
+	a.pages.AddPage("block-summary", modal, true, true)
+	a.app.SetFocus(modal)
+}
+
 func parsePeerIPInput(raw string) (string, bool) {
 	peerIP := strings.TrimSpace(raw)
 	peerIP = strings.TrimPrefix(peerIP, "[")
@@ -1103,10 +1235,23 @@ func blockKey(spec actions.PeerBlockSpec) string {
 	return fmt.Sprintf("%s|%d", spec.PeerIP, spec.LocalPort)
 }
 
-func (a *App) addActiveBlock(spec actions.PeerBlockSpec) {
+func (a *App) addActiveBlock(entry activeBlockEntry) {
 	a.blockMu.Lock()
 	defer a.blockMu.Unlock()
-	a.activeBlocks[blockKey(spec)] = spec
+	a.activeBlocks[blockKey(entry.Spec)] = entry
+}
+
+func (a *App) updateActiveBlockSummary(spec actions.PeerBlockSpec, summary string) {
+	a.blockMu.Lock()
+	defer a.blockMu.Unlock()
+
+	key := blockKey(spec)
+	entry, exists := a.activeBlocks[key]
+	if !exists {
+		return
+	}
+	entry.Summary = summary
+	a.activeBlocks[key] = entry
 }
 
 func (a *App) removeActiveBlock(spec actions.PeerBlockSpec) {
@@ -1117,15 +1262,15 @@ func (a *App) removeActiveBlock(spec actions.PeerBlockSpec) {
 
 func (a *App) cleanupActiveBlocks() {
 	a.blockMu.Lock()
-	pending := make([]actions.PeerBlockSpec, 0, len(a.activeBlocks))
-	for _, spec := range a.activeBlocks {
-		pending = append(pending, spec)
+	pending := make([]activeBlockEntry, 0, len(a.activeBlocks))
+	for _, entry := range a.activeBlocks {
+		pending = append(pending, entry)
 	}
 	a.blockMu.Unlock()
 
-	for _, spec := range pending {
-		_ = actions.UnblockPeer(spec)
-		a.removeActiveBlock(spec)
+	for _, entry := range pending {
+		_ = actions.UnblockPeer(entry.Spec)
+		a.removeActiveBlock(entry.Spec)
 	}
 }
 
@@ -1136,20 +1281,20 @@ func (a *App) hasActiveBlock(spec actions.PeerBlockSpec) bool {
 	return exists
 }
 
-func (a *App) snapshotActiveBlocks() []actions.PeerBlockSpec {
+func (a *App) snapshotActiveBlocks() []activeBlockEntry {
 	a.blockMu.Lock()
 	defer a.blockMu.Unlock()
 
-	items := make([]actions.PeerBlockSpec, 0, len(a.activeBlocks))
-	for _, spec := range a.activeBlocks {
-		items = append(items, spec)
+	items := make([]activeBlockEntry, 0, len(a.activeBlocks))
+	for _, entry := range a.activeBlocks {
+		items = append(items, entry)
 	}
 
 	sort.Slice(items, func(i, j int) bool {
-		if items[i].PeerIP != items[j].PeerIP {
-			return items[i].PeerIP < items[j].PeerIP
+		if items[i].Spec.PeerIP != items[j].Spec.PeerIP {
+			return items[i].Spec.PeerIP < items[j].Spec.PeerIP
 		}
-		return items[i].LocalPort < items[j].LocalPort
+		return items[i].Spec.LocalPort < items[j].Spec.LocalPort
 	})
 	return items
 }
