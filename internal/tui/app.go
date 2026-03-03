@@ -779,33 +779,38 @@ func (a *App) promptBlockedPeers() {
 	}
 
 	selectedIndex := 0
-	summaryView := tview.NewTextView().
-		SetDynamicColors(true).
-		SetTextAlign(tview.AlignLeft)
-
-	updateSummary := func() {
-		if selectedIndex < 0 || selectedIndex >= len(blocks) {
-			summaryView.SetText("  [dim]No blocked peer selected.[white]")
-			return
-		}
-		entry := blocks[selectedIndex]
-		summaryView.SetText("  " + formatActiveBlockDetail(entry))
-	}
-
 	list := tview.NewList().
 		ShowSecondaryText(true)
 	list.SetBorder(false)
-	list.SetChangedFunc(func(index int, _ string, _ string, _ rune) {
-		selectedIndex = index
-		updateSummary()
-	})
+	list.SetMainTextColor(tcell.ColorWhite)
+	list.SetSecondaryTextColor(tcell.ColorGreen)
 
 	closeModal := func() {
 		a.pages.RemovePage("blocked-peers")
 		a.app.SetFocus(a.panels[a.focusIndex])
 	}
 
-	refreshList := func(nextIndex int) {
+	var refreshList func(nextIndex int)
+	removeSelected := func() {
+		if selectedIndex < 0 || selectedIndex >= len(blocks) {
+			a.setStatusNote("No blocked peer selected", 4*time.Second)
+			return
+		}
+		spec := blocks[selectedIndex].Spec
+		if err := actions.UnblockPeer(spec); err != nil {
+			a.setStatusNote("Unblock failed: "+shortStatus(err.Error(), 64), 8*time.Second)
+			return
+		}
+		a.removeActiveBlock(spec)
+		a.setStatusNote(fmt.Sprintf("Unblocked %s:%d", spec.PeerIP, spec.LocalPort), 6*time.Second)
+		refreshList(selectedIndex)
+	}
+
+	list.SetChangedFunc(func(index int, _ string, _ string, _ rune) {
+		selectedIndex = index
+	})
+
+	refreshList = func(nextIndex int) {
 		blocks = a.snapshotDisplayActiveBlocks()
 		if len(blocks) == 0 {
 			closeModal()
@@ -824,47 +829,65 @@ func (a *App) promptBlockedPeers() {
 		list.Clear()
 		for _, entry := range blocks {
 			main := formatBlockedSpec(entry.Spec)
-			secondary := "expires in " + formatRemainingDuration(time.Until(entry.ExpiresAt))
-			if entry.ExpiresAt.IsZero() {
-				secondary = "detected from firewall rules"
-			}
+			secondary := formatBlockedListSecondary(entry)
 			list.AddItem(main, secondary, 0, nil)
 		}
 		selectedIndex = nextIndex
 		list.SetCurrentItem(nextIndex)
-		updateSummary()
 	}
 	refreshList(0)
 
 	form := tview.NewForm().
 		AddButton("Remove", func() {
-			if selectedIndex < 0 || selectedIndex >= len(blocks) {
-				a.setStatusNote("No blocked peer selected", 4*time.Second)
-				return
-			}
-			spec := blocks[selectedIndex].Spec
-			if err := actions.UnblockPeer(spec); err != nil {
-				a.setStatusNote("Unblock failed: "+shortStatus(err.Error(), 64), 8*time.Second)
-				return
-			}
-			a.removeActiveBlock(spec)
-			a.setStatusNote(fmt.Sprintf("Unblocked %s:%d", spec.PeerIP, spec.LocalPort), 6*time.Second)
-			refreshList(selectedIndex)
+			removeSelected()
 		}).
 		AddButton("Close", func() {
 			closeModal()
 		})
 	form.SetBorder(false)
 	form.SetButtonsAlign(tview.AlignRight)
-	form.SetItemPadding(0)
+	form.SetItemPadding(1)
 	form.SetCancelFunc(func() {
 		closeModal()
 	})
 
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			closeModal()
+			return nil
+		case tcell.KeyTab:
+			a.app.SetFocus(form)
+			return nil
+		case tcell.KeyDelete, tcell.KeyBackspace, tcell.KeyBackspace2:
+			removeSelected()
+			return nil
+		}
+		if event.Key() == tcell.KeyRune && event.Rune() == 'q' {
+			closeModal()
+			return nil
+		}
+		return event
+	})
+	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			closeModal()
+			return nil
+		case tcell.KeyTab:
+			a.app.SetFocus(list)
+			return nil
+		}
+		if event.Key() == tcell.KeyRune && event.Rune() == 'q' {
+			closeModal()
+			return nil
+		}
+		return event
+	})
+
 	content := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(summaryView, 2, 0, false).
 		AddItem(list, 0, 1, true).
-		AddItem(form, 1, 0, false)
+		AddItem(form, 3, 0, false)
 	content.SetBorder(true)
 	content.SetTitle(" Blocked Peers ")
 
@@ -874,7 +897,7 @@ func (a *App) promptBlockedPeers() {
 			AddItem(nil, 0, 1, false).
 			AddItem(content, 98, 0, true).
 			AddItem(nil, 0, 1, false),
-			14, 0, true).
+			16, 0, true).
 		AddItem(nil, 0, 1, false)
 
 	a.pages.AddPage("blocked-peers", modal, true, true)
@@ -1227,6 +1250,29 @@ func parsePeerIPInput(raw string) (string, bool) {
 
 func formatBlockedSpec(spec actions.PeerBlockSpec) string {
 	return fmt.Sprintf("%s -> :%d", spec.PeerIP, spec.LocalPort)
+}
+
+func formatBlockedListSecondary(entry activeBlockEntry) string {
+	secondary := "drop unknown | expires in n/a"
+	summary := strings.TrimSpace(entry.Summary)
+	if summary != "" {
+		parts := strings.Split(summary, " | ")
+		if len(parts) > 1 {
+			secondary = strings.Join(parts[1:], " | ")
+		}
+	}
+
+	expires := "n/a"
+	if !entry.ExpiresAt.IsZero() {
+		expires = formatRemainingDuration(time.Until(entry.ExpiresAt))
+	}
+	if strings.Contains(secondary, "expires in ") {
+		idx := strings.LastIndex(secondary, "expires in ")
+		secondary = secondary[:idx] + "expires in " + expires
+	} else {
+		secondary = secondary + " | expires in " + expires
+	}
+	return secondary
 }
 
 func blockKey(spec actions.PeerBlockSpec) string {
