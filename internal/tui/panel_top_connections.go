@@ -12,7 +12,7 @@ import (
 // renderTalkersPanel formats the top connections for the TUI panel.
 // If portFilter is set, only connections matching that port are shown.
 // maxRows controls how many connections to display (use more when zoomed).
-func renderTalkersPanel(conns []collector.Connection, portFilter string, maxRows int, sensitiveIP bool) string {
+func renderTalkersPanel(conns []collector.Connection, portFilter string, maxRows int, sensitiveIP bool, selectedIndex int) string {
 	var sb strings.Builder
 
 	// Show active filter
@@ -37,12 +37,20 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string, maxRows
 			return sb.String()
 		}
 	}
+	if selectedIndex < 0 {
+		selectedIndex = 0
+	}
+	if selectedIndex >= len(filtered) {
+		selectedIndex = len(filtered) - 1
+	}
 
 	const (
 		processColWidth  = 18
 		endpointColWidth = 24
 		stateColWidth    = 11
 	)
+
+	sb.WriteString("  [dim]Use ↑/↓ to select, Enter/k to block selected[white]\n\n")
 
 	// Header row
 	sb.WriteString(fmt.Sprintf("  [dim]%-*s %-*s %-*s %-*s %s[white]\n",
@@ -90,7 +98,13 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string, maxRows
 			queueStr = fmt.Sprintf(" [yellow]%s[white]", formatBytes(conn.Activity))
 		}
 
-		sb.WriteString(fmt.Sprintf("  [aqua]%-*s[white] %-*s %-*s [%s]%-*s[white]%s\n",
+		prefix := "  "
+		if i == selectedIndex {
+			prefix = " [yellow]>[white]"
+		}
+
+		sb.WriteString(fmt.Sprintf("%s[aqua]%-*s[white] %-*s %-*s [%s]%-*s[white]%s\n",
+			prefix,
 			processColWidth, procInfo,
 			endpointColWidth, src,
 			endpointColWidth, peer,

@@ -13,7 +13,9 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]p[white]           Pause/Resume auto-refresh
 [yellow]s[white]           Toggle sensitive IP mask
 [yellow]f[white]           Filter (in Top Connections)
-[yellow]k[white]           Block peer (input form)
+[yellow]Up/Down[white]     Select row (Top Connections)
+[yellow]Enter[white]       Block selected row
+[yellow]k[white]           Block peer (selected/default)
 [yellow]b[white]           Show blocked peers
 [yellow]?[white]           Toggle this help
 [yellow]q[white]           Quit

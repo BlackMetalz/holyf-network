@@ -42,6 +42,8 @@ type App struct {
 	sensitiveIP bool
 	// Latest top connections snapshot used by actions (kill peer, etc.).
 	latestTalkers []collector.Connection
+	// Selected row in Top Connections (within currently visible rows).
+	selectedTalkerIndex int
 
 	// Short-lived status note shown in status bar.
 	statusNote      string
@@ -181,6 +183,25 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 
 	// Handle key by type
 	switch event.Key() {
+	case tcell.KeyUp:
+		if a.focusIndex == 2 && a.moveTopConnectionSelection(-1) {
+			return nil
+		}
+		return event
+
+	case tcell.KeyDown:
+		if a.focusIndex == 2 && a.moveTopConnectionSelection(1) {
+			return nil
+		}
+		return event
+
+	case tcell.KeyEnter:
+		if a.focusIndex == 2 {
+			a.promptKillPeer()
+			return nil
+		}
+		return event
+
 	case tcell.KeyTab:
 		if !a.zoomed {
 			a.focusNext()
@@ -336,14 +357,11 @@ func (a *App) refreshData() {
 	talkers, err := collector.CollectTopTalkers(100)
 	if err != nil {
 		a.latestTalkers = nil
+		a.selectedTalkerIndex = 0
 		a.panels[2].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
 		a.latestTalkers = talkers
-		displayLimit := 20
-		if a.zoomed {
-			displayLimit = 100
-		}
-		a.panels[2].SetText(renderTalkersPanel(talkers, a.portFilter, displayLimit, a.sensitiveIP))
+		a.renderTopConnectionsPanel()
 	}
 
 	// Panel 3: Conntrack
@@ -357,6 +375,80 @@ func (a *App) refreshData() {
 	}
 
 	a.updateStatusBar()
+}
+
+func (a *App) topConnectionsDisplayLimit() int {
+	if a.zoomed {
+		return 100
+	}
+	return 20
+}
+
+func (a *App) visibleTopConnections() []collector.Connection {
+	if len(a.latestTalkers) == 0 {
+		return nil
+	}
+
+	filtered := a.latestTalkers
+	if a.portFilter != "" {
+		filtered = filterByPort(filtered, a.portFilter)
+	}
+
+	limit := a.topConnectionsDisplayLimit()
+	if len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+	return filtered
+}
+
+func (a *App) clampTopConnectionSelection() {
+	visible := a.visibleTopConnections()
+	if len(visible) == 0 {
+		a.selectedTalkerIndex = 0
+		return
+	}
+	if a.selectedTalkerIndex < 0 {
+		a.selectedTalkerIndex = 0
+		return
+	}
+	if a.selectedTalkerIndex >= len(visible) {
+		a.selectedTalkerIndex = len(visible) - 1
+	}
+}
+
+func (a *App) renderTopConnectionsPanel() {
+	a.clampTopConnectionSelection()
+	a.panels[2].SetText(renderTalkersPanel(
+		a.latestTalkers,
+		a.portFilter,
+		a.topConnectionsDisplayLimit(),
+		a.sensitiveIP,
+		a.selectedTalkerIndex,
+	))
+}
+
+func (a *App) moveTopConnectionSelection(delta int) bool {
+	visible := a.visibleTopConnections()
+	if len(visible) == 0 {
+		return false
+	}
+	a.clampTopConnectionSelection()
+
+	next := a.selectedTalkerIndex + delta
+	if next < 0 {
+		next = 0
+	}
+	if next >= len(visible) {
+		next = len(visible) - 1
+	}
+	if next == a.selectedTalkerIndex {
+		return true
+	}
+
+	a.selectedTalkerIndex = next
+	a.renderTopConnectionsPanel()
+	a.updateStatusBar()
+	return true
 }
 
 // updateStatusBar updates the bottom status bar with current state.
@@ -501,7 +593,10 @@ func (a *App) promptKillPeer() {
 	}
 	a.enterKillFlowPause()
 
-	suggested, hasSuggested := a.selectPeerKillTarget()
+	suggested, hasSuggested := a.selectedPeerKillTarget()
+	if !hasSuggested {
+		suggested, hasSuggested = a.selectPeerKillTarget()
+	}
 	defaultPeer := ""
 	defaultPort := ""
 	helpText := fmt.Sprintf("Enter peer IP + local port + block minutes (default %d).", defaultBlockMinutes)
@@ -811,6 +906,23 @@ func (a *App) selectPeerKillTarget() (peerKillTarget, bool) {
 	})
 
 	return candidates[0].target, true
+}
+
+func (a *App) selectedPeerKillTarget() (peerKillTarget, bool) {
+	visible := a.visibleTopConnections()
+	if len(visible) == 0 {
+		return peerKillTarget{}, false
+	}
+	a.clampTopConnectionSelection()
+
+	conn := visible[a.selectedTalkerIndex]
+	peerIP := normalizeIP(conn.RemoteIP)
+	localPort := conn.LocalPort
+	return peerKillTarget{
+		PeerIP:    peerIP,
+		LocalPort: localPort,
+		Count:     a.countPeerMatches(peerIP, localPort),
+	}, true
 }
 
 func (a *App) countPeerMatches(peerIP string, localPort int) int {
