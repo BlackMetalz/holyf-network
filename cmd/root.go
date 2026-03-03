@@ -21,6 +21,7 @@ var (
 	flagInterface      string
 	flagRefresh        int
 	flagListInterfaces bool
+	flagSensitiveIP    bool
 )
 
 // rootCmd is the base command. When the user runs "holyf-network" without
@@ -50,7 +51,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		// Launch the TUI dashboard
-		app := tui.NewApp(ifaceName, flagRefresh)
+		app := tui.NewApp(ifaceName, flagRefresh, flagSensitiveIP)
 		return app.Run()
 	},
 }
@@ -68,6 +69,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&flagInterface, "interface", "i", "", "Network interface to monitor (default: auto-detect)")
 	rootCmd.Flags().IntVarP(&flagRefresh, "refresh", "r", 30, "Refresh interval in seconds (1-300)")
 	rootCmd.Flags().BoolVar(&flagListInterfaces, "list-interfaces", false, "List available network interfaces and exit")
+	rootCmd.Flags().BoolVar(&flagSensitiveIP, "sensitive-ip", false, "Hide the first 2 IP octets/groups in Top Connections (for demos)")
 }
 
 // listInterfaces prints all available network interfaces.

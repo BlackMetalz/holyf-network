@@ -31,6 +31,8 @@ type App struct {
 
 	// Port filter for Top Connections panel. Empty = show all.
 	portFilter string
+	// Hide sensitive IP prefixes in Top Connections.
+	sensitiveIP bool
 
 	// Auto-refresh state (Epic 7)
 	stopChan    chan struct{}
@@ -43,12 +45,13 @@ type App struct {
 }
 
 // NewApp creates a new TUI application.
-func NewApp(ifaceName string, refreshSec int) *App {
+func NewApp(ifaceName string, refreshSec int, sensitiveIP bool) *App {
 	return &App{
 		app:         tview.NewApplication(),
 		ifaceName:   ifaceName,
 		refreshSec:  refreshSec,
 		focusIndex:  0,
+		sensitiveIP: sensitiveIP,
 		stopChan:    make(chan struct{}),
 		refreshChan: make(chan struct{}, 1), // Buffered: so send never blocks
 	}
@@ -191,6 +194,10 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			a.paused = !a.paused
 			a.updateStatusBar()
 			return nil
+		case 's':
+			a.sensitiveIP = !a.sensitiveIP
+			a.refreshData()
+			return nil
 		case 'f':
 			a.promptPortFilter()
 			return nil
@@ -297,7 +304,7 @@ func (a *App) refreshData() {
 		if a.zoomed {
 			displayLimit = 100
 		}
-		a.panels[2].SetText(renderTalkersPanel(talkers, a.portFilter, displayLimit))
+		a.panels[2].SetText(renderTalkersPanel(talkers, a.portFilter, displayLimit, a.sensitiveIP))
 	}
 
 	// Panel 3: Conntrack
@@ -334,9 +341,12 @@ func (a *App) updateStatusBar() {
 	if a.zoomed {
 		stateText += " [aqua]ZOOMED[white] |"
 	}
+	if a.sensitiveIP {
+		stateText += " [yellow]IP MASK[white] |"
+	}
 
 	a.statusBar.SetText(fmt.Sprintf(
-		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
+		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]s[white]=mask-ip [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
 		a.ifaceName,
 		stateText,
 		ago,

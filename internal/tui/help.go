@@ -11,6 +11,7 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]Shift+Tab[white]   Previous panel
 [yellow]r[white]           Refresh now
 [yellow]p[white]           Pause/Resume auto-refresh
+[yellow]s[white]           Toggle sensitive IP mask
 [yellow]f[white]           Filter (in Top Connections)
 [yellow]?[white]           Toggle this help
 [yellow]q[white]           Quit

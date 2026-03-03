@@ -38,4 +38,10 @@ holyf-network
 
 # Set refresh rate to 5 seconds
 holyf-network -r 5
+
+# Demo mode: hide first 2 IP prefixes/groups in Top Connections
+holyf-network --sensitive-ip
+
+# Runtime toggle inside TUI
+# Press `s` to turn sensitive IP masking on/off
 ```
