@@ -797,6 +797,50 @@ func (a *App) countPeerMatches(peerIP string, localPort int) int {
 	return count
 }
 
+func (a *App) matchingBlockTuples(peerIP string, localPort int) []actions.SocketTuple {
+	if len(a.latestTalkers) == 0 {
+		return nil
+	}
+
+	normalizedPeer := normalizeIP(peerIP)
+	seen := make(map[string]struct{})
+	tuples := make([]actions.SocketTuple, 0, 8)
+
+	for _, conn := range a.latestTalkers {
+		if conn.LocalPort != localPort {
+			continue
+		}
+		if !strings.EqualFold(conn.State, "ESTABLISHED") {
+			continue
+		}
+
+		remoteIP := normalizeIP(conn.RemoteIP)
+		if remoteIP != normalizedPeer {
+			continue
+		}
+
+		localIP := normalizeIP(conn.LocalIP)
+		if localIP == "" || conn.RemotePort < 1 || conn.RemotePort > 65535 {
+			continue
+		}
+
+		key := fmt.Sprintf("%s|%d|%s|%d", localIP, conn.LocalPort, remoteIP, conn.RemotePort)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		tuples = append(tuples, actions.SocketTuple{
+			LocalIP:    localIP,
+			LocalPort:  conn.LocalPort,
+			RemoteIP:   remoteIP,
+			RemotePort: conn.RemotePort,
+		})
+	}
+
+	return tuples
+}
+
 func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration) {
 	spec := actions.PeerBlockSpec{
 		PeerIP:    target.PeerIP,
@@ -811,9 +855,20 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 	}
 	a.addActiveBlock(spec)
 
+	tuples := a.matchingBlockTuples(target.PeerIP, target.LocalPort)
+	socketErr := actions.KillSockets(tuples)
+	flowErr := actions.DropPeerConnections(spec)
+
+	dropWarningParts := make([]string, 0, 2)
+	if socketErr != nil {
+		dropWarningParts = append(dropWarningParts, "socket "+shortStatus(socketErr.Error(), 28))
+	}
+	if flowErr != nil {
+		dropWarningParts = append(dropWarningParts, "flow "+shortStatus(flowErr.Error(), 28))
+	}
 	dropWarning := ""
-	if err := actions.DropPeerConnections(spec); err != nil {
-		dropWarning = " (flow-drop partial: " + shortStatus(err.Error(), 36) + ")"
+	if len(dropWarningParts) > 0 {
+		dropWarning = " (drop partial: " + strings.Join(dropWarningParts, "; ") + ")"
 	}
 
 	a.app.QueueUpdateDraw(func() {

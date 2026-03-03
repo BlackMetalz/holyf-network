@@ -15,6 +15,14 @@ type PeerBlockSpec struct {
 	LocalPort int
 }
 
+// SocketTuple identifies one TCP socket (local endpoint <-> remote endpoint).
+type SocketTuple struct {
+	LocalIP    string
+	LocalPort  int
+	RemoteIP   string
+	RemotePort int
+}
+
 const ruleComment = "holyf-network-peer-block"
 
 // BlockPeer inserts a TCP reset REJECT rule for peer IP -> local TCP port.
@@ -96,6 +104,89 @@ func DropPeerConnections(spec PeerBlockSpec) error {
 	}
 
 	return fmt.Errorf("%s; %s", ssErr.Error(), ctErr.Error())
+}
+
+// KillSockets tries to close exact established sockets with ss -K.
+// Returns nil if at least one socket was closed or if there are no tuples.
+func KillSockets(tuples []SocketTuple) error {
+	if len(tuples) == 0 {
+		return nil
+	}
+
+	var errs []string
+	success := false
+	for _, tuple := range tuples {
+		if err := killSocketExact(tuple); err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+		success = true
+	}
+
+	if success {
+		return nil
+	}
+	if len(errs) == 0 {
+		return fmt.Errorf("socket-kill: no tuples were closed")
+	}
+	return fmt.Errorf("socket-kill: %s", strings.Join(errs, " | "))
+}
+
+func killSocketExact(tuple SocketTuple) error {
+	if _, err := exec.LookPath("ss"); err != nil {
+		return fmt.Errorf("ss: command not found")
+	}
+
+	localIP, localV4, err := normalizeIPForSS(tuple.LocalIP)
+	if err != nil {
+		return fmt.Errorf("local ip: %w", err)
+	}
+	remoteIP, remoteV4, err := normalizeIPForSS(tuple.RemoteIP)
+	if err != nil {
+		return fmt.Errorf("remote ip: %w", err)
+	}
+	if localV4 != remoteV4 {
+		return fmt.Errorf("ip family mismatch: %s <-> %s", localIP, remoteIP)
+	}
+
+	base := []string{}
+	if localV4 {
+		base = append(base, "-4")
+	} else {
+		base = append(base, "-6")
+	}
+	base = append(base, "-K")
+
+	core := []string{
+		"src", localIP,
+		"sport", "=", ":" + strconv.Itoa(tuple.LocalPort),
+		"dst", remoteIP,
+		"dport", "=", ":" + strconv.Itoa(tuple.RemotePort),
+	}
+
+	candidates := [][]string{
+		append([]string{"state", "established"}, core...),
+		core,
+	}
+
+	var lastErr string
+	for _, c := range candidates {
+		args := append(append([]string{}, base...), c...)
+		out, err := exec.Command("ss", args...).CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		lastErr = msg
+	}
+	if lastErr == "" {
+		lastErr = "unknown error"
+	}
+
+	return fmt.Errorf("%s:%d<->%s:%d (%s)", localIP, tuple.LocalPort, remoteIP, tuple.RemotePort, lastErr)
 }
 
 func killSocketByPeerAndPort(ip net.IP, peerIP, port string) error {
@@ -226,4 +317,17 @@ func runCommand(name string, args ...string) error {
 		return fmt.Errorf("%s %s", name, msg)
 	}
 	return nil
+}
+
+func normalizeIPForSS(raw string) (string, bool, error) {
+	ipStr := strings.TrimSpace(raw)
+	ipStr = strings.TrimPrefix(ipStr, "::ffff:")
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return "", false, fmt.Errorf("invalid ip: %s", raw)
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String(), true, nil
+	}
+	return ip.String(), false, nil
 }

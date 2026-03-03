@@ -39,11 +39,14 @@ holyf-network
 # Set refresh rate to 5 seconds
 holyf-network -r 5
 
-# Demo mode: hide first 2 IP prefixes/groups in Top Connections
-holyf-network --sensitive-ip
-
 # Runtime toggle inside TUI
 # Press `s` to turn sensitive IP masking on/off
 # Press `k` on Top Connections to input peer IP/local port + block minutes (default: 10)
 # Press `b` to list active blocks and remove selected peer block
+# Press `f` to filter Top Connections by port
+# Press `p` to pause/resume auto-refresh
+# Press `r` to refresh now
+# Press `z` to zoom/unzoom panel
+# Press `?` to show help
+# Press `q` to quit
 ```
