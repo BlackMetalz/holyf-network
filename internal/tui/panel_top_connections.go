@@ -7,7 +7,7 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 )
 
-// panel_talkers.go — Renders the Top Connections panel content.
+// panel_top_connections.go — Renders the Top Connections panel content.
 
 // renderTalkersPanel formats the top connections for the TUI panel.
 // If portFilter is set, only connections matching that port are shown.
@@ -36,6 +36,11 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string) string 
 			return sb.String()
 		}
 	}
+
+	// Header row
+	sb.WriteString(fmt.Sprintf("  [dim]%-14s %-21s   %-21s %-11s %s[white]\n",
+		"PROCESS", "LOCAL", "REMOTE", "STATE", "QUEUE",
+	))
 
 	// Render each connection
 	for i, conn := range filtered {
@@ -77,7 +82,7 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string) string 
 			remote = remote[:18] + "..."
 		}
 
-		queueStr := ""
+		queueStr := " [dim]0B[white]"
 		if conn.Activity > 0 {
 			queueStr = fmt.Sprintf(" [yellow]%s[white]", formatBytes(conn.Activity))
 		}
