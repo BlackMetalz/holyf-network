@@ -332,10 +332,11 @@ func (a *App) updateStatusBar() {
 	}
 
 	a.statusBar.SetText(fmt.Sprintf(
-		" [yellow]%s[white] |%s Updated: [green]%s[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
+		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
 		a.ifaceName,
 		stateText,
 		ago,
+		a.refreshSec,
 	))
 }
 

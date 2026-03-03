@@ -162,6 +162,11 @@ Holy fuck polish, it means remove all comment in code. Holy fucking shit!
 # Sprint 5:
 
 ### Epic 8: Implement TCP retransmits feature
+Retransmits is time of TCP need to resend segment because ACK not received.
+
+It happens when:
+- Packet loss
+- Network congestion
 
 ### Epic 9: Implement Zoom Panel 
 
