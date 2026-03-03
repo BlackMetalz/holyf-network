@@ -39,6 +39,8 @@ type App struct {
 
 	// Port filter for Top Connections panel. Empty = show all.
 	portFilter string
+	// Text contains-filter for Top Connections ("/" search). Empty = no grep filter.
+	textFilter string
 	// Hide sensitive IP prefixes in Top Connections.
 	sensitiveIP bool
 	// Latest top connections snapshot used by actions (kill peer, etc.).
@@ -261,6 +263,9 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'f':
 			a.promptPortFilter()
 			return nil
+		case '/':
+			a.promptTextFilter()
+			return nil
 		case 'k':
 			a.promptKillPeer()
 			return nil
@@ -401,10 +406,7 @@ func (a *App) visibleTopConnections() []collector.Connection {
 		return nil
 	}
 
-	filtered := a.latestTalkers
-	if a.portFilter != "" {
-		filtered = filterByPort(filtered, a.portFilter)
-	}
+	filtered := a.applyTopConnectionFilters(a.latestTalkers)
 
 	limit := a.topConnectionsDisplayLimit()
 	if len(filtered) > limit {
@@ -433,6 +435,7 @@ func (a *App) renderTopConnectionsPanel() {
 	a.panels[2].SetText(renderTalkersPanel(
 		a.latestTalkers,
 		a.portFilter,
+		a.textFilter,
 		a.topConnectionsDisplayLimit(),
 		a.sensitiveIP,
 		a.selectedTalkerIndex,
@@ -492,14 +495,14 @@ func (a *App) updateStatusBar() {
 	}
 
 	leftStyled := fmt.Sprintf(
-		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]s[white]=mask-ip [dim]f[white]=filter [dim]k[white]=kill-peer [dim]b[white]=blocked [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
+		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]s[white]=mask-ip [dim]f[white]=port/clear [dim]/[white]=search [dim]k[white]=kill-peer [dim]b[white]=blocked [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
 		a.ifaceName,
 		stateText,
 		ago,
 		a.refreshSec,
 	)
 	leftPlain := fmt.Sprintf(
-		" %s |%s Updated: %s | Refresh: %ds | r=refresh p=pause s=mask-ip f=filter k=kill-peer b=blocked z=zoom ?=help q=quit",
+		" %s |%s Updated: %s | Refresh: %ds | r=refresh p=pause s=mask-ip f=port/clear /=search k=kill-peer b=blocked z=zoom ?=help q=quit",
 		a.ifaceName,
 		stripStatusColors(stateText),
 		ago,
@@ -536,9 +539,11 @@ func stripStatusColors(s string) string {
 // promptPortFilter shows a simple input dialog for port filtering.
 // Uses tview.InputField as a modal overlay.
 func (a *App) promptPortFilter() {
-	// If filter is already set, clear it
-	if a.portFilter != "" {
+	// If any filter is active, clear all filters.
+	if a.portFilter != "" || a.textFilter != "" {
 		a.portFilter = ""
+		a.textFilter = ""
+		a.selectedTalkerIndex = 0
 		a.refreshData()
 		return
 	}
@@ -557,6 +562,7 @@ func (a *App) promptPortFilter() {
 	input.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
 			a.portFilter = input.GetText()
+			a.selectedTalkerIndex = 0
 		}
 		// On Enter or Escape: close the dialog
 		a.pages.RemovePage("filter")
@@ -575,6 +581,59 @@ func (a *App) promptPortFilter() {
 
 	a.pages.AddPage("filter", modal, true, true)
 	a.app.SetFocus(input)
+}
+
+func (a *App) promptTextFilter() {
+	if a.focusIndex != 2 {
+		a.setStatusNote("Focus Top Connections before search", 4*time.Second)
+		return
+	}
+
+	input := tview.NewInputField()
+	input.SetLabel("Search (contains): ")
+	input.SetFieldWidth(36)
+	input.SetText(a.textFilter)
+	input.SetBorder(true)
+	input.SetTitle(" Search Filter ")
+
+	input.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			entered := strings.TrimSpace(input.GetText())
+			if entered == "" {
+				a.portFilter = ""
+				a.textFilter = ""
+			} else {
+				a.textFilter = entered
+			}
+			a.selectedTalkerIndex = 0
+			a.refreshData()
+		}
+		a.pages.RemovePage("search")
+		a.app.SetFocus(a.panels[a.focusIndex])
+	})
+
+	modal := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(input, 54, 0, true).
+			AddItem(nil, 0, 1, false),
+			3, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	a.pages.AddPage("search", modal, true, true)
+	a.app.SetFocus(input)
+}
+
+func (a *App) applyTopConnectionFilters(conns []collector.Connection) []collector.Connection {
+	filtered := conns
+	if a.portFilter != "" {
+		filtered = filterByPort(filtered, a.portFilter)
+	}
+	if a.textFilter != "" {
+		filtered = filterByText(filtered, a.textFilter)
+	}
+	return filtered
 }
 
 type peerKillTarget struct {
@@ -910,10 +969,7 @@ func (a *App) selectPeerKillTarget() (peerKillTarget, bool) {
 		return peerKillTarget{}, false
 	}
 
-	filtered := a.latestTalkers
-	if a.portFilter != "" {
-		filtered = filterByPort(filtered, a.portFilter)
-	}
+	filtered := a.applyTopConnectionFilters(a.latestTalkers)
 	if len(filtered) == 0 {
 		return peerKillTarget{}, false
 	}
@@ -982,10 +1038,7 @@ func (a *App) countPeerMatches(peerIP string, localPort int) int {
 		return 0
 	}
 
-	filtered := a.latestTalkers
-	if a.portFilter != "" {
-		filtered = filterByPort(filtered, a.portFilter)
-	}
+	filtered := a.applyTopConnectionFilters(a.latestTalkers)
 
 	count := 0
 	for _, conn := range filtered {

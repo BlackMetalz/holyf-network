@@ -12,30 +12,46 @@ import (
 // renderTalkersPanel formats the top connections for the TUI panel.
 // If portFilter is set, only connections matching that port are shown.
 // maxRows controls how many connections to display (use more when zoomed).
-func renderTalkersPanel(conns []collector.Connection, portFilter string, maxRows int, sensitiveIP bool, selectedIndex int) string {
+func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int) string {
 	var sb strings.Builder
 
-	// Show active filter
-	if portFilter != "" {
-		sb.WriteString(fmt.Sprintf("  [yellow]Filter: :%s[white]  [dim](press f to clear)[white]\n", portFilter))
-	} else {
-		sb.WriteString("  [dim]Press f to filter by port[white]\n")
+	filterChip := "ALL"
+	if strings.TrimSpace(portFilter) != "" {
+		filterChip = ":" + strings.TrimSpace(portFilter)
 	}
-	sb.WriteString("\n")
+	maskChip := "OFF"
+	if sensitiveIP {
+		maskChip = "ON"
+	}
+	searchChip := "ALL"
+	if strings.TrimSpace(textFilter) != "" {
+		searchChip = truncateRight(strings.TrimSpace(textFilter), 20)
+	}
+
+	sb.WriteString(fmt.Sprintf(
+		"  [dim]Chips:[white] [yellow]Filter=%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=QUEUE[white]\n",
+		filterChip,
+		maskChip,
+		searchChip,
+	))
+	sb.WriteString("  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear[white]\n\n")
 
 	if len(conns) == 0 {
 		sb.WriteString("  No active connections found")
 		return sb.String()
 	}
 
-	// Filter by port if set
+	// Apply filters (port + contains text).
 	filtered := conns
 	if portFilter != "" {
 		filtered = filterByPort(conns, portFilter)
-		if len(filtered) == 0 {
-			sb.WriteString(fmt.Sprintf("  No connections matching port %s", portFilter))
-			return sb.String()
-		}
+	}
+	if textFilter != "" {
+		filtered = filterByText(filtered, textFilter)
+	}
+	if len(filtered) == 0 {
+		sb.WriteString("  No connections matching current filters")
+		return sb.String()
 	}
 	if selectedIndex < 0 {
 		selectedIndex = 0
@@ -49,9 +65,6 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string, maxRows
 		endpointColWidth = 24
 		stateColWidth    = 11
 	)
-
-	sb.WriteString("  [dim]Use ↑/↓ to select, Enter/k to block selected[white]\n\n")
-
 	// Header row
 	sb.WriteString(fmt.Sprintf("  [dim]%-*s %-*s %-*s %-*s %s[white]\n",
 		processColWidth, "PROCESS",
@@ -130,6 +143,40 @@ func filterByPort(conns []collector.Connection, portStr string) []collector.Conn
 	var result []collector.Connection
 	for _, conn := range conns {
 		if conn.LocalPort == port || conn.RemotePort == port {
+			result = append(result, conn)
+		}
+	}
+	return result
+}
+
+// filterByText returns only connections whose rendered fields contain query.
+func filterByText(conns []collector.Connection, query string) []collector.Connection {
+	needle := strings.ToLower(strings.TrimSpace(query))
+	if needle == "" {
+		return conns
+	}
+
+	result := make([]collector.Connection, 0, len(conns))
+	for _, conn := range conns {
+		procInfo := "-"
+		if conn.PID > 0 {
+			if conn.ProcName != "" {
+				procInfo = fmt.Sprintf("%d/%s", conn.PID, conn.ProcName)
+			} else {
+				procInfo = fmt.Sprintf("%d", conn.PID)
+			}
+		}
+		haystack := strings.ToLower(strings.Join([]string{
+			procInfo,
+			normalizeIP(conn.LocalIP),
+			normalizeIP(conn.RemoteIP),
+			fmt.Sprintf("%s:%d", normalizeIP(conn.LocalIP), conn.LocalPort),
+			fmt.Sprintf("%s:%d", normalizeIP(conn.RemoteIP), conn.RemotePort),
+			conn.State,
+			formatBytes(conn.Activity),
+		}, " "))
+
+		if strings.Contains(haystack, needle) {
 			result = append(result, conn)
 		}
 	}

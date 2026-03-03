@@ -12,7 +12,8 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]r[white]           Refresh now
 [yellow]p[white]           Pause/Resume auto-refresh
 [yellow]s[white]           Toggle sensitive IP mask
-[yellow]f[white]           Filter (in Top Connections)
+[yellow]f[white]           Port filter / clear all filters
+[yellow]/[white]           Search (contains text in Top Connections)
 [yellow]Up/Down[white]     Select row (Top Connections)
 [yellow]Enter[white]       Block selected row
 [yellow]k[white]           Block peer (selected/default)
