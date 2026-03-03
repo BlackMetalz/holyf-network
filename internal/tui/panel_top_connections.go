@@ -39,18 +39,16 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string, maxRows
 	}
 
 	const (
-		processColWidth    = 18
-		dirColWidth        = 4
-		endpointColWidth   = 20
-		connectionColWidth = endpointColWidth*2 + 4 // "<local> <-> <remote>"
-		stateColWidth      = 11
+		processColWidth  = 18
+		endpointColWidth = 24
+		stateColWidth    = 11
 	)
 
 	// Header row
 	sb.WriteString(fmt.Sprintf("  [dim]%-*s %-*s %-*s %-*s %s[white]\n",
 		processColWidth, "PROCESS",
-		dirColWidth, "DIR",
-		connectionColWidth, "CONNECTION",
+		endpointColWidth, "SRC",
+		endpointColWidth, "PEER",
 		stateColWidth, "STATE",
 		"QUEUE",
 	))
@@ -84,14 +82,8 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string, maxRows
 		}
 		// Truncate to fit column width
 		procInfo = truncateRight(procInfo, processColWidth)
-		dir, arrow := connectionDirection(conn)
-		local := formatEndpoint(conn.LocalIP, conn.LocalPort, endpointColWidth, sensitiveIP)
-		remote := formatEndpoint(conn.RemoteIP, conn.RemotePort, endpointColWidth, sensitiveIP)
-		connection := fmt.Sprintf("%-*s %2s %-*s",
-			endpointColWidth, local,
-			arrow,
-			endpointColWidth, remote,
-		)
+		src := formatEndpoint(conn.LocalIP, conn.LocalPort, endpointColWidth, sensitiveIP)
+		peer := formatEndpoint(conn.RemoteIP, conn.RemotePort, endpointColWidth, sensitiveIP)
 
 		queueStr := " [dim]0B[white]"
 		if conn.Activity > 0 {
@@ -100,8 +92,8 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string, maxRows
 
 		sb.WriteString(fmt.Sprintf("  [aqua]%-*s[white] %-*s %-*s [%s]%-*s[white]%s\n",
 			processColWidth, procInfo,
-			dirColWidth, dir,
-			connectionColWidth, connection,
+			endpointColWidth, src,
+			endpointColWidth, peer,
 			stateColor, stateColWidth, conn.State,
 			queueStr,
 		))
@@ -217,24 +209,6 @@ func truncateRight(s string, width int) string {
 		return s[:width]
 	}
 	return s[:width-3] + "..."
-}
-
-// connectionDirection infers the flow direction from local/remote ports.
-func connectionDirection(conn collector.Connection) (dir string, arrow string) {
-	const systemPortThreshold = 1024
-
-	switch {
-	case conn.LocalPort <= systemPortThreshold && conn.RemotePort > systemPortThreshold:
-		return "IN", "<-"
-	case conn.RemotePort <= systemPortThreshold && conn.LocalPort > systemPortThreshold:
-		return "OUT", "->"
-	case conn.LocalPort < conn.RemotePort:
-		return "IN", "<-"
-	case conn.LocalPort > conn.RemotePort:
-		return "OUT", "->"
-	default:
-		return "PEER", "<>"
-	}
 }
 
 // min returns the smaller of two ints.
