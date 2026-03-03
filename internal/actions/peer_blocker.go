@@ -5,6 +5,7 @@ import (
 	"net"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -24,6 +25,73 @@ type SocketTuple struct {
 }
 
 const ruleComment = "holyf-network-peer-block"
+
+// ListBlockedPeers inspects firewall INPUT rules and returns all peer blocks
+// that were created by holyf-network (based on rule comment prefix).
+func ListBlockedPeers() ([]PeerBlockSpec, error) {
+	if runtime.GOOS != "linux" {
+		return nil, fmt.Errorf("peer blocking is only supported on Linux")
+	}
+
+	seen := make(map[string]PeerBlockSpec)
+	var errs []string
+
+	for _, bin := range []string{"iptables", "ip6tables"} {
+		if _, err := exec.LookPath(bin); err != nil {
+			continue
+		}
+
+		out, err := exec.Command(bin, "-S", "INPUT").CombinedOutput()
+		if err != nil {
+			msg := strings.TrimSpace(string(out))
+			if msg == "" {
+				msg = err.Error()
+			}
+			errs = append(errs, fmt.Sprintf("%s: %s", bin, msg))
+			continue
+		}
+
+		lines := strings.Split(string(out), "\n")
+		for _, line := range lines {
+			if !strings.Contains(line, ruleComment+":") {
+				continue
+			}
+
+			fields := strings.Fields(line)
+			peerRaw := argValue(fields, "-s")
+			portRaw := argValue(fields, "--dport")
+			if peerRaw == "" || portRaw == "" {
+				continue
+			}
+
+			port, err := strconv.Atoi(portRaw)
+			if err != nil || port < 1 || port > 65535 {
+				continue
+			}
+
+			peerIP := normalizeRuleIP(peerRaw)
+			spec := PeerBlockSpec{PeerIP: peerIP, LocalPort: port}
+			seen[fmt.Sprintf("%s|%d", spec.PeerIP, spec.LocalPort)] = spec
+		}
+	}
+
+	if len(seen) == 0 && len(errs) > 0 {
+		return nil, fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+
+	blocks := make([]PeerBlockSpec, 0, len(seen))
+	for _, spec := range seen {
+		blocks = append(blocks, spec)
+	}
+	sort.Slice(blocks, func(i, j int) bool {
+		if blocks[i].PeerIP != blocks[j].PeerIP {
+			return blocks[i].PeerIP < blocks[j].PeerIP
+		}
+		return blocks[i].LocalPort < blocks[j].LocalPort
+	})
+
+	return blocks, nil
+}
 
 // BlockPeer inserts INPUT+OUTPUT DROP rules for peer IP on the target local port.
 func BlockPeer(spec PeerBlockSpec) error {
@@ -597,4 +665,32 @@ func normalizeIPForSS(raw string) (string, bool, error) {
 
 func ruleCommentForPort(port string) string {
 	return ruleComment + ":" + port
+}
+
+func argValue(fields []string, key string) string {
+	for i := 0; i < len(fields)-1; i++ {
+		if fields[i] == key {
+			return strings.Trim(fields[i+1], "\"")
+		}
+	}
+	return ""
+}
+
+func normalizeRuleIP(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if ip, _, err := net.ParseCIDR(raw); err == nil {
+		if v4 := ip.To4(); v4 != nil {
+			return v4.String()
+		}
+		return ip.String()
+	}
+
+	ip := net.ParseIP(strings.TrimPrefix(raw, "::ffff:"))
+	if ip == nil {
+		return raw
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String()
+	}
+	return ip.String()
 }

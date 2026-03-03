@@ -772,15 +772,10 @@ func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duratio
 }
 
 func (a *App) promptBlockedPeers() {
-	blocks := a.snapshotActiveBlocks()
+	blocks := a.snapshotDisplayActiveBlocks()
 	if len(blocks) == 0 {
 		a.setStatusNote("No active blocked peers", 4*time.Second)
 		return
-	}
-
-	options := make([]string, 0, len(blocks))
-	for _, entry := range blocks {
-		options = append(options, formatBlockedSpec(entry.Spec))
 	}
 
 	selectedIndex := 0
@@ -797,23 +792,21 @@ func (a *App) promptBlockedPeers() {
 		summaryView.SetText("  " + formatActiveBlockDetail(entry))
 	}
 
-	dropDown := tview.NewDropDown().
-		SetLabel("Blocked: ").
-		SetFieldWidth(44).
-		SetOptions(options, func(_ string, index int) {
-			selectedIndex = index
-			updateSummary()
-		})
-	dropDown.SetCurrentOption(0)
-	updateSummary()
+	list := tview.NewList().
+		ShowSecondaryText(true)
+	list.SetBorder(false)
+	list.SetChangedFunc(func(index int, _ string, _ string, _ rune) {
+		selectedIndex = index
+		updateSummary()
+	})
 
 	closeModal := func() {
 		a.pages.RemovePage("blocked-peers")
 		a.app.SetFocus(a.panels[a.focusIndex])
 	}
 
-	refreshDropDown := func(nextIndex int) {
-		blocks = a.snapshotActiveBlocks()
+	refreshList := func(nextIndex int) {
+		blocks = a.snapshotDisplayActiveBlocks()
 		if len(blocks) == 0 {
 			closeModal()
 			a.setStatusNote("No active blocked peers", 4*time.Second)
@@ -821,28 +814,29 @@ func (a *App) promptBlockedPeers() {
 			return
 		}
 
-		opts := make([]string, 0, len(blocks))
-		for _, entry := range blocks {
-			opts = append(opts, formatBlockedSpec(entry.Spec))
-		}
-
 		if nextIndex < 0 {
 			nextIndex = 0
 		}
-		if nextIndex >= len(opts) {
-			nextIndex = len(opts) - 1
+		if nextIndex >= len(blocks) {
+			nextIndex = len(blocks) - 1
+		}
+
+		list.Clear()
+		for _, entry := range blocks {
+			main := formatBlockedSpec(entry.Spec)
+			secondary := "expires in " + formatRemainingDuration(time.Until(entry.ExpiresAt))
+			if entry.ExpiresAt.IsZero() {
+				secondary = "detected from firewall rules"
+			}
+			list.AddItem(main, secondary, 0, nil)
 		}
 		selectedIndex = nextIndex
-		dropDown.SetOptions(opts, func(_ string, index int) {
-			selectedIndex = index
-			updateSummary()
-		})
-		dropDown.SetCurrentOption(nextIndex)
+		list.SetCurrentItem(nextIndex)
 		updateSummary()
 	}
+	refreshList(0)
 
 	form := tview.NewForm().
-		AddFormItem(dropDown).
 		AddButton("Remove", func() {
 			if selectedIndex < 0 || selectedIndex >= len(blocks) {
 				a.setStatusNote("No blocked peer selected", 4*time.Second)
@@ -855,7 +849,7 @@ func (a *App) promptBlockedPeers() {
 			}
 			a.removeActiveBlock(spec)
 			a.setStatusNote(fmt.Sprintf("Unblocked %s:%d", spec.PeerIP, spec.LocalPort), 6*time.Second)
-			refreshDropDown(selectedIndex)
+			refreshList(selectedIndex)
 		}).
 		AddButton("Close", func() {
 			closeModal()
@@ -869,7 +863,8 @@ func (a *App) promptBlockedPeers() {
 
 	content := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(summaryView, 2, 0, false).
-		AddItem(form, 0, 1, true)
+		AddItem(list, 0, 1, true).
+		AddItem(form, 1, 0, false)
 	content.SetBorder(true)
 	content.SetTitle(" Blocked Peers ")
 
@@ -879,12 +874,11 @@ func (a *App) promptBlockedPeers() {
 			AddItem(nil, 0, 1, false).
 			AddItem(content, 98, 0, true).
 			AddItem(nil, 0, 1, false),
-			9, 0, true).
+			14, 0, true).
 		AddItem(nil, 0, 1, false)
 
 	a.pages.AddPage("blocked-peers", modal, true, true)
-	form.SetFocus(0)
-	a.app.SetFocus(form)
+	a.app.SetFocus(list)
 }
 
 // selectPeerKillTarget picks the most frequent peer->localPort tuple.
@@ -1193,7 +1187,11 @@ func formatActiveBlockDetail(entry activeBlockEntry) string {
 	if summary == "" {
 		summary = fmt.Sprintf("Blocked %s:%d", entry.Spec.PeerIP, entry.Spec.LocalPort)
 	}
-	return fmt.Sprintf("[dim]Summary:[white] %s\n[dim]Expires in:[white] %s", summary, formatRemainingDuration(time.Until(entry.ExpiresAt)))
+	expiresText := formatRemainingDuration(time.Until(entry.ExpiresAt))
+	if entry.ExpiresAt.IsZero() {
+		expiresText = "n/a (unmanaged)"
+	}
+	return fmt.Sprintf("[dim]Summary:[white] %s\n[dim]Expires in:[white] %s", summary, expiresText)
 }
 
 func (a *App) showBlockSummaryPopup(summary string) {
@@ -1297,6 +1295,40 @@ func (a *App) snapshotActiveBlocks() []activeBlockEntry {
 		return items[i].Spec.LocalPort < items[j].Spec.LocalPort
 	})
 	return items
+}
+
+func (a *App) snapshotDisplayActiveBlocks() []activeBlockEntry {
+	items := a.snapshotActiveBlocks()
+	byKey := make(map[string]activeBlockEntry, len(items))
+	for _, entry := range items {
+		byKey[blockKey(entry.Spec)] = entry
+	}
+
+	firewallBlocks, err := actions.ListBlockedPeers()
+	if err == nil {
+		for _, spec := range firewallBlocks {
+			key := blockKey(spec)
+			if _, exists := byKey[key]; exists {
+				continue
+			}
+			byKey[key] = activeBlockEntry{
+				Spec:    spec,
+				Summary: fmt.Sprintf("Detected firewall block %s:%d", spec.PeerIP, spec.LocalPort),
+			}
+		}
+	}
+
+	merged := make([]activeBlockEntry, 0, len(byKey))
+	for _, entry := range byKey {
+		merged = append(merged, entry)
+	}
+	sort.Slice(merged, func(i, j int) bool {
+		if merged[i].Spec.PeerIP != merged[j].Spec.PeerIP {
+			return merged[i].Spec.PeerIP < merged[j].Spec.PeerIP
+		}
+		return merged[i].Spec.LocalPort < merged[j].Spec.LocalPort
+	})
+	return merged
 }
 
 func (a *App) enterKillFlowPause() {
