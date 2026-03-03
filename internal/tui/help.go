@@ -13,6 +13,7 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]p[white]           Pause/Resume auto-refresh
 [yellow]s[white]           Toggle sensitive IP mask
 [yellow]f[white]           Filter (in Top Connections)
+[yellow]k[white]           Block top peer (Top Connections)
 [yellow]?[white]           Toggle this help
 [yellow]q[white]           Quit
 
@@ -39,7 +40,7 @@ func createHelpModal() *tview.Flex {
 	//
 	inner := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).      // Top spacer
-		AddItem(helpView, 14, 0, true). // Help content (fixed height)
+		AddItem(helpView, 15, 0, true). // Help content (fixed height)
 		AddItem(nil, 0, 1, false)       // Bottom spacer
 
 	modal := tview.NewFlex().

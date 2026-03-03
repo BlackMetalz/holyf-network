@@ -2,8 +2,12 @@ package tui
 
 import (
 	"fmt"
+	"sort"
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/BlackMetalz/holyf-network/internal/actions"
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -33,6 +37,16 @@ type App struct {
 	portFilter string
 	// Hide sensitive IP prefixes in Top Connections.
 	sensitiveIP bool
+	// Latest top connections snapshot used by actions (kill peer, etc.).
+	latestTalkers []collector.Connection
+
+	// Short-lived status note shown in status bar.
+	statusNote      string
+	statusNoteUntil time.Time
+
+	// Active peer blocks for cleanup on shutdown.
+	blockMu      sync.Mutex
+	activeBlocks map[string]actions.PeerBlockSpec
 
 	// Auto-refresh state (Epic 7)
 	stopChan    chan struct{}
@@ -47,13 +61,14 @@ type App struct {
 // NewApp creates a new TUI application.
 func NewApp(ifaceName string, refreshSec int, sensitiveIP bool) *App {
 	return &App{
-		app:         tview.NewApplication(),
-		ifaceName:   ifaceName,
-		refreshSec:  refreshSec,
-		focusIndex:  0,
-		sensitiveIP: sensitiveIP,
-		stopChan:    make(chan struct{}),
-		refreshChan: make(chan struct{}, 1), // Buffered: so send never blocks
+		app:          tview.NewApplication(),
+		ifaceName:    ifaceName,
+		refreshSec:   refreshSec,
+		focusIndex:   0,
+		sensitiveIP:  sensitiveIP,
+		activeBlocks: make(map[string]actions.PeerBlockSpec),
+		stopChan:     make(chan struct{}),
+		refreshChan:  make(chan struct{}, 1), // Buffered: so send never blocks
 	}
 }
 
@@ -177,6 +192,7 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		// tcell.KeyRune means a regular character key (not special key)
 		switch event.Rune() {
 		case 'q':
+			a.cleanupActiveBlocks()
 			close(a.stopChan) // Signal goroutines to stop
 			a.app.Stop()
 			return nil
@@ -200,6 +216,9 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case 'f':
 			a.promptPortFilter()
+			return nil
+		case 'k':
+			a.promptKillPeer()
 			return nil
 		case 'z':
 			a.toggleZoom()
@@ -298,8 +317,10 @@ func (a *App) refreshData() {
 	// Panel 2: Top Connections
 	talkers, err := collector.CollectTopTalkers(100)
 	if err != nil {
+		a.latestTalkers = nil
 		a.panels[2].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
+		a.latestTalkers = talkers
 		displayLimit := 20
 		if a.zoomed {
 			displayLimit = 100
@@ -344,9 +365,12 @@ func (a *App) updateStatusBar() {
 	if a.sensitiveIP {
 		stateText += " [yellow]IP MASK[white] |"
 	}
+	if time.Now().Before(a.statusNoteUntil) && a.statusNote != "" {
+		stateText += fmt.Sprintf(" [yellow]%s[white] |", a.statusNote)
+	}
 
 	a.statusBar.SetText(fmt.Sprintf(
-		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]s[white]=mask-ip [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
+		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | [dim]r[white]=refresh [dim]p[white]=pause [dim]s[white]=mask-ip [dim]f[white]=filter [dim]k[white]=kill-peer [dim]z[white]=zoom [dim]?[white]=help [dim]q[white]=quit",
 		a.ifaceName,
 		stateText,
 		ago,
@@ -396,4 +420,212 @@ func (a *App) promptPortFilter() {
 
 	a.pages.AddPage("filter", modal, true, true)
 	a.app.SetFocus(input)
+}
+
+type peerKillTarget struct {
+	PeerIP    string
+	LocalPort int
+	Count     int
+}
+
+// promptKillPeer confirms and applies a temporary firewall block for a peer.
+func (a *App) promptKillPeer() {
+	if a.focusIndex != 2 {
+		a.setStatusNote("Focus Top Connections before kill-peer", 5*time.Second)
+		return
+	}
+
+	target, ok := a.selectPeerKillTarget()
+	if !ok {
+		a.setStatusNote("No peer candidate in current Top Connections view", 5*time.Second)
+		return
+	}
+	spec := actions.PeerBlockSpec{PeerIP: target.PeerIP, LocalPort: target.LocalPort}
+	if a.hasActiveBlock(spec) {
+		a.setStatusNote(fmt.Sprintf("Already blocked %s:%d", target.PeerIP, target.LocalPort), 5*time.Second)
+		return
+	}
+
+	duration := 10 * time.Minute
+	label := "Block 10m"
+	text := fmt.Sprintf(
+		"Block peer %s -> local port %d for 10 minutes?\n\nMatches in current view: %d\nThis inserts a DROP rule and deletes active conntrack flows.",
+		target.PeerIP,
+		target.LocalPort,
+		target.Count,
+	)
+
+	modal := tview.NewModal().
+		SetText(text).
+		AddButtons([]string{label, "Cancel"}).
+		SetDoneFunc(func(_ int, button string) {
+			a.pages.RemovePage("kill-peer")
+			a.app.SetFocus(a.panels[a.focusIndex])
+			if button != label {
+				return
+			}
+
+			a.setStatusNote(fmt.Sprintf("Blocking %s:%d...", target.PeerIP, target.LocalPort), 4*time.Second)
+			go a.blockPeerForDuration(target, duration)
+		})
+	modal.SetTitle(" Kill Peer ")
+	modal.SetBorder(true)
+
+	a.pages.AddPage("kill-peer", modal, true, true)
+	a.app.SetFocus(modal)
+}
+
+// selectPeerKillTarget picks the most frequent peer->localPort tuple.
+func (a *App) selectPeerKillTarget() (peerKillTarget, bool) {
+	if len(a.latestTalkers) == 0 {
+		return peerKillTarget{}, false
+	}
+
+	filtered := a.latestTalkers
+	if a.portFilter != "" {
+		filtered = filterByPort(filtered, a.portFilter)
+	}
+	if len(filtered) == 0 {
+		return peerKillTarget{}, false
+	}
+
+	type aggregate struct {
+		target   peerKillTarget
+		activity int64
+	}
+	aggByKey := make(map[string]aggregate)
+
+	for _, conn := range filtered {
+		peer := normalizeIP(conn.RemoteIP)
+		key := fmt.Sprintf("%s|%d", peer, conn.LocalPort)
+
+		current := aggByKey[key]
+		current.target.PeerIP = peer
+		current.target.LocalPort = conn.LocalPort
+		current.target.Count++
+		current.activity += conn.Activity
+		aggByKey[key] = current
+	}
+
+	candidates := make([]aggregate, 0, len(aggByKey))
+	for _, candidate := range aggByKey {
+		candidates = append(candidates, candidate)
+	}
+	if len(candidates) == 0 {
+		return peerKillTarget{}, false
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].target.Count != candidates[j].target.Count {
+			return candidates[i].target.Count > candidates[j].target.Count
+		}
+		if candidates[i].activity != candidates[j].activity {
+			return candidates[i].activity > candidates[j].activity
+		}
+		if candidates[i].target.LocalPort != candidates[j].target.LocalPort {
+			return candidates[i].target.LocalPort < candidates[j].target.LocalPort
+		}
+		return candidates[i].target.PeerIP < candidates[j].target.PeerIP
+	})
+
+	return candidates[0].target, true
+}
+
+func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration) {
+	spec := actions.PeerBlockSpec{
+		PeerIP:    target.PeerIP,
+		LocalPort: target.LocalPort,
+	}
+
+	if err := actions.BlockPeer(spec); err != nil {
+		a.app.QueueUpdateDraw(func() {
+			a.setStatusNote("Block failed: "+shortStatus(err.Error(), 64), 8*time.Second)
+		})
+		return
+	}
+	a.addActiveBlock(spec)
+
+	dropWarning := ""
+	if err := actions.DropPeerConnections(spec); err != nil {
+		dropWarning = " (flow-drop skipped)"
+	}
+
+	a.app.QueueUpdateDraw(func() {
+		a.setStatusNote(fmt.Sprintf("Blocked %s:%d for 10m%s", target.PeerIP, target.LocalPort, dropWarning), 8*time.Second)
+		a.refreshData()
+	})
+
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-a.stopChan:
+		return
+	}
+
+	if err := actions.UnblockPeer(spec); err != nil {
+		a.app.QueueUpdateDraw(func() {
+			a.setStatusNote("Auto-unblock failed: "+shortStatus(err.Error(), 64), 8*time.Second)
+		})
+		return
+	}
+	a.removeActiveBlock(spec)
+
+	a.app.QueueUpdateDraw(func() {
+		a.setStatusNote(fmt.Sprintf("Unblocked %s:%d", target.PeerIP, target.LocalPort), 6*time.Second)
+		a.refreshData()
+	})
+}
+
+func (a *App) setStatusNote(note string, ttl time.Duration) {
+	a.statusNote = strings.TrimSpace(note)
+	a.statusNoteUntil = time.Now().Add(ttl)
+	a.updateStatusBar()
+}
+
+func shortStatus(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	if max <= 3 {
+		return s[:max]
+	}
+	return s[:max-3] + "..."
+}
+
+func blockKey(spec actions.PeerBlockSpec) string {
+	return fmt.Sprintf("%s|%d", spec.PeerIP, spec.LocalPort)
+}
+
+func (a *App) addActiveBlock(spec actions.PeerBlockSpec) {
+	a.blockMu.Lock()
+	defer a.blockMu.Unlock()
+	a.activeBlocks[blockKey(spec)] = spec
+}
+
+func (a *App) removeActiveBlock(spec actions.PeerBlockSpec) {
+	a.blockMu.Lock()
+	defer a.blockMu.Unlock()
+	delete(a.activeBlocks, blockKey(spec))
+}
+
+func (a *App) cleanupActiveBlocks() {
+	a.blockMu.Lock()
+	pending := make([]actions.PeerBlockSpec, 0, len(a.activeBlocks))
+	for _, spec := range a.activeBlocks {
+		pending = append(pending, spec)
+	}
+	a.blockMu.Unlock()
+
+	for _, spec := range pending {
+		_ = actions.UnblockPeer(spec)
+		a.removeActiveBlock(spec)
+	}
+}
+
+func (a *App) hasActiveBlock(spec actions.PeerBlockSpec) bool {
+	a.blockMu.Lock()
+	defer a.blockMu.Unlock()
+	_, exists := a.activeBlocks[blockKey(spec)]
+	return exists
 }

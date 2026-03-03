@@ -210,11 +210,3 @@ func truncateRight(s string, width int) string {
 	}
 	return s[:width-3] + "..."
 }
-
-// min returns the smaller of two ints.
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
