@@ -33,8 +33,8 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 
 const historyHelpText = `[yellow]Replay Shortcuts[white]
 ──────────────────────────
-[yellow]left bracket[white]  Previous snapshot
-[yellow]right bracket[white] Next snapshot
+[yellow]][white]             Next snapshot
+[yellow][[white]             Previous snapshot
 [yellow]a / e[white]         Jump to oldest / latest snapshot
 [yellow]t[white]             Jump to specific time
 [yellow]L[white]           Follow latest snapshots
@@ -46,7 +46,6 @@ const historyHelpText = `[yellow]Replay Shortcuts[white]
 [yellow]Shift+S[white]     Sort by State
 [yellow]Shift+P[white]     Sort by Peer
 [yellow]Shift+R[white]     Sort by Process
-[yellow]g[white]           Aggregate-only mode note
 [yellow]s[white]           Toggle sensitive IP mask
 [yellow]?[white]           Toggle this help
 [yellow]q[white]           Quit

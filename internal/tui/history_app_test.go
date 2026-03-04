@@ -167,23 +167,6 @@ func TestHistoryAggregateSortModes(t *testing.T) {
 	}
 }
 
-func TestHistoryHandleKeyEventGAggregateOnlyNote(t *testing.T) {
-	t.Parallel()
-
-	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
-	h.refs = []history.SnapshotRef{{}}
-	h.currentIndex = 0
-	h.currentRecord = history.SnapshotRecord{Groups: []history.SnapshotGroup{{PeerIP: "198.51.100.10"}}}
-
-	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
-	if ret != nil {
-		t.Fatalf("g should be handled in replay mode")
-	}
-	if !strings.Contains(h.statusNote, "Aggregate-only") {
-		t.Fatalf("expected aggregate-only status note, got=%q", h.statusNote)
-	}
-}
-
 func TestParseHistoryJumpTime(t *testing.T) {
 	t.Parallel()
 

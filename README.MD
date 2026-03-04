@@ -123,7 +123,6 @@ Replay hotkeys:
 - `f`: port filter (press again to clear filters)
 - `/`: grep-like contains filter for current snapshot
 - `o` / `Shift+Q/S/P/R`: sort mode
-- `g`: show aggregate-only mode note
 - `s`: mask IP display
 - `?`: help
 - `q`: quit

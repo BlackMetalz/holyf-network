@@ -9,7 +9,7 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/history"
 )
 
-const historyAggregateHintLine = "  [dim]Use ↑/↓ select, t=jump-time, /=search, f=port/clear, o=cycle sort, Shift+Q/S/P/R=direct sort, g=aggregate-only, L=follow[white]"
+const historyAggregateHintLine = "  [dim]Use ↑/↓ select, ]=next snapshot, [=previous snapshot, t=jump-time, /=search, f=port/clear, o=cycle sort, Shift+Q/S/P/R=direct sort, L=follow[white]"
 
 func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode) string {
 	var sb strings.Builder

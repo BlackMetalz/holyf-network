@@ -81,9 +81,6 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			h.renderPanel()
 			h.updateStatusBar()
 			return nil
-		case 'g':
-			h.setStatusNote("Aggregate-only replay mode", 4*time.Second)
-			return nil
 		case 's':
 			h.sensitiveIP = !h.sensitiveIP
 			h.renderPanel()
@@ -342,7 +339,7 @@ func historyStatusHotkeysForPage(page string) (styled string, plain string) {
 	case "history-filter", "history-search", "history-jump-time":
 		return "[dim]Enter[white]=apply [dim]Esc[white]=cancel", "Enter=apply Esc=cancel"
 	default:
-		return "[dim]lb/rb a e t f / o Q/S/P/R g s z L ? q[white]", "lb/rb a e t f / o Q/S/P/R g s z L ? q"
+		return "[dim]]=next [[=prev a e t f / o Q/S/P/R s z L ? q[white]", "]=next [=prev a e t f / o Q/S/P/R s z L ? q"
 	}
 }
 
