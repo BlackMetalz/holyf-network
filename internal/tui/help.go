@@ -24,7 +24,7 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]Shift+R[white]     Sort by Process
 [yellow]g[white]           Toggle group-by-peer view
 [yellow]b[white]           Show blocked peers
-[yellow]h[white]           Show action log (latest 10)
+[yellow]h[white]           Show action log (latest 20)
 [yellow]z[white]           Toggle zoom (focused panel)
 [yellow]?[white]           Toggle this help
 [yellow]q[white]           Quit

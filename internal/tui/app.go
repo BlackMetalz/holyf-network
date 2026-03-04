@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,6 +64,8 @@ type App struct {
 	// Recent action history (for modal "h").
 	actionLogMu sync.Mutex
 	actionLogs  []string
+	// Persistent action history location (~/.holyf-network/history.log).
+	actionHistoryPath string
 
 	// Active peer blocks for cleanup on shutdown.
 	blockMu      sync.Mutex
@@ -101,18 +106,19 @@ func NewApp(
 	}
 	healthThresholds.Normalize()
 
-		return &App{
-			app:              tview.NewApplication(),
-			ifaceName:        ifaceName,
-			refreshSec:       refreshSec,
-			appVersion:       version,
-			focusIndex:       2, // Top Connections panel is default active focus.
-			sensitiveIP:      sensitiveIP,
-			activeBlocks:     make(map[string]activeBlockEntry),
-			stopChan:         make(chan struct{}),
-			refreshChan:      make(chan struct{}, 1), // Buffered: so send never blocks
-		healthThresholds: healthThresholds,
-		actionLogs:       make([]string, 0, 32),
+	return &App{
+		app:               tview.NewApplication(),
+		ifaceName:         ifaceName,
+		refreshSec:        refreshSec,
+		appVersion:        version,
+		focusIndex:        2, // Top Connections panel is default active focus.
+		sensitiveIP:       sensitiveIP,
+		activeBlocks:      make(map[string]activeBlockEntry),
+		stopChan:          make(chan struct{}),
+		refreshChan:       make(chan struct{}, 1), // Buffered: so send never blocks
+		healthThresholds:  healthThresholds,
+		actionLogs:        make([]string, 0, 32),
+		actionHistoryPath: defaultActionHistoryPath(),
 	}
 }
 
@@ -795,7 +801,7 @@ func (a *App) promptTextFilter() {
 }
 
 func (a *App) promptActionLog() {
-	logs := a.recentActionLogs(10)
+	logs := a.recentActionLogs(actionLogModalLimit)
 
 	var body strings.Builder
 	if len(logs) == 0 {
@@ -809,6 +815,13 @@ func (a *App) promptActionLog() {
 			}
 		}
 	}
+	body.WriteString("\n\n")
+	body.WriteString(fmt.Sprintf(
+		"  [dim]Showing latest %d. Full history: %s (rolling %d events)[white]",
+		actionLogModalLimit,
+		actionHistoryDisplayPath,
+		actionLogRotateLimit,
+	))
 
 	view := tview.NewTextView().
 		SetDynamicColors(true).
@@ -816,7 +829,7 @@ func (a *App) promptActionLog() {
 		SetTextAlign(tview.AlignLeft).
 		SetText(body.String())
 	view.SetBorder(true)
-	view.SetTitle(" Action Log (latest 10) ")
+	view.SetTitle(fmt.Sprintf(" Action Log (latest %d) ", actionLogModalLimit))
 
 	closeModal := func() {
 		a.pages.RemovePage("action-log")
@@ -868,6 +881,13 @@ type peerKillTarget struct {
 const (
 	defaultBlockMinutes = 10
 	maxBlockMinutes     = 1440
+
+	actionLogModalLimit      = 20
+	inMemoryActionLogMax     = 500
+	actionLogRotateLimit     = 500
+	actionHistoryDirName     = ".holyf-network"
+	actionHistoryFileName    = "history.log"
+	actionHistoryDisplayPath = "~/.holyf-network/history.log"
 )
 
 func parseBlockMinutes(raw string) (int, error) {
@@ -1716,15 +1736,16 @@ func (a *App) addActionLog(message string) {
 
 	a.actionLogMu.Lock()
 	a.actionLogs = append(a.actionLogs, line)
-	if len(a.actionLogs) > 200 {
-		a.actionLogs = append([]string(nil), a.actionLogs[len(a.actionLogs)-200:]...)
+	if len(a.actionLogs) > inMemoryActionLogMax {
+		a.actionLogs = append([]string(nil), a.actionLogs[len(a.actionLogs)-inMemoryActionLogMax:]...)
 	}
+	a.persistActionLogLocked(line)
 	a.actionLogMu.Unlock()
 }
 
 func (a *App) recentActionLogs(limit int) []string {
 	if limit <= 0 {
-		limit = 10
+		limit = actionLogModalLimit
 	}
 
 	a.actionLogMu.Lock()
@@ -1743,6 +1764,67 @@ func (a *App) recentActionLogs(limit int) []string {
 		out = append(out, a.actionLogs[i])
 	}
 	return out
+}
+
+func defaultActionHistoryPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	home = strings.TrimSpace(home)
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, actionHistoryDirName, actionHistoryFileName)
+}
+
+// persistActionLogLocked appends one event and keeps only the latest N lines.
+// Caller must hold a.actionLogMu.
+func (a *App) persistActionLogLocked(line string) {
+	path := strings.TrimSpace(a.actionHistoryPath)
+	if path == "" {
+		path = defaultActionHistoryPath()
+		a.actionHistoryPath = path
+	}
+	if path == "" {
+		return
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+
+	lines, err := readActionHistoryLines(path)
+	if err != nil {
+		return
+	}
+	lines = append(lines, line)
+	if len(lines) > actionLogRotateLimit {
+		lines = append([]string(nil), lines[len(lines)-actionLogRotateLimit:]...)
+	}
+
+	content := strings.Join(lines, "\n")
+	if content != "" {
+		content += "\n"
+	}
+	_ = os.WriteFile(path, []byte(content), 0o644)
+}
+
+func readActionHistoryLines(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	content := strings.ReplaceAll(string(data), "\r\n", "\n")
+	content = strings.TrimRight(content, "\n")
+	if strings.TrimSpace(content) == "" {
+		return nil, nil
+	}
+	return strings.Split(content, "\n"), nil
 }
 
 func shortStatus(s string, max int) string {
