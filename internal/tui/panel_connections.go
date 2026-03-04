@@ -46,7 +46,7 @@ func renderConnectionsPanel(
 	}
 
 	var sb strings.Builder
-	sb.WriteString(renderHealthStrip(retrans, conntrack, thresholds))
+	sb.WriteString(renderHealthStrip(data, retrans, conntrack, thresholds))
 	sb.WriteString("\n\n")
 
 	if len(sorted) == 0 {
@@ -84,19 +84,23 @@ func renderConnectionsPanel(
 		if retrans.FirstReading {
 			sb.WriteString("  [dim]Rates after next refresh[white]")
 		} else {
-			// Color by severity: < 1% green, 1-5% yellow, > 5% red
-			color := "green"
-			if retrans.RetransPercent > 5 {
-				color = "red"
-			} else if retrans.RetransPercent > 1 {
-				color = "yellow"
-			}
-
-			sb.WriteString(fmt.Sprintf("  [%s]%.0f/sec (%.2f%%)[white]",
-				color, retrans.RetransPerSec, retrans.RetransPercent))
-
-			if retrans.RetransPercent > 5 {
-				sb.WriteString(" [red]⚠ high loss![white]")
+			sample := evaluateRetransSample(data, retrans, thresholds)
+			if !sample.Ready {
+				sb.WriteString(fmt.Sprintf(
+					"  [dim]LOW SAMPLE (est %d/%d, out %.1f/%.1f seg/s)[white]",
+					sample.Established,
+					sample.MinEstablished,
+					sample.OutSegsPerSec,
+					sample.MinOutSegsPerSec,
+				))
+			} else {
+				level := classifyMetric(retrans.RetransPercent, thresholds.RetransPercent)
+				color := colorForHealthLevel(level)
+				sb.WriteString(fmt.Sprintf("  [%s]%.1f/sec (%.2f%%)[white]",
+					color, retrans.RetransPerSec, retrans.RetransPercent))
+				if level == healthCrit {
+					sb.WriteString(" [red]⚠ high loss![white]")
+				}
 			}
 		}
 	}
@@ -114,6 +118,7 @@ const (
 )
 
 func renderHealthStrip(
+	data collector.ConnectionData,
 	retrans *collector.RetransmitRates,
 	conntrack *collector.ConntrackRates,
 	thresholds config.HealthThresholds,
@@ -124,10 +129,15 @@ func renderHealthStrip(
 	retransColor := "dim"
 	retransLevel := healthUnknown
 	if retrans != nil && !retrans.FirstReading {
-		retransLevel = classifyMetric(retrans.RetransPercent, thresholds.RetransPercent)
-		retransColor = colorForHealthLevel(retransLevel)
-		retransValue = fmt.Sprintf("%.1f%%", retrans.RetransPercent)
-		overall = maxHealthLevel(overall, retransLevel)
+		sample := evaluateRetransSample(data, retrans, thresholds)
+		if sample.Ready {
+			retransLevel = classifyMetric(retrans.RetransPercent, thresholds.RetransPercent)
+			retransColor = colorForHealthLevel(retransLevel)
+			retransValue = fmt.Sprintf("%.1f%%", retrans.RetransPercent)
+			overall = maxHealthLevel(overall, retransLevel)
+		} else {
+			retransValue = "LOW SAMPLE"
+		}
 	}
 
 	dropsValue := "n/a"
@@ -179,6 +189,36 @@ func renderHealthStrip(
 		conntrackColor,
 		conntrackValue,
 	)
+}
+
+type retransSampleStatus struct {
+	Ready            bool
+	Established      int
+	MinEstablished   int
+	OutSegsPerSec    float64
+	MinOutSegsPerSec float64
+}
+
+func evaluateRetransSample(
+	data collector.ConnectionData,
+	retrans *collector.RetransmitRates,
+	thresholds config.HealthThresholds,
+) retransSampleStatus {
+	established := data.States["ESTABLISHED"]
+	status := retransSampleStatus{
+		Ready:            false,
+		Established:      established,
+		MinEstablished:   thresholds.RetransMinEstablished,
+		OutSegsPerSec:    0,
+		MinOutSegsPerSec: thresholds.RetransMinOutSegsPerSec,
+	}
+	if retrans == nil {
+		return status
+	}
+	status.OutSegsPerSec = retrans.OutSegsPerSec
+	status.Ready = established >= thresholds.RetransMinEstablished &&
+		retrans.OutSegsPerSec >= thresholds.RetransMinOutSegsPerSec
+	return status
 }
 
 func classifyMetric(value float64, threshold config.ThresholdBand) healthLevel {

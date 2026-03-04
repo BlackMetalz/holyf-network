@@ -9,3 +9,7 @@ crit = 50
 [conntrack_percent]
 warn = 70
 crit = 85
+
+[retrans_sample]
+min_established = 20
+min_out_segs_per_sec = 60

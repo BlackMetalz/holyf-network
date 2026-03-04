@@ -19,6 +19,9 @@ type HealthThresholds struct {
 	RetransPercent   ThresholdBand
 	DropsPerSec      ThresholdBand
 	ConntrackPercent ThresholdBand
+	// Retrans sample gates: retrans health is only evaluated when both are met.
+	RetransMinEstablished   int
+	RetransMinOutSegsPerSec float64
 }
 
 // DefaultHealthThresholds returns sane defaults for server monitoring.
@@ -36,6 +39,8 @@ func DefaultHealthThresholds() HealthThresholds {
 			Warn: 70.0,
 			Crit: 85.0,
 		},
+		RetransMinEstablished:   20,
+		RetransMinOutSegsPerSec: 60.0,
 	}
 }
 
@@ -44,6 +49,12 @@ func (h *HealthThresholds) Normalize() {
 	normalizeBand(&h.RetransPercent)
 	normalizeBand(&h.DropsPerSec)
 	normalizeBand(&h.ConntrackPercent)
+	if h.RetransMinEstablished < 0 {
+		h.RetransMinEstablished = 0
+	}
+	if h.RetransMinOutSegsPerSec < 0 {
+		h.RetransMinOutSegsPerSec = 0
+	}
 }
 
 func normalizeBand(b *ThresholdBand) {
@@ -68,8 +79,11 @@ func normalizeBand(b *ThresholdBand) {
 //	[retrans_percent]
 //	[drops_per_sec]
 //	[conntrack_percent]
+//	[retrans_sample]
 //
-// Supported keys in each section: warn, crit
+// Supported keys:
+//   - [retrans_percent], [drops_per_sec], [conntrack_percent]: warn, crit
+//   - [retrans_sample]: min_established, min_out_segs_per_sec
 func LoadHealthThresholds(path string) (HealthThresholds, error) {
 	thresholds := DefaultHealthThresholds()
 	if strings.TrimSpace(path) == "" {
@@ -114,16 +128,24 @@ func LoadHealthThresholds(path string) (HealthThresholds, error) {
 			return thresholds, fmt.Errorf("%s:%d invalid number %q", path, lineNo, raw)
 		}
 
-		band := thresholdBandBySection(&thresholds, section)
-		if band == nil {
+		if section == "retrans_sample" {
+			switch key {
+			case "min_established":
+				thresholds.RetransMinEstablished = int(value)
+			case "min_out_segs_per_sec":
+				thresholds.RetransMinOutSegsPerSec = value
+			}
 			continue
 		}
 
-		switch key {
-		case "warn":
-			band.Warn = value
-		case "crit":
-			band.Crit = value
+		band := thresholdBandBySection(&thresholds, section)
+		if band != nil {
+			switch key {
+			case "warn":
+				band.Warn = value
+			case "crit":
+				band.Crit = value
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {

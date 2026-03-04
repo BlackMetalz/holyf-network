@@ -82,6 +82,11 @@ crit = 50
 [conntrack_percent]
 warn = 70
 crit = 85
+
+[retrans_sample]
+# Only evaluate retrans health if BOTH conditions are met.
+min_established = 20
+min_out_segs_per_sec = 60
 ```
 
 In case you want to custom threshold:
@@ -89,3 +94,6 @@ In case you want to custom threshold:
 # Use custom health strip thresholds
 holyf-network --health-config /etc/holyf-network/health_thresholds.toml
 ```
+
+Notes:
+- If retrans sample is below thresholds, UI shows `LOW SAMPLE` and does not trigger retrans WARN/CRIT.
