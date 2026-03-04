@@ -91,6 +91,7 @@ Navigation keys:
 - `]` next snapshot
 - `a` oldest
 - `e` latest
+- `t` jump to specific timestamp
 
 Behavior constraints:
 

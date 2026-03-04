@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -63,6 +64,9 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case '/':
 			h.promptTextFilter()
+			return nil
+		case 't', 'T':
+			h.promptJumpToTime()
 			return nil
 		case 'o':
 			h.sortMode = NextSortMode(h.sortMode)
@@ -237,6 +241,82 @@ func (h *HistoryApp) promptTextFilter() {
 	h.app.SetFocus(input)
 }
 
+func (h *HistoryApp) promptJumpToTime() {
+	if len(h.refs) == 0 {
+		h.setStatusNote("No snapshots available", 4*time.Second)
+		return
+	}
+
+	input := tview.NewInputField()
+	input.SetLabel("Jump to time: ")
+	input.SetFieldWidth(36)
+	if h.currentIndex >= 0 && h.currentIndex < len(h.refs) {
+		input.SetText(h.refs[h.currentIndex].CapturedAt.Local().Format("2006-01-02 15:04:05"))
+	}
+	input.SetBorder(true)
+	input.SetTitle(" Jump To Snapshot Time ")
+
+	input.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			target, err := parseHistoryJumpTime(input.GetText(), time.Now())
+			if err != nil {
+				h.setStatusNote("Invalid time. Use YYYY-MM-DD HH:MM[:SS], HH:MM[:SS], or yesterday HH:MM", 6*time.Second)
+				return
+			}
+
+			index := h.closestSnapshotIndex(target)
+			if index >= 0 {
+				h.followLatest = false
+				h.loadSnapshotAt(index)
+				actual := h.refs[index].CapturedAt.Local().Format("2006-01-02 15:04:05")
+				h.setStatusNote(fmt.Sprintf("Jumped to %s (snapshot %d/%d)", actual, index+1, len(h.refs)), 6*time.Second)
+			}
+			h.renderPanel()
+		}
+		h.pages.RemovePage("history-jump-time")
+		h.app.SetFocus(h.panel)
+		h.updateStatusBar()
+	})
+
+	modal := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(input, 60, 0, true).
+			AddItem(nil, 0, 1, false),
+			3, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	h.pages.AddPage("history-jump-time", modal, true, true)
+	h.updateStatusBar()
+	h.app.SetFocus(input)
+}
+
+func (h *HistoryApp) closestSnapshotIndex(target time.Time) int {
+	if len(h.refs) == 0 {
+		return -1
+	}
+
+	targetUTC := target.UTC()
+	idx := sort.Search(len(h.refs), func(i int) bool {
+		return !h.refs[i].CapturedAt.Before(targetUTC)
+	})
+
+	if idx <= 0 {
+		return 0
+	}
+	if idx >= len(h.refs) {
+		return len(h.refs) - 1
+	}
+
+	before := h.refs[idx-1].CapturedAt
+	after := h.refs[idx].CapturedAt
+	if targetUTC.Sub(before) <= after.Sub(targetUTC) {
+		return idx - 1
+	}
+	return idx
+}
+
 func (h *HistoryApp) showHelp() {
 	h.pages.SendToFront("history-help")
 	h.pages.ShowPage("history-help")
@@ -262,10 +342,10 @@ func historyStatusHotkeysForPage(page string) (styled string, plain string) {
 	switch page {
 	case "history-help":
 		return "[dim]any key[white]=close", "any key=close"
-	case "history-filter", "history-search":
+	case "history-filter", "history-search", "history-jump-time":
 		return "[dim]Enter[white]=apply [dim]Esc[white]=cancel", "Enter=apply Esc=cancel"
 	default:
-		return "[dim]lb/rb a e f / o Q/S/P/R g s z L ? q[white]", "lb/rb a e f / o Q/S/P/R g s z L ? q"
+		return "[dim]lb/rb a e t f / o Q/S/P/R g s z L ? q[white]", "lb/rb a e t f / o Q/S/P/R g s z L ? q"
 	}
 }
 
@@ -288,4 +368,65 @@ func parseHistoryPortFilter(raw string) (string, error) {
 		return "", fmt.Errorf("invalid port filter")
 	}
 	return strconv.Itoa(port), nil
+}
+
+func parseHistoryJumpTime(raw string, now time.Time) (time.Time, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return time.Time{}, fmt.Errorf("empty time")
+	}
+
+	loc := now.Location()
+	for _, layout := range []string{
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+		"2006/01/02 15:04:05",
+		"2006/01/02 15:04",
+	} {
+		if ts, err := time.ParseInLocation(layout, trimmed, loc); err == nil {
+			return ts, nil
+		}
+	}
+
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "yesterday ") {
+		clock := strings.TrimSpace(trimmed[len("yesterday "):])
+		if ts, err := parseClockOnly(clock, now.AddDate(0, 0, -1)); err == nil {
+			return ts, nil
+		}
+	}
+
+	if ts, err := parseClockOnly(trimmed, now); err == nil {
+		return ts, nil
+	}
+
+	return time.Time{}, fmt.Errorf("unsupported time format")
+}
+
+func parseClockOnly(raw string, base time.Time) (time.Time, error) {
+	loc := base.Location()
+	clock := strings.TrimSpace(raw)
+	if clock == "" {
+		return time.Time{}, fmt.Errorf("empty clock")
+	}
+
+	for _, layout := range []string{"15:04:05", "15:04"} {
+		if parsed, err := time.ParseInLocation(layout, clock, loc); err == nil {
+			return time.Date(
+				base.Year(),
+				base.Month(),
+				base.Day(),
+				parsed.Hour(),
+				parsed.Minute(),
+				parsed.Second(),
+				0,
+				loc,
+			), nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("invalid clock")
 }

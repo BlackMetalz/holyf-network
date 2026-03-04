@@ -36,6 +36,7 @@ const historyHelpText = `[yellow]Replay Shortcuts[white]
 [yellow]left bracket[white]  Previous snapshot
 [yellow]right bracket[white] Next snapshot
 [yellow]a / e[white]         Jump to oldest / latest snapshot
+[yellow]t[white]             Jump to specific time
 [yellow]L[white]           Follow latest snapshots
 [yellow]Up/Down[white]     Select row
 [yellow]f[white]           Port filter / clear all filters
@@ -96,7 +97,7 @@ func createHistoryHelpModal() *tview.Flex {
 
 	inner := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
-		AddItem(helpView, 21, 0, true).
+		AddItem(helpView, 22, 0, true).
 		AddItem(nil, 0, 1, false)
 
 	modal := tview.NewFlex().

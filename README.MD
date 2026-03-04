@@ -113,6 +113,7 @@ holyf-network replay --start-at oldest --sensitive-ip
 Replay hotkeys:
 - left/right bracket (`[` / `]`): previous/next snapshot
 - `a` / `e`: oldest/latest snapshot
+- `t`: jump to specific timestamp
 - `L`: follow latest snapshots (tail-like)
 - `Up` / `Down`: select row
 - `f`: port filter (press again to clear filters)
@@ -122,6 +123,8 @@ Replay hotkeys:
 - `s`: mask IP display
 - `?`: help
 - `q`: quit
+
+`t` accepts: `YYYY-MM-DD HH:MM[:SS]`, `HH:MM[:SS]` (today), or `yesterday HH:MM`.
 
 Replay mode is read-only: no block/kill actions are executed.
 

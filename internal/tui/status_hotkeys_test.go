@@ -12,7 +12,8 @@ func TestHistoryStatusHotkeysForModalPages(t *testing.T) {
 		{page: "history-help", wantPlain: "any key=close"},
 		{page: "history-filter", wantPlain: "Enter=apply Esc=cancel"},
 		{page: "history-search", wantPlain: "Enter=apply Esc=cancel"},
-		{page: "main", wantPlain: "lb/rb a e f / o Q/S/P/R g s z L ? q"},
+		{page: "history-jump-time", wantPlain: "Enter=apply Esc=cancel"},
+		{page: "main", wantPlain: "lb/rb a e t f / o Q/S/P/R g s z L ? q"},
 	}
 
 	for _, tc := range tests {
