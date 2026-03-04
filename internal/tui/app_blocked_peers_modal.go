@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/BlackMetalz/holyf-network/internal/actions"
@@ -213,43 +212,4 @@ func (a *App) promptBlockedPeers() {
 	a.pages.AddPage("blocked-peers", modal, true, true)
 	a.updateStatusBar()
 	a.app.SetFocus(list)
-}
-
-func formatActiveBlockDetail(entry activeBlockEntry) string {
-	summary := strings.TrimSpace(entry.Summary)
-	if summary == "" {
-		summary = fmt.Sprintf("Blocked %s:%d", entry.Spec.PeerIP, entry.Spec.LocalPort)
-	}
-	expiresText := formatRemainingDuration(time.Until(entry.ExpiresAt))
-	if entry.ExpiresAt.IsZero() {
-		expiresText = "n/a (unmanaged)"
-	}
-	return fmt.Sprintf("[dim]Summary:[white] %s\n[dim]Expires in:[white] %s", summary, expiresText)
-}
-
-func formatBlockedSpec(spec actions.PeerBlockSpec) string {
-	return fmt.Sprintf("%s -> :%d", spec.PeerIP, spec.LocalPort)
-}
-
-func formatBlockedListSecondary(entry activeBlockEntry) string {
-	secondary := "drop unknown | expires in n/a"
-	summary := strings.TrimSpace(entry.Summary)
-	if summary != "" {
-		parts := strings.Split(summary, " | ")
-		if len(parts) > 1 {
-			secondary = strings.Join(parts[1:], " | ")
-		}
-	}
-
-	expires := "n/a"
-	if !entry.ExpiresAt.IsZero() {
-		expires = formatRemainingDuration(time.Until(entry.ExpiresAt))
-	}
-	if strings.Contains(secondary, "expires in ") {
-		idx := strings.LastIndex(secondary, "expires in ")
-		secondary = secondary[:idx] + "expires in " + expires
-	} else {
-		secondary = secondary + " | expires in " + expires
-	}
-	return secondary
 }

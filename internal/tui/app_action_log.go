@@ -73,15 +73,6 @@ func (a *App) promptActionLog() {
 	a.app.SetFocus(view)
 }
 
-const (
-	actionLogModalLimit      = 20
-	inMemoryActionLogMax     = 500
-	actionLogRotateLimit     = 500
-	actionHistoryDirName     = ".holyf-network"
-	actionHistoryFileName    = "history.log"
-	actionHistoryDisplayPath = "~/.holyf-network/history.log"
-)
-
 func (a *App) addActionLog(message string) {
 	msg := strings.TrimSpace(message)
 	if msg == "" {

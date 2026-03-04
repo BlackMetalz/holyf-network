@@ -20,11 +20,6 @@ type peerKillTarget struct {
 	Count     int
 }
 
-const (
-	defaultBlockMinutes = 10
-	maxBlockMinutes     = 1440
-)
-
 func parseBlockMinutes(raw string) (int, error) {
 	minutes, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || minutes < 0 || minutes > maxBlockMinutes {
