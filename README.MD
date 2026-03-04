@@ -111,8 +111,8 @@ holyf-network replay --start-at oldest --sensitive-ip
 ```
 
 Replay hotkeys:
-- `[` / `]`: previous/next snapshot
-- `Home` / `End`: oldest/latest snapshot
+- left/right bracket (`[` / `]`): previous/next snapshot
+- `a` / `e`: oldest/latest snapshot
 - `L`: follow latest snapshots (tail-like)
 - `Up` / `Down`: select row
 - `f`: port filter (press again to clear filters)

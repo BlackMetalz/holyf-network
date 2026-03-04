@@ -33,8 +33,9 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 
 const historyHelpText = `[yellow]Replay Shortcuts[white]
 ──────────────────────────
-[yellow][ / ][white]       Previous / next snapshot
-[yellow]Home / End[white]  Jump to oldest / latest snapshot
+[yellow]left bracket[white]  Previous snapshot
+[yellow]right bracket[white] Next snapshot
+[yellow]a / e[white]         Jump to oldest / latest snapshot
 [yellow]L[white]           Follow latest snapshots
 [yellow]Up/Down[white]     Select row
 [yellow]f[white]           Port filter / clear all filters

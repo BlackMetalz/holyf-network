@@ -89,8 +89,8 @@ Navigation keys:
 
 - `[` previous snapshot
 - `]` next snapshot
-- `Home` oldest
-- `End` latest
+- `a` oldest
+- `e` latest
 
 Behavior constraints:
 

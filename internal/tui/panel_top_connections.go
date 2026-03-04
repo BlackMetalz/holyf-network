@@ -23,9 +23,9 @@ const (
 
 const (
 	defaultTalkersHintLine  = "  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, o=cycle sort, Shift+Q/S/P/R=direct sort[white]"
-	readOnlyTalkersHintLine = "  [dim]Use ↑/↓ select, [/] snapshots, Home/End jump, /=search, f=port/clear, o=cycle sort, Shift+Q/S/P/R=direct sort, g=group, L=follow[white]"
+	readOnlyTalkersHintLine = "  [dim]Use ↑/↓ select, left/right bracket=snapshot, a=oldest, e=latest, /=search, f=port/clear, o=cycle sort, Shift+Q/S/P/R=direct sort, g=group, L=follow[white]"
 	defaultGroupHintLine    = "  [dim]Use ↑/↓ select, g=connections view, /=search, f=port/clear[white]"
-	readOnlyGroupHintLine   = "  [dim]Use ↑/↓ select, [/] snapshots, Home/End jump, g=connections view, /=search, f=port/clear, L=follow[white]"
+	readOnlyGroupHintLine   = "  [dim]Use ↑/↓ select, left/right bracket=snapshot, a=oldest, e=latest, g=connections view, /=search, f=port/clear, L=follow[white]"
 )
 
 // Label returns a short display name for the status bar chip.

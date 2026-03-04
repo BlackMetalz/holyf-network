@@ -30,12 +30,6 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		}
 		return event
-	case tcell.KeyHome:
-		h.navigateOldest()
-		return nil
-	case tcell.KeyEnd:
-		h.navigateLatest()
-		return nil
 	case tcell.KeyEnter:
 		h.setStatusNote("Read-only replay mode", 4*time.Second)
 		return nil
@@ -57,6 +51,12 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case ']':
 			h.navigateNext()
+			return nil
+		case 'a', 'A':
+			h.navigateOldest()
+			return nil
+		case 'e', 'E':
+			h.navigateLatest()
 			return nil
 		case 'f':
 			h.promptPortFilter()
@@ -265,7 +265,7 @@ func historyStatusHotkeysForPage(page string) (styled string, plain string) {
 	case "history-filter", "history-search":
 		return "[dim]Enter[white]=apply [dim]Esc[white]=cancel", "Enter=apply Esc=cancel"
 	default:
-		return "[dim][ ] Home End f / o Q/S/P/R g s z L ? q[white]", "[ ] Home End f / o Q/S/P/R g s z L ? q"
+		return "[dim]lb/rb a e f / o Q/S/P/R g s z L ? q[white]", "lb/rb a e f / o Q/S/P/R g s z L ? q"
 	}
 }
 
