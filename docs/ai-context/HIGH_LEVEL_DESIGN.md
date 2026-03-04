@@ -1,135 +1,146 @@
 # High Level Design
 
-## 1) Runtime Pipeline
+## 1) Runtime Modes
+
+This project now has 3 runtime paths:
+
+1. `holyf-network` (live TUI, existing mode)
+2. `holyf-network daemon start/stop/status` (snapshot collector daemon lifecycle)
+3. `holyf-network replay` (read-only history TUI)
 
 ```mermaid
 flowchart TD
     A[main.go] --> B[cmd.Execute]
-    B --> C[Parse flags + load health config]
-    C --> D[tui.NewApp]
-    D --> E[App.Run]
-    E --> F[Build layout + pages + key handlers]
-    F --> G[Initial refreshData]
-    F --> H[startRefreshLoop goroutine]
-    F --> I[startStatusTicker goroutine]
-    H --> G
+    B --> C[root command]
+    C --> D[Live TUI: tui.NewApp]
+    C --> E[Daemon: collect + write snapshots]
+    C --> F[Replay TUI: tui.NewHistoryApp]
 ```
 
-## 2) Data Collection and Rendering
+## 2) Live TUI (Existing Path)
 
-`refreshData()` in `internal/tui/app_core.go` is the central update function:
+`refreshData()` in `internal/tui/app_core.go` remains the central loop:
 
 1. Collect conntrack snapshot and rates.
 2. Collect TCP retrans snapshot and rates.
 3. Collect connection state counts.
 4. Collect interface stats and rates.
-5. Collect top talkers (`/proc/net/tcp*`, with PID/proc mapping from `/proc/<pid>/fd`).
-6. Render each panel (`panel_*.go`) as plain colored text.
-7. Update status bar and transient notes.
+5. Collect top talkers (`/proc/net/tcp*`, PID mapping from `/proc/<pid>/fd`).
+6. Render panels and status bar.
 
-Design choice:
-- Collectors are read-only and mostly stateless.
-- `App` owns previous snapshots (`prev*`) to compute per-second rates.
+Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).
 
-## 3) UI Composition and State
+## 3) Daemon Snapshot Pipeline
 
-Layout (`internal/tui/layout.go`):
+Package: `internal/history` + `cmd/daemon.go`
 
-- Left wide column: `Top Connections` (primary operational panel).
-- Right stacked column:
-  - `Connection States`
-  - `Interface Stats`
-  - `Conntrack`
-- Bottom: status bar.
+1. `daemon start` launches internal worker in background and writes PID/log paths.
+2. Worker resolves interface (`--interface`) and starts `SnapshotWriter` with lock file (`.daemon.lock`) under `--data-dir`.
+3. Every `--interval` seconds:
+   - call `collector.CollectTopTalkers(--top-limit)`
+   - write one `SnapshotRecord` as NDJSON line
+4. Segment file naming by UTC hour: `connections-YYYYMMDD-HH.jsonl`.
+5. Retention:
+   - remove segments older than `--retention-hours`
+   - enforce `--max-files` by deleting oldest remaining
+6. `daemon stop` sends `SIGTERM` (fallback `SIGKILL`) and removes PID file.
+7. `daemon status` reads PID file and reports running/stopped state.
+8. Worker handles `SIGINT/SIGTERM` and closes cleanly.
 
-Main state lives in `tui.App`:
+## 4) Snapshot Storage Model
 
-- Focus, zoom, pause, refresh timing.
-- Filters (`portFilter`, `textFilter`), sort mode, group mode.
-- Selection index for Top Connections.
-- Blocking state (`activeBlocks`) + action logs.
+### Record model (`internal/history/types.go`)
 
-Concurrency model:
+- `SnapshotRecord`
+  - `CapturedAt`
+  - `Interface`
+  - `TopLimit`
+  - `Connections []collector.Connection`
+  - `Version`
 
-- UI updates happen via `tview.Application.QueueUpdateDraw`.
-- Background goroutines only schedule updates; they do not mutate widgets directly.
-- Mutexes protect mutable shared maps/slices (`activeBlocks`, action log state).
+- `SnapshotRef`
+  - `FilePath`
+  - `Offset`
+  - `CapturedAt`
+  - `ConnCount`
 
-## 4) Block/Kill Peer Flow
+### Reader model (`internal/history/reader.go`)
 
-`k` or `Enter` from Top Connections opens block flow:
+- `LoadIndex(dataDir)`:
+  - scan segment files oldest->latest
+  - parse each line to produce refs
+  - skip malformed JSON lines and count `Corrupt`
+- `ReadSnapshot(ref)`:
+  - seek by byte offset
+  - decode one line into `SnapshotRecord`
 
-1. Kill form (`kill-peer-form`): peer IP, local port (if not already filtered), block minutes.
-2. Confirm modal (`kill-peer`):
-   - `minutes == 0`: kill-only mode.
-   - `minutes > 0`: add firewall block + terminate active flows.
-3. Background execution (`app_blocking_runtime.go`):
-   - block via `actions.BlockPeer` (iptables INPUT+OUTPUT rule with comment)
-   - kill flows via `actions.QueryAndKillPeerSockets` + fallback tuple kill
-   - drop conntrack entries via `actions.DropPeerConnections`
-   - summary popup + action log
-4. Auto-unblock timer for timed blocks.
+## 5) Replay TUI (Read-only)
 
-Blocked peers modal (`b`) supports:
+Package: `internal/tui/history_*.go` + `cmd/replay.go`
 
-- listing active blocks,
-- selection,
-- remove/unblock selected entry,
-- Enter/Delete shortcuts,
-- result popup.
+State includes:
 
-## 5) Health Strip Logic
+- snapshot refs + current index
+- current snapshot record
+- filter/search/sort/group/mask/selection
+- follow-latest toggle (`L`)
 
-Rendered in `panel_connections.go`.
+Navigation keys:
 
-Inputs:
+- `[` previous snapshot
+- `]` next snapshot
+- `Home` oldest
+- `End` latest
 
-- retrans percentage from `/proc/net/snmp`
-- conntrack drops/sec and usage
+Behavior constraints:
 
-Current retrans evaluation has sample gates:
+- replay uses top connection renderers in read-only mode
+- kill/block hotkeys (`Enter`, `k`, `b`) are explicitly blocked with status note
+- search/filter apply only to current snapshot
 
-- minimum `ESTABLISHED` connections,
-- minimum `OutSegsPerSec`.
+## 6) UI Composition
 
-If gate not met:
+### Live mode (`layout.go`)
 
-- show `LOW SAMPLE`,
-- do not escalate WARN/CRIT from retrans.
+- Left: `Top Connections`
+- Right stack: `Connection States`, `Interface Stats`, `Conntrack`
+- Bottom: status bar
 
-Thresholds are loaded from `config/health_thresholds.toml` via `internal/config/health_thresholds.go`.
+### Replay mode (`history_layout.go`)
 
-## 6) Persistence
+- Single panel: `Connection History`
+- Bottom: replay status bar
+- Overlay help/filter/search pages only
 
-Action history:
+## 7) Persistence
 
-- path: `~/.holyf-network/history.log`
-- append per action
-- rotate to latest 500 events
-- `h` modal shows latest 20
+1. Action history (live mode)
+   - `~/.holyf-network/history.log`
+   - rolling 500 events
+   - `h` shows latest 20
 
-No other long-lived app state is currently persisted.
+2. Connection snapshots (daemon/replay)
+   - `~/.holyf-network/snapshots` by default
+   - hourly NDJSON segment files
+   - retention via age + max files
 
-## 7) External Dependencies and OS Assumptions
+## 8) Concurrency Model
 
-Hard requirements:
+- TUI updates always go through `tview.Application.QueueUpdateDraw`.
+- Live mode and replay mode each own their own app state struct.
+- `SnapshotWriter` serializes appends with mutex and lock file for single-writer safety.
 
-- Linux runtime (`/proc`, `/sys`, netfilter tools).
-- Commands used by mitigation/advanced stats: `iptables`/`ip6tables`, `conntrack`, `ss`.
-- `sudo` recommended for full visibility and mitigation.
+## 9) External Dependencies and OS Assumptions
 
-Graceful behavior:
+- Linux runtime (`/proc`, `/sys`, netfilter tooling).
+- Collector path relies on kernel network procfs/sysfs files.
+- Mitigation path relies on `iptables`/`ip6tables`, `conntrack`, `ss`.
+- `sudo` recommended for full live-mode visibility/mitigation.
 
-- Some panels degrade when specific tools are missing (for example conntrack rate stats).
+## 10) Extension Guidelines
 
-## 8) Extension Guidelines
-
-If adding new feature:
-
-1. Put read-only OS scraping into `internal/collector`.
-2. Put side effects into `internal/actions`.
-3. Keep `panel_*.go` rendering-only (no shell calls, no state mutation).
-4. Keep modal/interaction flow in focused `app_*.go` files.
-5. Add regression tests in `internal/tui/*_test.go`.
-
-This keeps architecture stable and prevents `app_core.go` from growing uncontrollably again.
+1. Put read-only scraping into `internal/collector`.
+2. Put side effects into `internal/actions` or `internal/history` (for snapshot persistence).
+3. Keep renderer files (`panel_*.go`) side-effect free.
+4. Keep interaction flow split by mode (`app_*` for live, `history_*` for replay).
+5. Add tests for parsing/indexing/retention and key handling regressions.

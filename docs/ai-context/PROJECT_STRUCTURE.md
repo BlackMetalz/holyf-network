@@ -6,7 +6,9 @@ This is the current high-signal layout (non-essential folders omitted):
 .
 ├── main.go
 ├── cmd/
-│   └── root.go
+│   ├── root.go
+│   ├── daemon.go
+│   └── replay.go
 ├── config/
 │   └── health_thresholds.toml
 ├── internal/
@@ -20,6 +22,11 @@ This is the current high-signal layout (non-essential folders omitted):
 │   │   └── conntrack.go
 │   ├── config/
 │   │   └── health_thresholds.go
+│   ├── history/
+│   │   ├── types.go
+│   │   ├── files.go
+│   │   ├── writer.go
+│   │   └── reader.go
 │   ├── network/
 │   │   └── interface.go
 │   └── tui/
@@ -33,6 +40,9 @@ This is the current high-signal layout (non-essential folders omitted):
 │       ├── app_blocking_runtime.go
 │       ├── app_blocking_blocked_modal.go
 │       ├── layout.go
+│       ├── history_app.go
+│       ├── history_keys.go
+│       ├── history_layout.go
 │       ├── help.go
 │       ├── panel_connections.go
 │       ├── panel_interface.go
@@ -48,7 +58,7 @@ This is the current high-signal layout (non-essential folders omitted):
 
 - `cmd`
   - CLI flags, version resolution, startup wiring.
-  - Builds `tui.App` and launches UI.
+  - Entry points for live mode (`root`), daemon mode (`daemon start/stop/status`), and replay mode (`replay`).
 
 - `internal/network`
   - Interface detection/listing helpers used by CLI.
@@ -73,6 +83,11 @@ This is the current high-signal layout (non-essential folders omitted):
 - `internal/config`
   - Health threshold model + parser for TOML-like file.
 
+- `internal/history`
+  - Snapshot persistence/indexing for daemon + replay flow.
+  - NDJSON writer with retention and lock file.
+  - Reader/indexer for timeline replay.
+
 - `internal/tui`
   - App state machine, keyboard handling, modal flows, rendering panels.
   - Grouped by concern:
@@ -80,6 +95,7 @@ This is the current high-signal layout (non-essential folders omitted):
     - `app_top_connections.go`: top-connection selection/filter/sort/search orchestration.
     - `app_blocking_*.go`: block/kill flows and blocked peers modal.
     - `app_history.go`: action log modal + persistence (`~/.holyf-network/history.log`).
+    - `history_*.go`: read-only replay mode UI and key handling.
     - `panel_*.go`: pure rendering text for each panel.
     - `layout.go`: grid composition.
 
@@ -90,6 +106,8 @@ This is the current high-signal layout (non-essential folders omitted):
 
 - `internal/config/health_thresholds_test.go`
   - Config parsing/normalization behavior.
+- `internal/history/*_test.go`
+  - Snapshot writer/reader behavior (append, rotate, prune, index, corrupt skip).
 
 When adding features:
 - prefer adding tests in the same package,

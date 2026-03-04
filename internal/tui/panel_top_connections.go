@@ -21,6 +21,13 @@ const (
 	SortByProcess                 // process name alphabetical, then activity desc
 )
 
+const (
+	defaultTalkersHintLine  = "  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, o=cycle sort, Shift+Q/S/P/R=direct sort[white]"
+	readOnlyTalkersHintLine = "  [dim]Use ↑/↓ select, [/] snapshots, Home/End jump, /=search, f=port/clear, o=cycle sort, Shift+Q/S/P/R=direct sort, g=group, L=follow[white]"
+	defaultGroupHintLine    = "  [dim]Use ↑/↓ select, g=connections view, /=search, f=port/clear[white]"
+	readOnlyGroupHintLine   = "  [dim]Use ↑/↓ select, [/] snapshots, Home/End jump, g=connections view, /=search, f=port/clear, L=follow[white]"
+)
+
 // Label returns a short display name for the status bar chip.
 func (m SortMode) Label() string {
 	switch m {
@@ -88,6 +95,14 @@ func sortConnections(conns []collector.Connection, mode SortMode) {
 // If portFilter is set, only connections matching that port are shown.
 // maxRows controls how many connections to display (use more when zoomed).
 func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode) string {
+	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, defaultTalkersHintLine)
+}
+
+func renderTalkersPanelReadOnly(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode) string {
+	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, readOnlyTalkersHintLine)
+}
+
+func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, hintLine string) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -104,13 +119,14 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string, textFil
 	}
 
 	sb.WriteString(fmt.Sprintf(
-		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white]\n",
+		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white] | [aqua]View=CONN[white]\n",
 		portChip,
 		maskChip,
 		searchChip,
 		sortMode.Label(),
 	))
-	sb.WriteString("  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, o=cycle sort, Shift+Q/S/P/R=direct sort[white]\n\n")
+	sb.WriteString(hintLine)
+	sb.WriteString("\n\n")
 
 	if len(conns) == 0 {
 		sb.WriteString("  No active connections found")
@@ -446,6 +462,14 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 
 // renderPeerGroupPanel renders the per-peer aggregate view.
 func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int) string {
+	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, defaultGroupHintLine)
+}
+
+func renderPeerGroupPanelReadOnly(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int) string {
+	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, readOnlyGroupHintLine)
+}
+
+func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, hintLine string) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -462,7 +486,8 @@ func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter s
 		portChip,
 		searchChip,
 	))
-	sb.WriteString("  [dim]Use ↑/↓ select, g=connections view, /=search, f=port/clear[white]\n\n")
+	sb.WriteString(hintLine)
+	sb.WriteString("\n\n")
 
 	if len(conns) == 0 {
 		sb.WriteString("  No active connections found")

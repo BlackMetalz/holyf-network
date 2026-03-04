@@ -31,6 +31,27 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 
 [dim]Press Esc or any key to close[white]`
 
+const historyHelpText = `[yellow]Replay Shortcuts[white]
+──────────────────────────
+[yellow][ / ][white]       Previous / next snapshot
+[yellow]Home / End[white]  Jump to oldest / latest snapshot
+[yellow]L[white]           Follow latest snapshots
+[yellow]Up/Down[white]     Select row
+[yellow]f[white]           Port filter / clear all filters
+[yellow]/[white]           Search (contains text in current snapshot)
+[yellow]o[white]           Cycle sort mode
+[yellow]Shift+Q[white]     Sort by Queue
+[yellow]Shift+S[white]     Sort by State
+[yellow]Shift+P[white]     Sort by Peer
+[yellow]Shift+R[white]     Sort by Process
+[yellow]g[white]           Toggle group-by-peer view
+[yellow]s[white]           Toggle sensitive IP mask
+[yellow]?[white]           Toggle this help
+[yellow]q[white]           Quit
+
+[dim]Replay is read-only (no kill/block actions)[white]
+[dim]Press Esc or any key to close[white]`
+
 // createHelpModal creates a centered modal overlay for the help screen.
 func createHelpModal() *tview.Flex {
 	// Create the text view for help content
@@ -59,6 +80,28 @@ func createHelpModal() *tview.Flex {
 		AddItem(nil, 0, 1, false).   // Left spacer
 		AddItem(inner, 40, 0, true). // Center column (fixed width)
 		AddItem(nil, 0, 1, false)    // Right spacer
+
+	return modal
+}
+
+func createHistoryHelpModal() *tview.Flex {
+	helpView := tview.NewTextView()
+	helpView.SetDynamicColors(true)
+	helpView.SetText(historyHelpText)
+	helpView.SetTextAlign(tview.AlignLeft)
+	helpView.SetBorder(true)
+	helpView.SetTitle(" Replay Help ")
+	helpView.SetTitleAlign(tview.AlignCenter)
+
+	inner := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(helpView, 21, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	modal := tview.NewFlex().
+		AddItem(nil, 0, 1, false).
+		AddItem(inner, 54, 0, true).
+		AddItem(nil, 0, 1, false)
 
 	return modal
 }

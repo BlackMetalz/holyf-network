@@ -5,6 +5,12 @@ I'm suck at Linux Network!
 # Vibe Code
 Yes, fucking yes.
 
+# AI Onboarding Docs
+- See `docs/ai-context/`:
+  - `README.md`
+  - `PROJECT_STRUCTURE.md`
+  - `HIGH_LEVEL_DESIGN.md`
+
 # Download
 
 ### Requirements
@@ -66,6 +72,58 @@ sudo holyf-network -r 5
 # ?: show help
 # q: quit
 ```
+
+## Daemon Snapshot Mode
+
+```bash
+# Start daemon in background (default interval = 30s)
+holyf-network daemon start
+
+# Typical production start with explicit controls
+holyf-network daemon start \
+  --interface eth0 \
+  --interval 30 \
+  --top-limit 100 \
+  --data-dir ~/.holyf-network/snapshots \
+  --retention-hours 24 \
+  --max-files 72
+
+# Check status
+holyf-network daemon status
+
+# Stop daemon
+holyf-network daemon stop
+```
+
+Daemon notes:
+- Storage format: hourly NDJSON segments (`connections-YYYYMMDD-HH.jsonl`).
+- Retention policy: remove old segments beyond `--retention-hours`, then enforce `--max-files`.
+- A lock file prevents multiple daemons writing the same `--data-dir`.
+
+## Replay (History) Mode
+
+```bash
+# Open replay UI at latest snapshot
+holyf-network replay
+
+# Start from oldest snapshot and mask IP prefixes in UI
+holyf-network replay --start-at oldest --sensitive-ip
+```
+
+Replay hotkeys:
+- `[` / `]`: previous/next snapshot
+- `Home` / `End`: oldest/latest snapshot
+- `L`: follow latest snapshots (tail-like)
+- `Up` / `Down`: select row
+- `f`: port filter (press again to clear filters)
+- `/`: grep-like contains filter for current snapshot
+- `o` / `Shift+Q/S/P/R`: sort mode
+- `g`: group-by-peer view
+- `s`: mask IP display
+- `?`: help
+- `q`: quit
+
+Replay mode is read-only: no block/kill actions are executed.
 
 Default threshold file:
 

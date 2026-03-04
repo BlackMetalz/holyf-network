@@ -110,6 +110,9 @@ func init() {
 	rootCmd.Flags().BoolVar(&flagListInterfaces, "list-interfaces", false, "List available network interfaces and exit")
 	rootCmd.Flags().BoolVar(&flagSensitiveIP, "sensitive-ip", false, "Hide the first 2 IP octets/groups in Top Connections (for demos)")
 	rootCmd.Flags().StringVar(&flagHealthConfig, "health-config", "config/health_thresholds.toml", "Health strip thresholds TOML file")
+
+	rootCmd.AddCommand(newDaemonCmd())
+	rootCmd.AddCommand(newReplayCmd())
 }
 
 // listInterfaces prints all available network interfaces.
