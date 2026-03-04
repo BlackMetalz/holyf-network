@@ -53,7 +53,7 @@ func newReplayCmd() *cobra.Command {
 
 	replayCmd.Flags().StringVar(&opts.dataDir, "data-dir", history.DefaultDataDir(), "Snapshot data directory")
 	replayCmd.Flags().StringVar(&opts.startAt, "start-at", tui.HistoryStartLatest, "Starting snapshot position: latest|oldest")
-	replayCmd.Flags().StringVar(&opts.segmentFile, "file", "", "Read snapshots from one segment file (e.g. connections-20260304-14.jsonl)")
+	replayCmd.Flags().StringVar(&opts.segmentFile, "file", "", "Read snapshots from one segment file (e.g. connections-20260304.jsonl)")
 	replayCmd.Flags().BoolVar(&opts.sensitiveIP, "sensitive-ip", false, "Hide the first 2 IP octets/groups in replay view")
 
 	return replayCmd

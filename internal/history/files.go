@@ -10,34 +10,40 @@ import (
 )
 
 const (
-	segmentPrefix = "connections-"
-	segmentSuffix = ".jsonl"
-	segmentLayout = "20060102-15"
-	lockFileName  = ".daemon.lock"
+	segmentPrefix      = "connections-"
+	segmentSuffix      = ".jsonl"
+	segmentLayoutDaily = "20060102"
+	lockFileName       = ".daemon.lock"
 )
 
 type segmentFile struct {
 	Path      string
 	Name      string
 	Timestamp time.Time
+	Span      time.Duration
 }
 
 func segmentFileName(t time.Time) string {
 	// Segment names follow server local time to match operator expectation.
-	return segmentPrefix + t.Local().Format(segmentLayout) + segmentSuffix
+	return segmentPrefix + t.Local().Format(segmentLayoutDaily) + segmentSuffix
 }
 
 func parseSegmentTime(name string) (time.Time, bool) {
+	ts, _, ok := parseSegmentWindow(name)
+	return ts, ok
+}
+
+func parseSegmentWindow(name string) (time.Time, time.Duration, bool) {
 	if !strings.HasPrefix(name, segmentPrefix) || !strings.HasSuffix(name, segmentSuffix) {
-		return time.Time{}, false
+		return time.Time{}, 0, false
 	}
 	stamp := strings.TrimSuffix(strings.TrimPrefix(name, segmentPrefix), segmentSuffix)
 	// Parse in server local timezone because filenames are local-time based.
-	ts, err := time.ParseInLocation(segmentLayout, stamp, time.Local)
+	ts, err := time.ParseInLocation(segmentLayoutDaily, stamp, time.Local)
 	if err != nil {
-		return time.Time{}, false
+		return time.Time{}, 0, false
 	}
-	return ts, true
+	return ts, 24 * time.Hour, true
 }
 
 func listSegmentFiles(dataDir string) ([]segmentFile, error) {
@@ -54,7 +60,7 @@ func listSegmentFiles(dataDir string) ([]segmentFile, error) {
 		if entry.IsDir() {
 			continue
 		}
-		ts, ok := parseSegmentTime(entry.Name())
+		ts, span, ok := parseSegmentWindow(entry.Name())
 		if !ok {
 			continue
 		}
@@ -62,6 +68,7 @@ func listSegmentFiles(dataDir string) ([]segmentFile, error) {
 			Path:      filepath.Join(dataDir, entry.Name()),
 			Name:      entry.Name(),
 			Timestamp: ts,
+			Span:      span,
 		})
 	}
 

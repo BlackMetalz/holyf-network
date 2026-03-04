@@ -57,7 +57,7 @@ func TestSnapshotWriterAppendWritesNDJSON(t *testing.T) {
 	}
 }
 
-func TestSnapshotWriterRotatesByHour(t *testing.T) {
+func TestSnapshotWriterRotatesByDay(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -68,7 +68,7 @@ func TestSnapshotWriterRotatesByHour(t *testing.T) {
 	defer writer.Close()
 
 	t1 := time.Date(2026, 3, 4, 10, 15, 0, 0, time.UTC)
-	t2 := t1.Add(65 * time.Minute)
+	t2 := t1.Add(25 * time.Hour)
 
 	if _, err := writer.Append(SnapshotRecord{CapturedAt: t1}); err != nil {
 		t.Fatalf("append t1: %v", err)
@@ -97,7 +97,7 @@ func TestSnapshotWriterPrunesByRetentionHours(t *testing.T) {
 	defer writer.Close()
 
 	now := time.Date(2026, 3, 4, 12, 0, 0, 0, time.UTC)
-	old := now.Add(-3 * time.Hour)
+	old := now.Add(-27 * time.Hour)
 
 	if _, err := writer.Append(SnapshotRecord{CapturedAt: old}); err != nil {
 		t.Fatalf("append old: %v", err)
@@ -130,7 +130,7 @@ func TestSnapshotWriterPrunesByMaxFiles(t *testing.T) {
 
 	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
 	for i := 0; i < 3; i++ {
-		if _, err := writer.Append(SnapshotRecord{CapturedAt: base.Add(time.Duration(i) * time.Hour)}); err != nil {
+		if _, err := writer.Append(SnapshotRecord{CapturedAt: base.AddDate(0, 0, i)}); err != nil {
 			t.Fatalf("append #%d: %v", i, err)
 		}
 	}
@@ -142,7 +142,7 @@ func TestSnapshotWriterPrunesByMaxFiles(t *testing.T) {
 	if len(files) != 2 {
 		t.Fatalf("expected 2 retained segment files, got %d", len(files))
 	}
-	if files[0].Name != segmentFileName(base.Add(1*time.Hour)) || files[1].Name != segmentFileName(base.Add(2*time.Hour)) {
+	if files[0].Name != segmentFileName(base.AddDate(0, 0, 1)) || files[1].Name != segmentFileName(base.AddDate(0, 0, 2)) {
 		t.Fatalf("expected to keep latest two segments, got: %s, %s", files[0].Name, files[1].Name)
 	}
 }

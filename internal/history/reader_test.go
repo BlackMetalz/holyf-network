@@ -17,8 +17,8 @@ func TestLoadIndexOrdersSnapshotsAcrossFiles(t *testing.T) {
 	linesB := []string{
 		`{"captured_at":"2026-03-04T11:00:00Z","interface":"eth0","top_limit":100,"connections":[],"version":"v1"}`,
 	}
-	writeSegmentLines(t, dir, "connections-20260304-10.jsonl", linesA)
-	writeSegmentLines(t, dir, "connections-20260304-11.jsonl", linesB)
+	writeSegmentLines(t, dir, "connections-20260304.jsonl", linesA)
+	writeSegmentLines(t, dir, "connections-20260305.jsonl", linesB)
 
 	refs, stats, err := LoadIndex(dir)
 	if err != nil {
@@ -39,7 +39,7 @@ func TestReadSnapshotByOffset(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	name := "connections-20260304-10.jsonl"
+	name := "connections-20260304.jsonl"
 	lines := []string{
 		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit":100,"connections":[{"local_ip":"10.0.0.1","local_port":22,"remote_ip":"198.51.100.1","remote_port":12345,"state":"ESTABLISHED","tx_queue":0,"rx_queue":0,"activity":10,"inode":"","pid":1,"proc_name":"sshd"}],"version":"v1"}`,
 		`{"captured_at":"2026-03-04T10:01:00Z","interface":"eth0","top_limit":100,"connections":[],"version":"v1"}`,
@@ -70,7 +70,7 @@ func TestLoadIndexSkipsCorruptLines(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeSegmentLines(t, dir, "connections-20260304-10.jsonl", []string{
+	writeSegmentLines(t, dir, "connections-20260304.jsonl", []string{
 		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit":100,"connections":[],"version":"v1"}`,
 		`{not-json}`,
 		`{"captured_at":"2026-03-04T10:02:00Z","interface":"eth0","top_limit":100,"connections":[],"version":"v1"}`,
@@ -92,15 +92,15 @@ func TestLoadIndexFromFileReadsOnlyTargetSegment(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writeSegmentLines(t, dir, "connections-20260304-10.jsonl", []string{
+	writeSegmentLines(t, dir, "connections-20260304.jsonl", []string{
 		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit":100,"connections":[],"version":"v1"}`,
 	})
-	writeSegmentLines(t, dir, "connections-20260304-11.jsonl", []string{
+	writeSegmentLines(t, dir, "connections-20260305.jsonl", []string{
 		`{"captured_at":"2026-03-04T11:00:00Z","interface":"eth0","top_limit":100,"connections":[],"version":"v1"}`,
 		`{"captured_at":"2026-03-04T11:01:00Z","interface":"eth0","top_limit":100,"connections":[],"version":"v1"}`,
 	})
 
-	refs, stats, err := LoadIndexFromFile(dir, "connections-20260304-11.jsonl")
+	refs, stats, err := LoadIndexFromFile(dir, "connections-20260305.jsonl")
 	if err != nil {
 		t.Fatalf("load index from file: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestLoadIndexFromFileNotFound(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	if _, _, err := LoadIndexFromFile(dir, "connections-20990101-00.jsonl"); err == nil {
+	if _, _, err := LoadIndexFromFile(dir, "connections-20990101.jsonl"); err == nil {
 		t.Fatalf("expected error for missing segment file")
 	}
 }
@@ -139,11 +139,11 @@ func writeSegmentLines(t *testing.T, dir, name string, lines []string) {
 func TestParseSegmentTimeFromName(t *testing.T) {
 	t.Parallel()
 
-	timestamp, ok := parseSegmentTime("connections-20260304-10.jsonl")
+	timestamp, ok := parseSegmentTime("connections-20260304.jsonl")
 	if !ok {
 		t.Fatalf("expected valid segment name")
 	}
-	if got := timestamp.In(time.Local).Format("20060102-15"); got != "20260304-10" {
+	if got := timestamp.In(time.Local).Format("20060102"); got != "20260304" {
 		t.Fatalf("timestamp mismatch: %s", got)
 	}
 

@@ -12,7 +12,7 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 )
 
-// SnapshotWriter appends snapshot records to hourly segment files.
+// SnapshotWriter appends snapshot records to daily segment files.
 type SnapshotWriter struct {
 	mu             sync.Mutex
 	cfg            WriterConfig
@@ -138,7 +138,11 @@ func (w *SnapshotWriter) pruneLocked(now time.Time) (PruneResult, error) {
 	cutoff := now.UTC().Add(-time.Duration(w.cfg.RetentionHours) * time.Hour)
 	kept := make([]segmentFile, 0, len(files))
 	for _, file := range files {
-		if file.Timestamp.Before(cutoff) {
+		segmentEnd := file.Timestamp
+		if file.Span > 0 {
+			segmentEnd = segmentEnd.Add(file.Span)
+		}
+		if segmentEnd.Before(cutoff) {
 			if err := os.Remove(file.Path); err == nil {
 				result.RemovedByAge++
 			}
