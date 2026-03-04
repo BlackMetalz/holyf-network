@@ -5,26 +5,36 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/BlackMetalz/holyf-network/internal/collector"
 )
 
 const (
 	defaultIntervalSeconds  = 30
-	defaultTopLimit         = 100
+	defaultTopLimit         = 500
 	defaultRetentionHours   = 168
 	defaultMaxFiles         = 72
 	defaultPruneEveryWrites = 10
 	snapshotDirName         = "snapshots"
 )
 
+// SnapshotGroup is one aggregate row in persisted history.
+type SnapshotGroup struct {
+	PeerIP     string         `json:"peer_ip"`
+	LocalPort  int            `json:"local_port"`
+	ProcName   string         `json:"proc_name"`
+	ConnCount  int            `json:"conn_count"`
+	TxQueue    int64          `json:"tx_queue"`
+	RxQueue    int64          `json:"rx_queue"`
+	TotalQueue int64          `json:"total_queue"`
+	States     map[string]int `json:"states"`
+}
+
 // SnapshotRecord is one persisted capture point.
 type SnapshotRecord struct {
-	CapturedAt  time.Time              `json:"captured_at"`
-	Interface   string                 `json:"interface"`
-	TopLimit    int                    `json:"top_limit"`
-	Connections []collector.Connection `json:"connections"`
-	Version     string                 `json:"version"`
+	CapturedAt time.Time       `json:"captured_at"`
+	Interface  string          `json:"interface"`
+	TopLimit   int             `json:"top_limit"`
+	Groups     []SnapshotGroup `json:"groups"`
+	Version    string          `json:"version"`
 }
 
 // SnapshotRef points to one snapshot line in a segment file.

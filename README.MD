@@ -83,7 +83,7 @@ holyf-network daemon start
 holyf-network daemon start \
   --interface eth0 \
   --interval 30 \
-  --top-limit 100 \
+  --top-limit 500 \
   --data-dir ~/.holyf-network/snapshots \
   --retention-hours 168 \
   --max-files 72
@@ -97,6 +97,8 @@ holyf-network daemon stop
 
 Daemon notes:
 - Storage format: daily NDJSON segments by server local time (`connections-YYYYMMDD.jsonl`).
+- Snapshot payload stores aggregate rows by `peer_ip + local_port + proc_name` (no raw connection list).
+- `--top-limit` is the max aggregate rows stored per snapshot.
 - Retention policy: remove old segments beyond `--retention-hours`, then enforce `--max-files`.
 - A lock file prevents multiple daemons writing the same `--data-dir`.
 
@@ -122,7 +124,7 @@ Replay hotkeys:
 - `f`: port filter (press again to clear filters)
 - `/`: grep-like contains filter for current snapshot
 - `o` / `Shift+Q/S/P/R`: sort mode
-- `g`: group-by-peer view
+- `g`: show aggregate-only mode note
 - `s`: mask IP display
 - `?`: help
 - `q`: quit
@@ -130,6 +132,8 @@ Replay hotkeys:
 `t` accepts: `YYYY-MM-DD HH:MM[:SS]`, `HH:MM[:SS]` (today), or `yesterday HH:MM`.
 
 Replay mode is read-only: no block/kill actions are executed.
+Replay view is aggregate-only: rows are grouped by `peer_ip + local_port + proc_name`.
+History reader accepts only this aggregate snapshot format.
 
 Default threshold file:
 

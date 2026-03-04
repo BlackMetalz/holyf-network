@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/history"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -21,25 +20,14 @@ func newHistoryTestApp(dataDir string, startAt string) *HistoryApp {
 	return h
 }
 
-func appendSnapshotFixture(t *testing.T, writer *history.SnapshotWriter, capturedAt time.Time, remoteIP string, state string, activity int64) {
+func appendSnapshotFixture(t *testing.T, writer *history.SnapshotWriter, capturedAt time.Time, rows []history.SnapshotGroup) {
 	t.Helper()
 	_, err := writer.Append(history.SnapshotRecord{
 		CapturedAt: capturedAt,
 		Interface:  "eth0",
-		TopLimit:   100,
-		Connections: []collector.Connection{
-			{
-				LocalIP:    "10.0.0.1",
-				LocalPort:  22,
-				RemoteIP:   remoteIP,
-				RemotePort: 40000,
-				State:      state,
-				Activity:   activity,
-				PID:        1,
-				ProcName:   "sshd",
-			},
-		},
-		Version: "test",
+		TopLimit:   500,
+		Groups:     rows,
+		Version:    "test",
 	})
 	if err != nil {
 		t.Fatalf("append snapshot fixture: %v", err)
@@ -57,8 +45,8 @@ func TestHistoryHandleKeyEventBracketNavigation(t *testing.T) {
 	defer writer.Close()
 
 	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
-	appendSnapshotFixture(t, writer, base, "198.51.100.10", "ESTABLISHED", 100)
-	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), "198.51.100.20", "ESTABLISHED", 200)
+	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1, TotalQueue: 100}})
+	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 1, TotalQueue: 200}})
 
 	h := newHistoryTestApp(dir, HistoryStartLatest)
 	h.reloadIndex(true)
@@ -85,7 +73,7 @@ func TestHistoryHandleKeyEventReadOnlyActions(t *testing.T) {
 	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
 	h.refs = []history.SnapshotRef{{}}
 	h.currentIndex = 0
-	h.currentRecord = history.SnapshotRecord{Connections: []collector.Connection{{RemoteIP: "198.51.100.10"}}}
+	h.currentRecord = history.SnapshotRecord{Groups: []history.SnapshotGroup{{PeerIP: "198.51.100.10"}}}
 
 	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'k', 0))
 	if ret != nil {
@@ -138,50 +126,61 @@ func TestHistoryFilterAppliesToCurrentSnapshotOnly(t *testing.T) {
 	defer writer.Close()
 
 	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
-	appendSnapshotFixture(t, writer, base, "172.25.110.76", "ESTABLISHED", 100)
-	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), "172.25.110.77", "ESTABLISHED", 200)
+	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "172.25.110.76", LocalPort: 22, ProcName: "sshd", ConnCount: 3}})
+	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), []history.SnapshotGroup{{PeerIP: "172.25.110.77", LocalPort: 22, ProcName: "sshd", ConnCount: 2}})
 
 	h := newHistoryTestApp(dir, HistoryStartLatest)
 	h.reloadIndex(true)
 	h.textFilter = "172.25.110.76"
 
-	if got := len(h.visibleConnections()); got != 0 {
+	if got := len(h.visibleRows()); got != 0 {
 		t.Fatalf("latest snapshot should not match filter, got=%d", got)
 	}
 
 	h.navigatePrev()
-	if got := len(h.visibleConnections()); got != 1 {
+	if got := len(h.visibleRows()); got != 1 {
 		t.Fatalf("previous snapshot should match filter once, got=%d", got)
 	}
 }
 
-func TestHistoryGroupViewAndSortModes(t *testing.T) {
+func TestHistoryAggregateSortModes(t *testing.T) {
 	t.Parallel()
 
 	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
 	h.refs = []history.SnapshotRef{{}}
 	h.currentIndex = 0
-	h.currentRecord = history.SnapshotRecord{Connections: []collector.Connection{
-		{RemoteIP: "198.51.100.20", LocalPort: 22, State: "ESTABLISHED", Activity: 50, PID: 1, ProcName: "sshd"},
-		{RemoteIP: "198.51.100.10", LocalPort: 22, State: "CLOSE_WAIT", Activity: 10, PID: 2, ProcName: "nginx"},
+	h.currentRecord = history.SnapshotRecord{Groups: []history.SnapshotGroup{
+		{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 5, TotalQueue: 50, States: map[string]int{"ESTABLISHED": 5}},
+		{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "nginx", ConnCount: 2, TotalQueue: 10, States: map[string]int{"CLOSE_WAIT": 2}},
 	}}
 
 	h.sortMode = SortByQueue
-	conns := h.visibleConnections()
-	if len(conns) != 2 || normalizeIP(conns[0].RemoteIP) != "198.51.100.20" {
-		t.Fatalf("queue sort should prioritize higher activity, got=%+v", conns)
+	rows := h.visibleRows()
+	if len(rows) != 2 || rows[0].PeerIP != "198.51.100.20" {
+		t.Fatalf("queue sort should prioritize higher queue, got=%+v", rows)
 	}
 
 	h.sortMode = SortByState
-	conns = h.visibleConnections()
-	if len(conns) != 2 || conns[0].State != "CLOSE_WAIT" {
-		t.Fatalf("state sort should order alphabetically by state, got=%+v", conns)
+	rows = h.visibleRows()
+	if len(rows) != 2 || dominantState(rows[0].States) != "CLOSE_WAIT" {
+		t.Fatalf("state sort should order alphabetically by dominant state, got=%+v", rows)
 	}
+}
 
-	h.groupView = true
-	groups := h.visibleGroups()
-	if len(groups) == 0 {
-		t.Fatalf("expected non-empty grouped view")
+func TestHistoryHandleKeyEventGAggregateOnlyNote(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h.refs = []history.SnapshotRef{{}}
+	h.currentIndex = 0
+	h.currentRecord = history.SnapshotRecord{Groups: []history.SnapshotGroup{{PeerIP: "198.51.100.10"}}}
+
+	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
+	if ret != nil {
+		t.Fatalf("g should be handled in replay mode")
+	}
+	if !strings.Contains(h.statusNote, "Aggregate-only") {
+		t.Fatalf("expected aggregate-only status note, got=%q", h.statusNote)
 	}
 }
 

@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/BlackMetalz/holyf-network/internal/collector"
 )
 
 func TestSnapshotWriterAppendWritesNDJSON(t *testing.T) {
@@ -30,10 +28,19 @@ func TestSnapshotWriterAppendWritesNDJSON(t *testing.T) {
 		CapturedAt: ts,
 		Interface:  "eth0",
 		TopLimit:   100,
-		Connections: []collector.Connection{
-			{LocalIP: "10.0.0.1", LocalPort: 22, RemoteIP: "198.51.100.1", RemotePort: 12345, State: "ESTABLISHED", Activity: 10},
+		Groups: []SnapshotGroup{
+			{
+				PeerIP:     "198.51.100.1",
+				LocalPort:  22,
+				ProcName:   "sshd",
+				ConnCount:  1,
+				TxQueue:    10,
+				RxQueue:    0,
+				TotalQueue: 10,
+				States:     map[string]int{"ESTABLISHED": 1},
+			},
 		},
-		Version: "v1",
+		Version: "test",
 	})
 	if err != nil {
 		t.Fatalf("append: %v", err)
@@ -52,7 +59,7 @@ func TestSnapshotWriterAppendWritesNDJSON(t *testing.T) {
 	if err := json.Unmarshal(data[:len(data)-1], &got); err != nil {
 		t.Fatalf("decode ndjson line: %v", err)
 	}
-	if got.Interface != "eth0" || len(got.Connections) != 1 {
+	if got.Interface != "eth0" || len(got.Groups) != 1 {
 		t.Fatalf("unexpected record content: %#v", got)
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/history"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -43,7 +42,6 @@ type HistoryApp struct {
 	portFilter    string
 	textFilter    string
 	sortMode      SortMode
-	groupView     bool
 	selectedIndex int
 	followLatest  bool
 
@@ -238,23 +236,23 @@ func (h *HistoryApp) topDisplayLimit() int {
 	return limit
 }
 
-func (h *HistoryApp) visibleConnections() []collector.Connection {
-	if len(h.currentRecord.Connections) == 0 {
+func (h *HistoryApp) visibleRows() []history.SnapshotGroup {
+	if len(h.currentRecord.Groups) == 0 {
 		return nil
 	}
-	filtered := h.currentRecord.Connections
-	if h.portFilter != "" {
-		filtered = filterByPort(filtered, h.portFilter)
+	filtered := h.currentRecord.Groups
+	if strings.TrimSpace(h.portFilter) != "" {
+		filtered = filterHistoryGroupsByPort(filtered, h.portFilter)
 	}
-	if h.textFilter != "" {
-		filtered = filterByText(filtered, h.textFilter)
+	if strings.TrimSpace(h.textFilter) != "" {
+		filtered = filterHistoryGroupsByText(filtered, h.textFilter)
 	}
 	if len(filtered) == 0 {
 		return nil
 	}
 
-	items := append([]collector.Connection(nil), filtered...)
-	sortConnections(items, h.sortMode)
+	items := append([]history.SnapshotGroup(nil), filtered...)
+	sortHistoryGroups(items, h.sortMode)
 
 	limit := h.topDisplayLimit()
 	if len(items) > limit {
@@ -263,27 +261,8 @@ func (h *HistoryApp) visibleConnections() []collector.Connection {
 	return items
 }
 
-func (h *HistoryApp) visibleGroups() []PeerGroup {
-	if len(h.currentRecord.Connections) == 0 {
-		return nil
-	}
-	filtered := applyGroupConnectionFilters(h.currentRecord.Connections, h.portFilter, h.textFilter)
-	if len(filtered) == 0 {
-		return nil
-	}
-	groups := buildPeerGroups(filtered)
-	limit := h.topDisplayLimit()
-	if len(groups) > limit {
-		groups = groups[:limit]
-	}
-	return groups
-}
-
 func (h *HistoryApp) visibleCount() int {
-	if h.groupView {
-		return len(h.visibleGroups())
-	}
-	return len(h.visibleConnections())
+	return len(h.visibleRows())
 }
 
 func (h *HistoryApp) clampSelection() {
@@ -348,36 +327,24 @@ func (h *HistoryApp) renderPanel() {
 	}
 
 	header := fmt.Sprintf(
-		"  [dim]Snapshot %d/%d | %s | %s | records=%d | scope=%s[white]\n",
+		"  [dim]Snapshot %d/%d | %s | %s | rows=%d | scope=%s[white]\n",
 		h.currentIndex+1,
 		len(h.refs),
 		captured,
 		iface,
-		len(rec.Connections),
+		len(rec.Groups),
 		h.replayScopeLabel(),
 	)
 
-	body := ""
-	if h.groupView {
-		body = renderPeerGroupPanelReadOnly(
-			rec.Connections,
-			h.portFilter,
-			h.textFilter,
-			h.topDisplayLimit(),
-			h.sensitiveIP,
-			h.selectedIndex,
-		)
-	} else {
-		body = renderTalkersPanelReadOnly(
-			rec.Connections,
-			h.portFilter,
-			h.textFilter,
-			h.topDisplayLimit(),
-			h.sensitiveIP,
-			h.selectedIndex,
-			h.sortMode,
-		)
-	}
+	body := renderHistoryAggregatePanel(
+		rec.Groups,
+		h.portFilter,
+		h.textFilter,
+		h.topDisplayLimit(),
+		h.sensitiveIP,
+		h.selectedIndex,
+		h.sortMode,
+	)
 
 	h.panel.SetText(header + "\n" + body)
 }

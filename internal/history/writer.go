@@ -8,8 +8,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/BlackMetalz/holyf-network/internal/collector"
 )
 
 // SnapshotWriter appends snapshot records to daily segment files.
@@ -70,8 +68,8 @@ func (w *SnapshotWriter) Append(record SnapshotRecord) (AppendResult, error) {
 	}
 	// Persist timestamps in server local time for operator-friendly replay.
 	record.CapturedAt = record.CapturedAt.Local()
-	if record.Connections == nil {
-		record.Connections = make([]collector.Connection, 0)
+	if record.Groups == nil {
+		record.Groups = make([]SnapshotGroup, 0)
 	}
 
 	segment := segmentFileName(record.CapturedAt)
@@ -135,7 +133,7 @@ func (w *SnapshotWriter) pruneLocked(now time.Time) (PruneResult, error) {
 		return result, nil
 	}
 
-	cutoff := now.UTC().Add(-time.Duration(w.cfg.RetentionHours) * time.Hour)
+	cutoff := now.Local().Add(-time.Duration(w.cfg.RetentionHours) * time.Hour)
 	kept := make([]segmentFile, 0, len(files))
 	for _, file := range files {
 		segmentEnd := file.Timestamp

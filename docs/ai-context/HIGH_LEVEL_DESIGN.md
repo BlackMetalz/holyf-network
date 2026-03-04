@@ -37,8 +37,9 @@ Package: `internal/history` + `cmd/daemon.go`
 1. `daemon start` launches internal worker in background and writes PID/log paths.
 2. Worker resolves interface (`--interface`) and starts `SnapshotWriter` with lock file (`.daemon.lock`) under `--data-dir`.
 3. Every `--interval` seconds:
-   - call `collector.CollectTopTalkers(--top-limit)`
-   - write one `SnapshotRecord` as NDJSON line
+   - call `collector.CollectTopTalkers(0)` to sample current connections
+   - aggregate by `peer_ip + local_port + proc_name`
+   - write one aggregate `SnapshotRecord` as NDJSON line
 4. Segment file naming by server local day: `connections-YYYYMMDD.jsonl`.
 5. Retention:
    - remove segments older than `--retention-hours`
@@ -49,13 +50,18 @@ Package: `internal/history` + `cmd/daemon.go`
 
 ## 4) Snapshot Storage Model
 
+Single format policy:
+
+- aggregate snapshot format only
+- no compatibility reader for older raw-connection snapshot schemas
+
 ### Record model (`internal/history/types.go`)
 
 - `SnapshotRecord`
   - `CapturedAt`
   - `Interface`
-  - `TopLimit`
-  - `Connections []collector.Connection`
+  - `TopLimit` (max aggregate rows)
+  - `Groups []SnapshotGroup`
   - `Version`
 
 - `SnapshotRef`
@@ -83,7 +89,7 @@ State includes:
 - snapshot refs + current index
 - current snapshot record
 - optional single-file scope (`replay --file <segment>`)
-- filter/search/sort/group/mask/selection
+- filter/search/sort/mask/selection
 - follow-latest toggle (`L`)
 
 Navigation keys:
@@ -96,7 +102,7 @@ Navigation keys:
 
 Behavior constraints:
 
-- replay uses top connection renderers in read-only mode
+- replay renders aggregate rows only
 - kill/block hotkeys (`Enter`, `k`, `b`) are explicitly blocked with status note
 - search/filter apply only to current snapshot
 

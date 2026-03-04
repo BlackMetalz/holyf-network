@@ -3,6 +3,7 @@ package history
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"sort"
 	"strings"
 )
+
+var errMissingGroupsField = errors.New("missing required groups field")
 
 // LoadIndex scans segment files and returns ordered snapshot refs (oldest -> latest).
 // Corrupt lines are skipped and counted in IndexStats.Corrupt.
@@ -48,7 +51,14 @@ func LoadIndexFromFile(dataDir, segmentPathArg string) ([]SnapshotRef, IndexStat
 			Name: filepath.Base(path),
 		},
 	}
-	return loadIndexFromFiles(files)
+	refs, stats, err := loadIndexFromFiles(files)
+	if err != nil {
+		return nil, stats, err
+	}
+	if len(refs) == 0 {
+		return nil, stats, fmt.Errorf("no valid snapshots found in file: %s", path)
+	}
+	return refs, stats, nil
 }
 
 func loadIndexFromFiles(files []segmentFile) ([]SnapshotRef, IndexStats, error) {
@@ -98,15 +108,15 @@ func indexSegmentFile(path string) ([]SnapshotRef, int, error) {
 		if len(line) > 0 {
 			trimmed := strings.TrimSpace(string(line))
 			if trimmed != "" {
-				var record SnapshotRecord
-				if unmarshalErr := json.Unmarshal([]byte(trimmed), &record); unmarshalErr != nil {
+				record, decodeErr := decodeSnapshotRecordLine([]byte(trimmed))
+				if decodeErr != nil {
 					corrupt++
 				} else {
 					refs = append(refs, SnapshotRef{
 						FilePath:   path,
 						Offset:     offset,
 						CapturedAt: record.CapturedAt,
-						ConnCount:  len(record.Connections),
+						ConnCount:  len(record.Groups),
 					})
 				}
 			}
@@ -141,9 +151,30 @@ func ReadSnapshot(ref SnapshotRef) (SnapshotRecord, error) {
 		return SnapshotRecord{}, fmt.Errorf("empty snapshot at offset %d", ref.Offset)
 	}
 
-	var record SnapshotRecord
-	if err := json.Unmarshal([]byte(strings.TrimSpace(string(line))), &record); err != nil {
+	record, err := decodeSnapshotRecordLine([]byte(strings.TrimSpace(string(line))))
+	if err != nil {
 		return SnapshotRecord{}, fmt.Errorf("decode snapshot: %w", err)
+	}
+	return record, nil
+}
+
+func decodeSnapshotRecordLine(line []byte) (SnapshotRecord, error) {
+	var probe struct {
+		Groups json.RawMessage `json:"groups"`
+	}
+	if err := json.Unmarshal(line, &probe); err != nil {
+		return SnapshotRecord{}, err
+	}
+	if probe.Groups == nil {
+		return SnapshotRecord{}, errMissingGroupsField
+	}
+
+	var record SnapshotRecord
+	if err := json.Unmarshal(line, &record); err != nil {
+		return SnapshotRecord{}, err
+	}
+	if record.Groups == nil {
+		record.Groups = make([]SnapshotGroup, 0)
 	}
 	return record, nil
 }

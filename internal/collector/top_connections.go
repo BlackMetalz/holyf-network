@@ -28,7 +28,8 @@ type Connection struct {
 }
 
 // CollectTopTalkers parses /proc/net/tcp + tcp6 and returns
-// the top N connections sorted by queue activity (descending).
+// connections sorted by queue activity (descending). When limit > 0,
+// only the top N items are returned.
 // Each connection is enriched with PID and process name when available.
 func CollectTopTalkers(limit int) ([]Connection, error) {
 	var allConns []Connection
@@ -63,8 +64,8 @@ func CollectTopTalkers(limit int) ([]Connection, error) {
 		return allConns[i].Activity > allConns[j].Activity
 	})
 
-	// Limit results
-	if len(allConns) > limit {
+	// Limit results when requested.
+	if limit > 0 && len(allConns) > limit {
 		allConns = allConns[:limit]
 	}
 

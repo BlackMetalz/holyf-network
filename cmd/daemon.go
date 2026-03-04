@@ -323,26 +323,29 @@ func newDaemonRunCmd() *cobra.Command {
 			defer stop()
 
 			capture := func(ts time.Time) {
-				conns, err := collector.CollectTopTalkers(opts.topLimit)
+				conns, err := collector.CollectTopTalkers(0)
 				if err != nil {
 					fmt.Printf("[%s] capture failed: %v\n", ts.Format(time.RFC3339), err)
 					return
 				}
+				groups := history.AggregateConnections(conns, opts.topLimit)
 				result, err := writer.Append(history.SnapshotRecord{
-					CapturedAt:  ts.Local(),
-					Interface:   opts.ifaceName,
-					TopLimit:    opts.topLimit,
-					Connections: conns,
-					Version:     version,
+					CapturedAt: ts.Local(),
+					Interface:  opts.ifaceName,
+					TopLimit:   opts.topLimit,
+					Groups:     groups,
+					Version:    version,
 				})
 				if err != nil {
 					fmt.Printf("[%s] write failed: %v\n", ts.Format(time.RFC3339), err)
 					return
 				}
 
-				fmt.Printf("[%s] captured %d connections -> %s\n",
+				fmt.Printf("[%s] captured %d connections -> %d aggregate rows (cap=%d) -> %s\n",
 					ts.Format(time.RFC3339),
 					len(conns),
+					len(groups),
+					opts.topLimit,
 					filepath.Base(result.SegmentPath),
 				)
 				if result.Prune.RemovedByAge > 0 || result.Prune.RemovedByMaxFiles > 0 {
@@ -382,7 +385,7 @@ func newDaemonRunCmd() *cobra.Command {
 func addCaptureFlags(cmd *cobra.Command, opts *daemonCaptureOptions) {
 	cmd.Flags().StringVarP(&opts.ifaceName, "interface", "i", "", "Network interface to monitor (default: auto-detect)")
 	cmd.Flags().IntVar(&opts.intervalSec, "interval", history.DefaultIntervalSeconds(), "Capture interval in seconds (1-300)")
-	cmd.Flags().IntVar(&opts.topLimit, "top-limit", history.DefaultTopLimit(), "Max top connections stored per snapshot")
+	cmd.Flags().IntVar(&opts.topLimit, "top-limit", history.DefaultTopLimit(), "Max aggregate rows stored per snapshot")
 	cmd.Flags().StringVar(&opts.dataDir, "data-dir", history.DefaultDataDir(), "Snapshot data directory")
 	cmd.Flags().IntVar(&opts.retentionHours, "retention-hours", history.DefaultRetentionHours(), "Retention window in hours")
 	cmd.Flags().IntVar(&opts.maxFiles, "max-files", history.DefaultMaxFiles(), "Maximum segment files retained")

@@ -82,10 +82,7 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			h.updateStatusBar()
 			return nil
 		case 'g':
-			h.groupView = !h.groupView
-			h.selectedIndex = 0
-			h.renderPanel()
-			h.updateStatusBar()
+			h.setStatusNote("Aggregate-only replay mode", 4*time.Second)
 			return nil
 		case 's':
 			h.sensitiveIP = !h.sensitiveIP
