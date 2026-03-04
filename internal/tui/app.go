@@ -489,7 +489,7 @@ func (a *App) visiblePeerGroups() []PeerGroup {
 		return nil
 	}
 
-	filtered := a.applyTopConnectionFilters(a.latestTalkers)
+	filtered := applyGroupConnectionFilters(a.latestTalkers, a.portFilter, a.textFilter)
 	if len(filtered) == 0 {
 		return nil
 	}
@@ -851,6 +851,18 @@ const (
 	maxBlockMinutes     = 1440
 )
 
+func parseBlockMinutes(raw string) (int, error) {
+	minutes, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || minutes < 0 || minutes > maxBlockMinutes {
+		return 0, fmt.Errorf("Block minutes must be 0-%d", maxBlockMinutes)
+	}
+	return minutes, nil
+}
+
+func isKillOnlyMinutes(minutes int) bool {
+	return minutes == 0
+}
+
 // promptKillPeer confirms and applies a temporary firewall block for a peer.
 func (a *App) promptKillPeer() {
 	if a.focusIndex != 2 {
@@ -875,7 +887,7 @@ func (a *App) promptKillPeer() {
 	}
 	defaultPeer := ""
 	defaultPort := ""
-	helpText := fmt.Sprintf("Enter peer IP + local port + block minutes (default %d).", defaultBlockMinutes)
+	helpText := fmt.Sprintf("Enter peer IP + local port + block minutes (0=kill only, default %d).", defaultBlockMinutes)
 	if hasSuggested {
 		defaultPeer = suggested.PeerIP
 		defaultPort = strconv.Itoa(suggested.LocalPort)
@@ -933,12 +945,11 @@ func (a *App) promptKillPeer() {
 			port = parsedPort
 		}
 
-		minutes, err := strconv.Atoi(strings.TrimSpace(minutesInput.GetText()))
-		if err != nil || minutes < 1 || minutes > maxBlockMinutes {
-			a.setStatusNote(fmt.Sprintf("Block minutes must be 1-%d", maxBlockMinutes), 5*time.Second)
+		minutes, err := parseBlockMinutes(minutesInput.GetText())
+		if err != nil {
+			a.setStatusNote(err.Error(), 5*time.Second)
 			return
 		}
-		duration := time.Duration(minutes) * time.Minute
 
 		target := peerKillTarget{
 			PeerIP:    peerIP,
@@ -946,14 +957,14 @@ func (a *App) promptKillPeer() {
 			Count:     a.countPeerMatches(peerIP, port),
 		}
 		spec := actions.PeerBlockSpec{PeerIP: target.PeerIP, LocalPort: target.LocalPort}
-		if a.hasActiveBlock(spec) {
+		if !isKillOnlyMinutes(minutes) && a.hasActiveBlock(spec) {
 			a.setStatusNote(fmt.Sprintf("Already blocked %s:%d", target.PeerIP, target.LocalPort), 5*time.Second)
 			return
 		}
 
 		a.pages.RemovePage("kill-peer-form")
 		a.updateStatusBar()
-		a.promptKillPeerConfirm(target, duration)
+		a.promptKillPeerConfirm(target, minutes)
 	}
 
 	form.AddButton("Next", func() {
@@ -1032,9 +1043,10 @@ func (a *App) promptKillPeer() {
 	a.app.SetFocus(form)
 }
 
-func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duration) {
+func (a *App) promptKillPeerConfirm(target peerKillTarget, minutes int) {
+	killOnly := isKillOnlyMinutes(minutes)
+	duration := time.Duration(minutes) * time.Minute
 	label := "Block " + formatBlockDuration(duration)
-	minutes := int(duration / time.Minute)
 	text := fmt.Sprintf(
 		"Block peer %s -> local port %d for %d minutes?\n\nMatches in current view: %d\nThis inserts a firewall block rule and attempts to terminate active flows.",
 		target.PeerIP,
@@ -1050,6 +1062,22 @@ func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duratio
 			minutes,
 		)
 	}
+	if killOnly {
+		label = "Kill Connections"
+		text = fmt.Sprintf(
+			"Kill active connections for peer %s -> local port %d?\n\nMatches in current view: %d\nThis terminates active flows only (no block rule or timer).",
+			target.PeerIP,
+			target.LocalPort,
+			target.Count,
+		)
+		if target.Count == 0 {
+			text = fmt.Sprintf(
+				"Kill active connections for peer %s -> local port %d?\n\nMatches in current view: 0 (manual target)\nThis terminates active flows only (no block rule or timer).",
+				target.PeerIP,
+				target.LocalPort,
+			)
+		}
+	}
 
 	modal := tview.NewModal().
 		SetText(text).
@@ -1063,9 +1091,15 @@ func (a *App) promptKillPeerConfirm(target peerKillTarget, duration time.Duratio
 				return
 			}
 
-			a.setStatusNote(fmt.Sprintf("Blocking %s:%d...", target.PeerIP, target.LocalPort), 4*time.Second)
 			// Snapshot latestTalkers on UI goroutine to avoid data race.
 			snapshotTalkers := append([]collector.Connection(nil), a.latestTalkers...)
+			if killOnly {
+				a.setStatusNote(fmt.Sprintf("Killing %s:%d...", target.PeerIP, target.LocalPort), 4*time.Second)
+				go a.killPeerConnectionsOnly(target, snapshotTalkers)
+				return
+			}
+
+			a.setStatusNote(fmt.Sprintf("Blocking %s:%d...", target.PeerIP, target.LocalPort), 4*time.Second)
 			go a.blockPeerForDuration(target, duration, snapshotTalkers)
 		})
 	modal.SetTitle(" Kill Peer ")
@@ -1288,6 +1322,9 @@ func (a *App) selectPeerKillTarget() (peerKillTarget, bool) {
 	}
 
 	filtered := a.applyTopConnectionFilters(a.latestTalkers)
+	if a.groupView {
+		filtered = applyGroupConnectionFilters(a.latestTalkers, a.portFilter, a.textFilter)
+	}
 	if len(filtered) == 0 {
 		return peerKillTarget{}, false
 	}
@@ -1368,6 +1405,9 @@ func (a *App) selectedPeerPortTarget(peerIP string) (peerKillTarget, bool) {
 	}
 
 	filtered := a.applyTopConnectionFilters(a.latestTalkers)
+	if a.groupView {
+		filtered = applyGroupConnectionFilters(a.latestTalkers, a.portFilter, a.textFilter)
+	}
 	if len(filtered) == 0 {
 		return peerKillTarget{}, false
 	}
@@ -1604,6 +1644,43 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 	})
 }
 
+func (a *App) killPeerConnectionsOnly(target peerKillTarget, snapshotTalkers []collector.Connection) {
+	spec := actions.PeerBlockSpec{
+		PeerIP:    target.PeerIP,
+		LocalPort: target.LocalPort,
+	}
+
+	tuples := matchingBlockTuplesFromSnapshot(snapshotTalkers, target.PeerIP, target.LocalPort)
+	beforeCount, beforeCountErr := actions.CountEstablishedPeerSockets(spec)
+	socketErr := actions.QueryAndKillPeerSockets(spec)
+	if socketErr != nil {
+		// Fallback: try killing with cached tuples from the TUI snapshot.
+		socketErr = actions.KillSockets(tuples)
+	}
+	flowErr := actions.DropPeerConnections(spec)
+	afterCount, afterCountErr := actions.CountEstablishedPeerSockets(spec)
+
+	dropWarningParts := make([]string, 0, 2)
+	if socketErr != nil {
+		dropWarningParts = append(dropWarningParts, "socket "+shortStatus(socketErr.Error(), 28))
+	}
+	if flowErr != nil {
+		dropWarningParts = append(dropWarningParts, "flow "+shortStatus(flowErr.Error(), 28))
+	}
+	dropWarning := ""
+	if len(dropWarningParts) > 0 {
+		dropWarning = " (drop partial: " + strings.Join(dropWarningParts, "; ") + ")"
+	}
+	actionSummary := buildKillOnlyActionSummary(spec, beforeCount, beforeCountErr, afterCount, afterCountErr, socketErr, flowErr)
+	a.addActionLog(actionSummary)
+
+	a.app.QueueUpdateDraw(func() {
+		a.setStatusNote(fmt.Sprintf("Killed connections for %s:%d%s", target.PeerIP, target.LocalPort, dropWarning), 8*time.Second)
+		a.showBlockSummaryPopup(actionSummary)
+		a.refreshData()
+	})
+}
+
 func (a *App) setStatusNote(note string, ttl time.Duration) {
 	a.statusNote = strings.TrimSpace(note)
 	a.statusNoteUntil = time.Now().Add(ttl)
@@ -1700,6 +1777,49 @@ func buildBlockActionSummary(
 	socketErr error,
 	flowErr error,
 ) string {
+	killPart := buildKillPart(beforeCount, beforeErr, afterCount, afterErr)
+
+	dropPart := "drop ok"
+	if socketErr != nil && flowErr != nil {
+		dropPart = "drop partial"
+	}
+
+	return fmt.Sprintf(
+		"Blocked %s:%d | %s | %s | expires in %s",
+		spec.PeerIP,
+		spec.LocalPort,
+		killPart,
+		dropPart,
+		formatRemainingDuration(duration),
+	)
+}
+
+func buildKillOnlyActionSummary(
+	spec actions.PeerBlockSpec,
+	beforeCount int,
+	beforeErr error,
+	afterCount int,
+	afterErr error,
+	socketErr error,
+	flowErr error,
+) string {
+	killPart := buildKillPart(beforeCount, beforeErr, afterCount, afterErr)
+
+	dropPart := "drop ok"
+	if socketErr != nil && flowErr != nil {
+		dropPart = "drop partial"
+	}
+
+	return fmt.Sprintf(
+		"Killed connections for %s:%d | %s | %s",
+		spec.PeerIP,
+		spec.LocalPort,
+		killPart,
+		dropPart,
+	)
+}
+
+func buildKillPart(beforeCount int, beforeErr error, afterCount int, afterErr error) string {
 	killPart := "killed ?/? flows"
 	if beforeErr == nil && afterErr == nil {
 		if beforeCount < 0 {
@@ -1715,20 +1835,7 @@ func buildBlockActionSummary(
 	} else if beforeErr == nil {
 		killPart = fmt.Sprintf("killed ?/%d flows", beforeCount)
 	}
-
-	dropPart := "drop ok"
-	if socketErr != nil && flowErr != nil {
-		dropPart = "drop partial"
-	}
-
-	return fmt.Sprintf(
-		"Blocked %s:%d | %s | %s | expires in %s",
-		spec.PeerIP,
-		spec.LocalPort,
-		killPart,
-		dropPart,
-		formatRemainingDuration(duration),
-	)
+	return killPart
 }
 
 func formatActiveBlockDetail(entry activeBlockEntry) string {

@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
@@ -89,9 +90,9 @@ func sortConnections(conns []collector.Connection, mode SortMode) {
 func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode) string {
 	var sb strings.Builder
 
-	filterChip := "ALL"
+	portChip := "Port Filter = ALL"
 	if strings.TrimSpace(portFilter) != "" {
-		filterChip = ":" + strings.TrimSpace(portFilter)
+		portChip = "Port Filter = " + strings.TrimSpace(portFilter)
 	}
 	maskChip := "OFF"
 	if sensitiveIP {
@@ -103,8 +104,8 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string, textFil
 	}
 
 	sb.WriteString(fmt.Sprintf(
-		"  [dim]Chips:[white] [yellow]Filter=%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white]\n",
-		filterChip,
+		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white]\n",
+		portChip,
 		maskChip,
 		searchChip,
 		sortMode.Label(),
@@ -213,8 +214,7 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string, textFil
 
 // filterByPort returns only connections where local or remote port matches.
 func filterByPort(conns []collector.Connection, portStr string) []collector.Connection {
-	var port int
-	fmt.Sscanf(portStr, "%d", &port)
+	port := parsePortFilter(portStr)
 	if port == 0 {
 		return conns // Invalid filter, show all
 	}
@@ -226,6 +226,40 @@ func filterByPort(conns []collector.Connection, portStr string) []collector.Conn
 		}
 	}
 	return result
+}
+
+func filterByLocalPort(conns []collector.Connection, portStr string) []collector.Connection {
+	port := parsePortFilter(portStr)
+	if port == 0 {
+		return conns
+	}
+
+	result := make([]collector.Connection, 0, len(conns))
+	for _, conn := range conns {
+		if conn.LocalPort == port {
+			result = append(result, conn)
+		}
+	}
+	return result
+}
+
+func parsePortFilter(portStr string) int {
+	port, err := strconv.Atoi(strings.TrimSpace(portStr))
+	if err != nil || port < 1 || port > 65535 {
+		return 0
+	}
+	return port
+}
+
+func applyGroupConnectionFilters(conns []collector.Connection, portFilter, textFilter string) []collector.Connection {
+	filtered := conns
+	if strings.TrimSpace(portFilter) != "" {
+		filtered = filterByLocalPort(filtered, portFilter)
+	}
+	if strings.TrimSpace(textFilter) != "" {
+		filtered = filterByText(filtered, textFilter)
+	}
+	return filtered
 }
 
 // filterByText returns only connections whose rendered fields contain query.
@@ -414,9 +448,9 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int) string {
 	var sb strings.Builder
 
-	filterChip := "ALL"
+	portChip := "Port Filter = ALL"
 	if strings.TrimSpace(portFilter) != "" {
-		filterChip = ":" + strings.TrimSpace(portFilter)
+		portChip = "Port Filter = " + strings.TrimSpace(portFilter)
 	}
 	searchChip := "ALL"
 	if strings.TrimSpace(textFilter) != "" {
@@ -424,8 +458,8 @@ func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter s
 	}
 
 	sb.WriteString(fmt.Sprintf(
-		"  [dim]Chips:[white] [yellow]Filter=%s[white] | [yellow]Search=%s[white] | [aqua]View=GROUP[white]\n",
-		filterChip,
+		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]Search=%s[white] | [aqua]View=GROUP[white]\n",
+		portChip,
 		searchChip,
 	))
 	sb.WriteString("  [dim]Use ↑/↓ select, g=connections view, /=search, f=port/clear[white]\n\n")
@@ -436,13 +470,7 @@ func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter s
 	}
 
 	// Apply filters first, then group.
-	filtered := conns
-	if portFilter != "" {
-		filtered = filterByPort(conns, portFilter)
-	}
-	if textFilter != "" {
-		filtered = filterByText(filtered, textFilter)
-	}
+	filtered := applyGroupConnectionFilters(conns, portFilter, textFilter)
 	if len(filtered) == 0 {
 		sb.WriteString("  No connections matching current filters")
 		return sb.String()
