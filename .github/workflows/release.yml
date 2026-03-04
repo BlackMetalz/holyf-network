@@ -1,5 +1,5 @@
 # Release workflow - triggered on tag push
-# Builds binaries for Linux + macOS and creates GitHub Release
+# Builds Linux binary and creates GitHub Release
 name: Release
 
 on:
@@ -25,22 +25,30 @@ jobs:
     - name: Run tests
       run: go test -v ./...
 
-    - name: Build Linux amd64
-      run: GOOS=linux GOARCH=amd64 go build -ldflags "-X github.com/BlackMetalz/holyf-network/cmd.Version=${{ github.ref_name }}" -o holyf-network-linux-amd64 .
+    - name: Build Linux amd64 (static, glibc-independent)
+      run: |
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+          -trimpath \
+          -ldflags "-s -w -X github.com/BlackMetalz/holyf-network/cmd.Version=${{ github.ref_name }}" \
+          -o holyf-network-linux-amd64 .
 
-    - name: Build macOS amd64
-      run: GOOS=darwin GOARCH=amd64 go build -ldflags "-X github.com/BlackMetalz/holyf-network/cmd.Version=${{ github.ref_name }}" -o holyf-network-darwin-amd64 .
+    - name: Verify Linux binary type
+      run: |
+        file holyf-network-linux-amd64
 
-    - name: Build macOS arm64 (Apple Silicon)
-      run: GOOS=darwin GOARCH=arm64 go build -ldflags "-X github.com/BlackMetalz/holyf-network/cmd.Version=${{ github.ref_name }}" -o holyf-network-darwin-arm64 .
+    - name: Smoke test on Ubuntu 20.04
+      run: |
+        docker run --rm -v "${PWD}:/w" -w /w ubuntu:20.04 ./holyf-network-linux-amd64 --version
+
+    - name: Smoke test on CentOS 7
+      run: |
+        docker run --rm -v "${PWD}:/w" -w /w centos:7 ./holyf-network-linux-amd64 --version
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
         files: |
           holyf-network-linux-amd64
-          holyf-network-darwin-amd64
-          holyf-network-darwin-arm64
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
