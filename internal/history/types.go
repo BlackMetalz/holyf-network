@@ -11,7 +11,6 @@ const (
 	defaultIntervalSeconds  = 30
 	defaultTopLimit         = 500
 	defaultRetentionHours   = 168
-	defaultMaxFiles         = 72
 	defaultPruneEveryWrites = 10
 	snapshotDirName         = "snapshots"
 )
@@ -53,8 +52,7 @@ type IndexStats struct {
 
 // PruneResult summarizes retention work.
 type PruneResult struct {
-	RemovedByAge      int
-	RemovedByMaxFiles int
+	RemovedByAge int
 }
 
 // AppendResult summarizes one append operation.
@@ -67,20 +65,17 @@ type AppendResult struct {
 type WriterConfig struct {
 	DataDir             string
 	RetentionHours      int
-	MaxFiles            int
 	PruneEverySnapshots int
 }
 
 func DefaultIntervalSeconds() int { return defaultIntervalSeconds }
 func DefaultTopLimit() int        { return defaultTopLimit }
 func DefaultRetentionHours() int  { return defaultRetentionHours }
-func DefaultMaxFiles() int        { return defaultMaxFiles }
 
 func DefaultWriterConfig(dataDir string) WriterConfig {
 	return WriterConfig{
 		DataDir:             dataDir,
 		RetentionHours:      defaultRetentionHours,
-		MaxFiles:            defaultMaxFiles,
 		PruneEverySnapshots: defaultPruneEveryWrites,
 	}
 }

@@ -29,7 +29,6 @@ type daemonCaptureOptions struct {
 	topLimit       int
 	dataDir        string
 	retentionHours int
-	maxFiles       int
 }
 
 type daemonStartOptions struct {
@@ -114,7 +113,6 @@ func newDaemonStartCmd() *cobra.Command {
 				"--top-limit", strconv.Itoa(opts.topLimit),
 				"--data-dir", paths.dataDir,
 				"--retention-hours", strconv.Itoa(opts.retentionHours),
-				"--max-files", strconv.Itoa(opts.maxFiles),
 				"--pid-file", paths.pidFile,
 			}
 			child := exec.Command(exePath, childArgs...)
@@ -144,11 +142,10 @@ func newDaemonStartCmd() *cobra.Command {
 			fmt.Printf("data-dir: %s\n", paths.dataDir)
 			fmt.Printf("pid-file: %s\n", paths.pidFile)
 			fmt.Printf("log-file: %s\n", paths.logFile)
-			fmt.Printf("interval=%ds top-limit=%d retention=%dh max-files=%d\n",
+			fmt.Printf("interval=%ds top-limit=%d retention=%dh\n",
 				opts.intervalSec,
 				opts.topLimit,
 				opts.retentionHours,
-				opts.maxFiles,
 			)
 			return nil
 		},
@@ -301,7 +298,6 @@ func newDaemonRunCmd() *cobra.Command {
 			writer, err := history.NewSnapshotWriter(history.WriterConfig{
 				DataDir:             opts.dataDir,
 				RetentionHours:      opts.retentionHours,
-				MaxFiles:            opts.maxFiles,
 				PruneEverySnapshots: 10,
 			})
 			if err != nil {
@@ -310,13 +306,12 @@ func newDaemonRunCmd() *cobra.Command {
 			defer writer.Close()
 
 			version := resolveBuildVersion(Version)
-			fmt.Printf("holyf-network daemon started | iface=%s interval=%ds top-limit=%d data-dir=%s retention=%dh max-files=%d\n",
+			fmt.Printf("holyf-network daemon started | iface=%s interval=%ds top-limit=%d data-dir=%s retention=%dh\n",
 				opts.ifaceName,
 				opts.intervalSec,
 				opts.topLimit,
 				opts.dataDir,
 				opts.retentionHours,
-				opts.maxFiles,
 			)
 
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -348,11 +343,10 @@ func newDaemonRunCmd() *cobra.Command {
 					opts.topLimit,
 					filepath.Base(result.SegmentPath),
 				)
-				if result.Prune.RemovedByAge > 0 || result.Prune.RemovedByMaxFiles > 0 {
-					fmt.Printf("[%s] pruned files: age=%d max-files=%d\n",
+				if result.Prune.RemovedByAge > 0 {
+					fmt.Printf("[%s] pruned files: age=%d\n",
 						ts.Format(time.RFC3339),
 						result.Prune.RemovedByAge,
-						result.Prune.RemovedByMaxFiles,
 					)
 				}
 			}
@@ -388,7 +382,6 @@ func addCaptureFlags(cmd *cobra.Command, opts *daemonCaptureOptions) {
 	cmd.Flags().IntVar(&opts.topLimit, "top-limit", history.DefaultTopLimit(), "Max aggregate rows stored per snapshot")
 	cmd.Flags().StringVar(&opts.dataDir, "data-dir", history.DefaultDataDir(), "Snapshot data directory")
 	cmd.Flags().IntVar(&opts.retentionHours, "retention-hours", history.DefaultRetentionHours(), "Retention window in hours")
-	cmd.Flags().IntVar(&opts.maxFiles, "max-files", history.DefaultMaxFiles(), "Maximum segment files retained")
 }
 
 func validateCaptureOptions(opts daemonCaptureOptions) error {
@@ -400,9 +393,6 @@ func validateCaptureOptions(opts daemonCaptureOptions) error {
 	}
 	if opts.retentionHours < 1 {
 		return fmt.Errorf("retention-hours must be >= 1, got %d", opts.retentionHours)
-	}
-	if opts.maxFiles < 1 {
-		return fmt.Errorf("max-files must be >= 1, got %d", opts.maxFiles)
 	}
 	return nil
 }

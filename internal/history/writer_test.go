@@ -15,7 +15,6 @@ func TestSnapshotWriterAppendWritesNDJSON(t *testing.T) {
 	writer, err := NewSnapshotWriter(WriterConfig{
 		DataDir:             dir,
 		RetentionHours:      24,
-		MaxFiles:            72,
 		PruneEverySnapshots: 10,
 	})
 	if err != nil {
@@ -68,7 +67,7 @@ func TestSnapshotWriterRotatesByDay(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writer, err := NewSnapshotWriter(WriterConfig{DataDir: dir, RetentionHours: 24, MaxFiles: 72, PruneEverySnapshots: 10})
+	writer, err := NewSnapshotWriter(WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
 	if err != nil {
 		t.Fatalf("new writer: %v", err)
 	}
@@ -97,7 +96,7 @@ func TestSnapshotWriterPrunesByRetentionHours(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writer, err := NewSnapshotWriter(WriterConfig{DataDir: dir, RetentionHours: 1, MaxFiles: 72, PruneEverySnapshots: 1})
+	writer, err := NewSnapshotWriter(WriterConfig{DataDir: dir, RetentionHours: 1, PruneEverySnapshots: 1})
 	if err != nil {
 		t.Fatalf("new writer: %v", err)
 	}
@@ -125,46 +124,17 @@ func TestSnapshotWriterPrunesByRetentionHours(t *testing.T) {
 	}
 }
 
-func TestSnapshotWriterPrunesByMaxFiles(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	writer, err := NewSnapshotWriter(WriterConfig{DataDir: dir, RetentionHours: 240, MaxFiles: 2, PruneEverySnapshots: 1})
-	if err != nil {
-		t.Fatalf("new writer: %v", err)
-	}
-	defer writer.Close()
-
-	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
-	for i := 0; i < 3; i++ {
-		if _, err := writer.Append(SnapshotRecord{CapturedAt: base.AddDate(0, 0, i)}); err != nil {
-			t.Fatalf("append #%d: %v", i, err)
-		}
-	}
-
-	files, err := listSegmentFiles(dir)
-	if err != nil {
-		t.Fatalf("list segments: %v", err)
-	}
-	if len(files) != 2 {
-		t.Fatalf("expected 2 retained segment files, got %d", len(files))
-	}
-	if files[0].Name != segmentFileName(base.AddDate(0, 0, 1)) || files[1].Name != segmentFileName(base.AddDate(0, 0, 2)) {
-		t.Fatalf("expected to keep latest two segments, got: %s, %s", files[0].Name, files[1].Name)
-	}
-}
-
 func TestSnapshotWriterAcquiresExclusiveLock(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	first, err := NewSnapshotWriter(WriterConfig{DataDir: dir, RetentionHours: 24, MaxFiles: 72, PruneEverySnapshots: 10})
+	first, err := NewSnapshotWriter(WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
 	if err != nil {
 		t.Fatalf("new first writer: %v", err)
 	}
 	defer first.Close()
 
-	second, err := NewSnapshotWriter(WriterConfig{DataDir: dir, RetentionHours: 24, MaxFiles: 72, PruneEverySnapshots: 10})
+	second, err := NewSnapshotWriter(WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
 	if err == nil {
 		_ = second.Close()
 		t.Fatalf("expected second writer lock acquisition to fail")

@@ -85,8 +85,7 @@ holyf-network daemon start \
   --interval 30 \
   --top-limit 500 \
   --data-dir ~/.holyf-network/snapshots \
-  --retention-hours 168 \
-  --max-files 72
+  --retention-hours 168
 
 # Check status
 holyf-network daemon status
@@ -99,7 +98,7 @@ Daemon notes:
 - Storage format: daily NDJSON segments by server local time (`connections-YYYYMMDD.jsonl`).
 - Snapshot payload stores aggregate rows by `peer_ip + local_port + proc_name` (no raw connection list).
 - `--top-limit` is the max aggregate rows stored per snapshot.
-- Retention policy: remove old segments beyond `--retention-hours`, then enforce `--max-files`.
+- Retention policy: remove old segments beyond `--retention-hours`.
 - A lock file prevents multiple daemons writing the same `--data-dir`.
 
 ## Replay (History) Mode

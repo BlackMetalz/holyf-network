@@ -43,7 +43,6 @@ Package: `internal/history` + `cmd/daemon.go`
 4. Segment file naming by server local day: `connections-YYYYMMDD.jsonl`.
 5. Retention:
    - remove segments older than `--retention-hours`
-   - enforce `--max-files` by deleting oldest remaining
 6. `daemon stop` sends `SIGTERM` (fallback `SIGKILL`) and removes PID file.
 7. `daemon status` reads PID file and reports running/stopped state.
 8. Worker handles `SIGINT/SIGTERM` and closes cleanly.
@@ -129,8 +128,8 @@ Behavior constraints:
 
 2. Connection snapshots (daemon/replay)
    - `~/.holyf-network/snapshots` by default
-   - hourly NDJSON segment files
-   - retention via age + max files
+   - daily NDJSON segment files (`connections-YYYYMMDD.jsonl`)
+   - retention via age (`--retention-hours`)
 
 ## 8) Concurrency Model
 

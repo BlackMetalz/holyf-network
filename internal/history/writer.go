@@ -50,9 +50,6 @@ func normalizeWriterConfig(cfg WriterConfig) WriterConfig {
 	if cfg.RetentionHours <= 0 {
 		cfg.RetentionHours = defaultRetentionHours
 	}
-	if cfg.MaxFiles <= 0 {
-		cfg.MaxFiles = defaultMaxFiles
-	}
 	if cfg.PruneEverySnapshots <= 0 {
 		cfg.PruneEverySnapshots = defaultPruneEveryWrites
 	}
@@ -102,7 +99,6 @@ func (w *SnapshotWriter) Append(record SnapshotRecord) (AppendResult, error) {
 			return result, err
 		}
 		result.Prune.RemovedByAge += pruned.RemovedByAge
-		result.Prune.RemovedByMaxFiles += pruned.RemovedByMaxFiles
 	}
 
 	return result, nil
@@ -147,16 +143,6 @@ func (w *SnapshotWriter) pruneLocked(now time.Time) (PruneResult, error) {
 			continue
 		}
 		kept = append(kept, file)
-	}
-
-	if len(kept) <= w.cfg.MaxFiles {
-		return result, nil
-	}
-	removeCount := len(kept) - w.cfg.MaxFiles
-	for i := 0; i < removeCount; i++ {
-		if err := os.Remove(kept[i].Path); err == nil {
-			result.RemovedByMaxFiles++
-		}
 	}
 
 	return result, nil

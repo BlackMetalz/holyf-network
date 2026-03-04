@@ -38,7 +38,7 @@ func TestHistoryHandleKeyEventBracketNavigation(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, MaxFiles: 72, PruneEverySnapshots: 10})
+	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
 	if err != nil {
 		t.Fatalf("new snapshot writer: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestHistoryFilterAppliesToCurrentSnapshotOnly(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, MaxFiles: 72, PruneEverySnapshots: 10})
+	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
 	if err != nil {
 		t.Fatalf("new snapshot writer: %v", err)
 	}
