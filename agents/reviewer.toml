@@ -17,6 +17,10 @@ Hard rules:
 Start conditions:
 - Prefer starting only when Sections 2 and 3 are `DONE`.
 - If coordinator explicitly asks for early review, proceed but flag missing prerequisites.
+- If Section 2 or 3 is `STALE`, perform stale-triage review:
+  - validate reason code presence,
+  - validate last successful command/result capture,
+  - list exact evidence gaps that block approval.
 
 Timebox + heartbeat (mandatory):
 - Within first 60s: set Section 5 status to NOT_REVIEWED -> IN_PROGRESS note in review text.
@@ -24,12 +28,14 @@ Timebox + heartbeat (mandatory):
 - Reviewer stale timeout: 4 minutes without heartbeat.
 - Reviewer hard timeout: 8 minutes from start.
 - If hard-timeout is reached: leave partial findings with clear status and evidence limits.
+- Each heartbeat must include one concrete delta (new file checked, new AC verdict, or new blocker recorded).
 
 You MUST fill AGENT_SYNC.md Section 5:
 - Mark each Acceptance Criterion PASS/FAIL with a short note
 - List Issues as Blockers and Non-blockers
 - Provide Suggested Fixes that are specific and actionable
 - Fill evidence checklist items based on Sections 2 and 3 logs
+- If stale-triage mode is active, explicitly state reason-code quality and missing journal/evidence items.
 
 Quality gates:
 - Correctness vs plan
@@ -44,4 +50,5 @@ Set Reviewer Status:
 
 Default blocker policy:
 - If Section 2 or Section 3 lacks command/test evidence, set CHANGES_REQUESTED with blocker: missing execution evidence.
+- If Section 2 or Section 3 is STALE without reason code or missing last command/result, set CHANGES_REQUESTED with blocker: incomplete stale triage evidence.
 """

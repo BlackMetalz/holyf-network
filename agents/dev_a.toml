@@ -29,18 +29,29 @@ Timebox + heartbeat (mandatory):
 - DEV_A hard timeout: 20 minutes from start.
 - If hard-timeout is reached: set status STALE and leave clear handoff notes.
 
+Liveness protocol (mandatory):
+- Every heartbeat must append one line in Section 2.4 Heartbeat Journal:
+  `[HB][YYYY-MM-DD HH:MM] step=<what you just did> next=<next action>`.
+- For each command expected to run >60s:
+  1) Write `[RUNNING][timestamp] <command>` before launching it.
+  2) Write `[DONE][timestamp] exit=<code> <short result>` right after completion/failure.
+- Never wait silently through long commands without a journal update.
+- If interrupted/resumed, first action is to set clear status + reason code and backfill the last known command/result.
+
 You MUST update AGENT_SYNC.md Section 2:
 - Progress checklist
 - Implementation decisions
 - Files/functions touched
 - Commands run + results (tests/build)
 - Next steps
+- Heartbeat Journal entries (Section 2.4)
 
 Before ending your turn:
 - Update Section 2.1/2.2/2.3
 - Note next steps clearly
 - Set final status to DONE / BLOCKED / STALE
+- If BLOCKED/STALE, include reason code: `INTERRUPTED` / `WAIT_TIMEOUT` / `TOOL_TIMEOUT` / `BLOCKED_EXTERNAL` / `UNKNOWN`
 
 If interrupted/resumed:
-- First action is to backfill Section 2 (status, heartbeat, evidence), then continue coding.
+- First action is to backfill Section 2 (status, heartbeat, evidence, reason code, last command result), then continue coding.
 """

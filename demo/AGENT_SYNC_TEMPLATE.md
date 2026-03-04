@@ -22,6 +22,9 @@
 - **Coordinator:** @coordinator (main agent)
 - **Last coordinator check:** YYYY-MM-DD HH:MM
 - **Recovery policy:** stale ping -> mark `STALE` -> interrupt at hard-timeout -> spawn backfill logger to update missing section -> continue pipeline.
+- **Stale reason codes:** `INTERRUPTED` / `WAIT_TIMEOUT` / `TOOL_TIMEOUT` / `BLOCKED_EXTERNAL` / `UNKNOWN`
+- **Checkpoint policy:** every role heartbeat must add one `[HB][YYYY-MM-DD HH:MM]` note in its section with current command/result/next step.
+- **Long command policy:** before command expected >60s, log `[RUNNING][timestamp] <cmd>`; after it exits, log `[DONE][timestamp] exit=<code> summary`.
 
 ---
 
@@ -89,6 +92,14 @@
 - Questions:
   - None
 
+### 2.4 Heartbeat Journal (liveness evidence)
+- Format:
+  - `[HB][YYYY-MM-DD HH:MM] step=<short step> next=<next action>`
+  - `[RUNNING][YYYY-MM-DD HH:MM] <command>`
+  - `[DONE][YYYY-MM-DD HH:MM] exit=<code> <short result>`
+- Journal:
+  - None
+
 ---
 
 ## 3) DEV_B Work Log
@@ -115,12 +126,26 @@
 - Commands run + results:
 - Edge-case notes:
 
+### 3.4 Heartbeat Journal (liveness evidence)
+- Format:
+  - `[HB][YYYY-MM-DD HH:MM] step=<short step> next=<next action>`
+  - `[RUNNING][YYYY-MM-DD HH:MM] <command>`
+  - `[DONE][YYYY-MM-DD HH:MM] exit=<code> <short result>`
+- Journal:
+  - None
+
 ---
 
 ## 4) Integration / Merge Notes
 - **Owner:** @coordinator
 - **Last updated:** YYYY-MM-DD HH:MM
 - Conflicts / dependencies:
+- Stale triage:
+  - Role:
+  - Reason code:
+  - Last heartbeat:
+  - Last successful command/result:
+  - Recovery owner + next action:
 - Commands to run:
   - `...`
   - `...`
@@ -166,3 +191,5 @@
 - [ ] Listed commands run + results (tests, build)
 - [ ] Updated `Last heartbeat` during execution
 - [ ] Marked final status (`DONE` / `BLOCKED` / `STALE`) before handoff
+- [ ] Added stale reason code if status is `BLOCKED` or `STALE`
+- [ ] Added heartbeat journal entries (`HB` + `RUNNING/DONE`) for long commands

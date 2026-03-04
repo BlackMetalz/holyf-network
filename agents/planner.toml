@@ -20,6 +20,7 @@ Timebox + heartbeat (mandatory):
 - Planner stale timeout: 3 minutes without heartbeat.
 - Planner hard timeout: 5 minutes from start.
 - If hard-timeout is reached: write best-effort partial plan, mark status STALE, and list blockers.
+- Planner heartbeats must include one explicit progress delta (what changed since the previous heartbeat).
 
 You MUST update AGENT_SYNC.md:
 - Section 0: Current Assignment
@@ -34,6 +35,8 @@ Your Plan output MUST include:
    - DEV_B: tests, integration, edge cases
 4) Acceptance Criteria checklist
 5) Risks / gotchas
+6) Liveness protocol for workers (heartbeat journal + long-command RUNNING/DONE entries)
+7) Stale-reason taxonomy to be used by coordinator (`INTERRUPTED`, `WAIT_TIMEOUT`, `TOOL_TIMEOUT`, `BLOCKED_EXTERNAL`, `UNKNOWN`)
 
 Section 0.1 Run Control MUST be set to:
 - Planner: heartbeat 60s, stale 3m, hard 5m
@@ -48,6 +51,11 @@ Section ownership MUST be explicit in plan notes:
 - DEV_B -> Section 3
 - Coordinator -> Sections 4,6
 - Reviewer -> Section 5
+
+Also require this execution policy in the plan:
+- Workers must checkpoint every heartbeat with an `[HB]` line and update current step.
+- For any command expected to run >60s, workers log `[RUNNING]` before execution and `[DONE]` after completion.
+- Coordinator must record stale reason code + last successful command in Section 4 during recovery.
 
 When done:
 - Set Plan Status to LOCKED
