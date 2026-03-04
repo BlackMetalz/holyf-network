@@ -101,16 +101,16 @@ func NewApp(
 	}
 	healthThresholds.Normalize()
 
-	return &App{
-		app:              tview.NewApplication(),
-		ifaceName:        ifaceName,
-		refreshSec:       refreshSec,
-		appVersion:       version,
-		focusIndex:       0,
-		sensitiveIP:      sensitiveIP,
-		activeBlocks:     make(map[string]activeBlockEntry),
-		stopChan:         make(chan struct{}),
-		refreshChan:      make(chan struct{}, 1), // Buffered: so send never blocks
+		return &App{
+			app:              tview.NewApplication(),
+			ifaceName:        ifaceName,
+			refreshSec:       refreshSec,
+			appVersion:       version,
+			focusIndex:       2, // Top Connections panel is default active focus.
+			sensitiveIP:      sensitiveIP,
+			activeBlocks:     make(map[string]activeBlockEntry),
+			stopChan:         make(chan struct{}),
+			refreshChan:      make(chan struct{}, 1), // Buffered: so send never blocks
 		healthThresholds: healthThresholds,
 		actionLogs:       make([]string, 0, 32),
 	}
