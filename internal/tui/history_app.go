@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -27,6 +28,7 @@ type HistoryApp struct {
 
 	dataDir     string
 	startAt     string
+	segmentFile string
 	sensitiveIP bool
 	appVersion  string
 
@@ -51,7 +53,7 @@ type HistoryApp struct {
 	stopChan chan struct{}
 }
 
-func NewHistoryApp(dataDir, startAt string, sensitiveIP bool, appVersion string) *HistoryApp {
+func NewHistoryApp(dataDir, startAt, segmentFile string, sensitiveIP bool, appVersion string) *HistoryApp {
 	startAt = strings.TrimSpace(strings.ToLower(startAt))
 	if startAt != HistoryStartOldest {
 		startAt = HistoryStartLatest
@@ -65,6 +67,7 @@ func NewHistoryApp(dataDir, startAt string, sensitiveIP bool, appVersion string)
 		app:          tview.NewApplication(),
 		dataDir:      history.ExpandPath(dataDir),
 		startAt:      startAt,
+		segmentFile:  strings.TrimSpace(segmentFile),
 		sensitiveIP:  sensitiveIP,
 		appVersion:   version,
 		sortMode:     SortByQueue,
@@ -118,7 +121,16 @@ func (h *HistoryApp) startTickerLoop() {
 }
 
 func (h *HistoryApp) reloadIndex(selectStart bool) {
-	refs, stats, err := history.LoadIndex(h.dataDir)
+	var (
+		refs  []history.SnapshotRef
+		stats history.IndexStats
+		err   error
+	)
+	if strings.TrimSpace(h.segmentFile) != "" {
+		refs, stats, err = history.LoadIndexFromFile(h.dataDir, h.segmentFile)
+	} else {
+		refs, stats, err = history.LoadIndex(h.dataDir)
+	}
 	if err != nil {
 		h.setStatusNote("Load snapshots failed: "+shortStatus(err.Error(), 72), 8*time.Second)
 		return
@@ -336,12 +348,13 @@ func (h *HistoryApp) renderPanel() {
 	}
 
 	header := fmt.Sprintf(
-		"  [dim]Snapshot %d/%d | %s | %s | records=%d[white]\n",
+		"  [dim]Snapshot %d/%d | %s | %s | records=%d | scope=%s[white]\n",
 		h.currentIndex+1,
 		len(h.refs),
 		captured,
 		iface,
 		len(rec.Connections),
+		h.replayScopeLabel(),
 	)
 
 	body := ""
@@ -367,6 +380,14 @@ func (h *HistoryApp) renderPanel() {
 	}
 
 	h.panel.SetText(header + "\n" + body)
+}
+
+func (h *HistoryApp) replayScopeLabel() string {
+	file := strings.TrimSpace(h.segmentFile)
+	if file == "" {
+		return "ALL"
+	}
+	return filepath.Base(file)
 }
 
 func (h *HistoryApp) updateStatusBar() {

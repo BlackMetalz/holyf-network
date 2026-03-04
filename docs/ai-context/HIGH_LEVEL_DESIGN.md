@@ -39,7 +39,7 @@ Package: `internal/history` + `cmd/daemon.go`
 3. Every `--interval` seconds:
    - call `collector.CollectTopTalkers(--top-limit)`
    - write one `SnapshotRecord` as NDJSON line
-4. Segment file naming by UTC hour: `connections-YYYYMMDD-HH.jsonl`.
+4. Segment file naming by server local hour: `connections-YYYYMMDD-HH.jsonl`.
 5. Retention:
    - remove segments older than `--retention-hours`
    - enforce `--max-files` by deleting oldest remaining
@@ -82,6 +82,7 @@ State includes:
 
 - snapshot refs + current index
 - current snapshot record
+- optional single-file scope (`replay --file <segment>`)
 - filter/search/sort/group/mask/selection
 - follow-latest toggle (`L`)
 

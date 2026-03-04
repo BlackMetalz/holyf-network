@@ -23,7 +23,8 @@ type segmentFile struct {
 }
 
 func segmentFileName(t time.Time) string {
-	return segmentPrefix + t.UTC().Format(segmentLayout) + segmentSuffix
+	// Segment names follow server local time to match operator expectation.
+	return segmentPrefix + t.Local().Format(segmentLayout) + segmentSuffix
 }
 
 func parseSegmentTime(name string) (time.Time, bool) {
@@ -31,7 +32,8 @@ func parseSegmentTime(name string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	stamp := strings.TrimSuffix(strings.TrimPrefix(name, segmentPrefix), segmentSuffix)
-	ts, err := time.ParseInLocation(segmentLayout, stamp, time.UTC)
+	// Parse in server local timezone because filenames are local-time based.
+	ts, err := time.ParseInLocation(segmentLayout, stamp, time.Local)
 	if err != nil {
 		return time.Time{}, false
 	}

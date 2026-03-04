@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -18,6 +19,39 @@ func LoadIndex(dataDir string) ([]SnapshotRef, IndexStats, error) {
 	if err != nil {
 		return nil, IndexStats{}, err
 	}
+	return loadIndexFromFiles(files)
+}
+
+// LoadIndexFromFile scans a single segment file and returns ordered snapshot refs.
+// segmentPathArg can be either a basename under dataDir or an absolute file path.
+func LoadIndexFromFile(dataDir, segmentPathArg string) ([]SnapshotRef, IndexStats, error) {
+	dataDir = ExpandPath(dataDir)
+	path := strings.TrimSpace(segmentPathArg)
+	if path == "" {
+		return nil, IndexStats{}, fmt.Errorf("segment file is required")
+	}
+	path = ExpandPath(path)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(dataDir, path)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, IndexStats{}, fmt.Errorf("segment file not found: %s", path)
+	}
+	if info.IsDir() {
+		return nil, IndexStats{}, fmt.Errorf("segment file must be a file: %s", path)
+	}
+
+	files := []segmentFile{
+		{
+			Path: path,
+			Name: filepath.Base(path),
+		},
+	}
+	return loadIndexFromFiles(files)
+}
+
+func loadIndexFromFiles(files []segmentFile) ([]SnapshotRef, IndexStats, error) {
 
 	stats := IndexStats{Files: len(files)}
 	refs := make([]SnapshotRef, 0, 256)

@@ -12,7 +12,7 @@ import (
 )
 
 func newHistoryTestApp(dataDir string, startAt string) *HistoryApp {
-	h := NewHistoryApp(dataDir, startAt, false, "test")
+	h := NewHistoryApp(dataDir, startAt, "", false, "test")
 	h.panel = tview.NewTextView().SetDynamicColors(true)
 	h.statusBar = tview.NewTextView().SetDynamicColors(true)
 	h.pages = tview.NewPages()

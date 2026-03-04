@@ -66,9 +66,10 @@ func (w *SnapshotWriter) Append(record SnapshotRecord) (AppendResult, error) {
 	defer w.mu.Unlock()
 
 	if record.CapturedAt.IsZero() {
-		record.CapturedAt = time.Now().UTC()
+		record.CapturedAt = time.Now()
 	}
-	record.CapturedAt = record.CapturedAt.UTC()
+	// Persist timestamps in server local time for operator-friendly replay.
+	record.CapturedAt = record.CapturedAt.Local()
 	if record.Connections == nil {
 		record.Connections = make([]collector.Connection, 0)
 	}

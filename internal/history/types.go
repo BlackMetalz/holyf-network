@@ -12,7 +12,7 @@ import (
 const (
 	defaultIntervalSeconds  = 30
 	defaultTopLimit         = 100
-	defaultRetentionHours   = 24
+	defaultRetentionHours   = 168
 	defaultMaxFiles         = 72
 	defaultPruneEveryWrites = 10
 	snapshotDirName         = "snapshots"

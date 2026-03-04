@@ -88,6 +88,42 @@ func TestLoadIndexSkipsCorruptLines(t *testing.T) {
 	}
 }
 
+func TestLoadIndexFromFileReadsOnlyTargetSegment(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeSegmentLines(t, dir, "connections-20260304-10.jsonl", []string{
+		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit":100,"connections":[],"version":"v1"}`,
+	})
+	writeSegmentLines(t, dir, "connections-20260304-11.jsonl", []string{
+		`{"captured_at":"2026-03-04T11:00:00Z","interface":"eth0","top_limit":100,"connections":[],"version":"v1"}`,
+		`{"captured_at":"2026-03-04T11:01:00Z","interface":"eth0","top_limit":100,"connections":[],"version":"v1"}`,
+	})
+
+	refs, stats, err := LoadIndexFromFile(dir, "connections-20260304-11.jsonl")
+	if err != nil {
+		t.Fatalf("load index from file: %v", err)
+	}
+	if stats.Files != 1 {
+		t.Fatalf("file count mismatch: got=%d want=1", stats.Files)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("expected 2 refs from selected file, got=%d", len(refs))
+	}
+	if got := refs[0].CapturedAt.UTC().Format(time.RFC3339); got != "2026-03-04T11:00:00Z" {
+		t.Fatalf("first captured_at mismatch: got=%s", got)
+	}
+}
+
+func TestLoadIndexFromFileNotFound(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if _, _, err := LoadIndexFromFile(dir, "connections-20990101-00.jsonl"); err == nil {
+		t.Fatalf("expected error for missing segment file")
+	}
+}
+
 func writeSegmentLines(t *testing.T, dir, name string, lines []string) {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -107,7 +143,7 @@ func TestParseSegmentTimeFromName(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected valid segment name")
 	}
-	if got := timestamp.UTC().Format("20060102-15"); got != "20260304-10" {
+	if got := timestamp.In(time.Local).Format("20060102-15"); got != "20260304-10" {
 		t.Fatalf("timestamp mismatch: %s", got)
 	}
 

@@ -85,7 +85,7 @@ holyf-network daemon start \
   --interval 30 \
   --top-limit 100 \
   --data-dir ~/.holyf-network/snapshots \
-  --retention-hours 24 \
+  --retention-hours 168 \
   --max-files 72
 
 # Check status
@@ -96,7 +96,7 @@ holyf-network daemon stop
 ```
 
 Daemon notes:
-- Storage format: hourly NDJSON segments (`connections-YYYYMMDD-HH.jsonl`).
+- Storage format: hourly NDJSON segments by server local time (`connections-YYYYMMDD-HH.jsonl`).
 - Retention policy: remove old segments beyond `--retention-hours`, then enforce `--max-files`.
 - A lock file prevents multiple daemons writing the same `--data-dir`.
 
@@ -108,6 +108,9 @@ holyf-network replay
 
 # Start from oldest snapshot and mask IP prefixes in UI
 holyf-network replay --start-at oldest --sensitive-ip
+
+# Open one specific snapshot segment file (e.g. yesterday 20:00-20:59)
+holyf-network replay --file connections-20260304-20.jsonl
 ```
 
 Replay hotkeys:

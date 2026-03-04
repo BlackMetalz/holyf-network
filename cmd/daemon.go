@@ -329,7 +329,7 @@ func newDaemonRunCmd() *cobra.Command {
 					return
 				}
 				result, err := writer.Append(history.SnapshotRecord{
-					CapturedAt:  ts.UTC(),
+					CapturedAt:  ts.Local(),
 					Interface:   opts.ifaceName,
 					TopLimit:    opts.topLimit,
 					Connections: conns,
