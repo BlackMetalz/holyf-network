@@ -447,18 +447,48 @@ func (a *App) visibleTopConnections() []collector.Connection {
 	}
 
 	filtered := a.applyTopConnectionFilters(a.latestTalkers)
-	sortConnections(filtered, a.sortMode)
+	if len(filtered) == 0 {
+		return nil
+	}
+	// Copy before sorting to avoid mutating latestTalkers backing array.
+	items := append([]collector.Connection(nil), filtered...)
+	sortConnections(items, a.sortMode)
 
 	limit := a.topConnectionsDisplayLimit()
-	if len(filtered) > limit {
-		filtered = filtered[:limit]
+	if len(items) > limit {
+		items = items[:limit]
 	}
-	return filtered
+	return items
+}
+
+func (a *App) visiblePeerGroups() []PeerGroup {
+	if len(a.latestTalkers) == 0 {
+		return nil
+	}
+
+	filtered := a.applyTopConnectionFilters(a.latestTalkers)
+	if len(filtered) == 0 {
+		return nil
+	}
+
+	groups := buildPeerGroups(filtered)
+	limit := a.topConnectionsDisplayLimit()
+	if len(groups) > limit {
+		groups = groups[:limit]
+	}
+	return groups
+}
+
+func (a *App) visibleTopConnectionCount() int {
+	if a.groupView {
+		return len(a.visiblePeerGroups())
+	}
+	return len(a.visibleTopConnections())
 }
 
 func (a *App) clampTopConnectionSelection() {
-	visible := a.visibleTopConnections()
-	if len(visible) == 0 {
+	count := a.visibleTopConnectionCount()
+	if count == 0 {
 		a.selectedTalkerIndex = 0
 		return
 	}
@@ -466,8 +496,8 @@ func (a *App) clampTopConnectionSelection() {
 		a.selectedTalkerIndex = 0
 		return
 	}
-	if a.selectedTalkerIndex >= len(visible) {
-		a.selectedTalkerIndex = len(visible) - 1
+	if a.selectedTalkerIndex >= count {
+		a.selectedTalkerIndex = count - 1
 	}
 }
 
@@ -496,8 +526,8 @@ func (a *App) renderTopConnectionsPanel() {
 }
 
 func (a *App) moveTopConnectionSelection(delta int) bool {
-	visible := a.visibleTopConnections()
-	if len(visible) == 0 {
+	count := a.visibleTopConnectionCount()
+	if count == 0 {
 		return false
 	}
 	a.clampTopConnectionSelection()
@@ -506,8 +536,8 @@ func (a *App) moveTopConnectionSelection(delta int) bool {
 	if next < 0 {
 		next = 0
 	}
-	if next >= len(visible) {
-		next = len(visible) - 1
+	if next >= count {
+		next = count - 1
 	}
 	if next == a.selectedTalkerIndex {
 		return true
@@ -1282,6 +1312,17 @@ func (a *App) selectPeerKillTarget() (peerKillTarget, bool) {
 }
 
 func (a *App) selectedPeerKillTarget() (peerKillTarget, bool) {
+	if a.groupView {
+		groups := a.visiblePeerGroups()
+		if len(groups) == 0 {
+			return peerKillTarget{}, false
+		}
+		a.clampTopConnectionSelection()
+
+		peerIP := groups[a.selectedTalkerIndex].PeerIP
+		return a.selectedPeerPortTarget(peerIP)
+	}
+
 	visible := a.visibleTopConnections()
 	if len(visible) == 0 {
 		return peerKillTarget{}, false
@@ -1295,6 +1336,59 @@ func (a *App) selectedPeerKillTarget() (peerKillTarget, bool) {
 		PeerIP:    peerIP,
 		LocalPort: localPort,
 		Count:     a.countPeerMatches(peerIP, localPort),
+	}, true
+}
+
+func (a *App) selectedPeerPortTarget(peerIP string) (peerKillTarget, bool) {
+	if len(a.latestTalkers) == 0 {
+		return peerKillTarget{}, false
+	}
+
+	filtered := a.applyTopConnectionFilters(a.latestTalkers)
+	if len(filtered) == 0 {
+		return peerKillTarget{}, false
+	}
+
+	type portAggregate struct {
+		count    int
+		activity int64
+	}
+	byPort := make(map[int]portAggregate)
+	for _, conn := range filtered {
+		if normalizeIP(conn.RemoteIP) != peerIP {
+			continue
+		}
+		current := byPort[conn.LocalPort]
+		current.count++
+		current.activity += conn.Activity
+		byPort[conn.LocalPort] = current
+	}
+	if len(byPort) == 0 {
+		return peerKillTarget{}, false
+	}
+
+	bestPort := 0
+	best := portAggregate{}
+	first := true
+	for port, agg := range byPort {
+		if first {
+			bestPort = port
+			best = agg
+			first = false
+			continue
+		}
+		if agg.count > best.count ||
+			(agg.count == best.count && agg.activity > best.activity) ||
+			(agg.count == best.count && agg.activity == best.activity && port < bestPort) {
+			bestPort = port
+			best = agg
+		}
+	}
+
+	return peerKillTarget{
+		PeerIP:    peerIP,
+		LocalPort: bestPort,
+		Count:     best.count,
 	}, true
 }
 

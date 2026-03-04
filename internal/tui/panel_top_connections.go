@@ -461,14 +461,15 @@ func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter s
 		countColWidth   = 7
 		queueColWidth   = 10
 		processColWidth = 14
+		portsColWidth   = 16
 	)
 
-	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %-*s %s[white]\n",
+	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %-*s %-*s[white]\n",
 		peerColWidth, "PEER",
 		countColWidth, "CONNS",
 		queueColWidth, "QUEUE",
 		processColWidth, "PROCESS",
-		"PORTS",
+		portsColWidth, "PORTS",
 	))
 
 	for i, g := range groups {
@@ -483,15 +484,21 @@ func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter s
 		}
 		peer = truncateRight(peer, peerColWidth)
 
-		queueStr := "[dim]0B[white]"
+		queueText := "0B"
+		queueColor := "dim"
 		if g.TotalQueue > 0 {
-			queueStr = fmt.Sprintf("[yellow]%s[white]", formatBytes(g.TotalQueue))
+			queueText = formatBytes(g.TotalQueue)
+			queueColor = "yellow"
 		}
+		queueField := fmt.Sprintf("[%s]%*s[white]", queueColor, queueColWidth, queueText)
 
-		procStr := "[dim]-[white]"
+		procText := "-"
+		procColor := "dim"
 		if g.TopProc != "" {
-			procStr = truncateRight(g.TopProc, processColWidth)
+			procText = truncateRight(g.TopProc, processColWidth)
+			procColor = "white"
 		}
+		procField := fmt.Sprintf("[%s]%-*s[white]", procColor, processColWidth, procText)
 
 		// Show up to 4 unique local ports.
 		portList := make([]int, 0, len(g.LocalPorts))
@@ -507,7 +514,7 @@ func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter s
 			}
 			portStrs = append(portStrs, fmt.Sprintf("%d", p))
 		}
-		portsDisplay := strings.Join(portStrs, ",")
+		portsDisplay := truncateRight(strings.Join(portStrs, ","), portsColWidth)
 
 		// Color count by severity.
 		countColor := "white"
@@ -522,13 +529,13 @@ func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter s
 			prefix = " [yellow]>[white]"
 		}
 
-		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %*s %-*s %s\n",
+		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %s %s %-*s\n",
 			prefix,
 			peerColWidth, peer,
 			countColor, countColWidth, g.Count,
-			queueColWidth, queueStr,
-			processColWidth, procStr,
-			portsDisplay,
+			queueField,
+			procField,
+			portsColWidth, portsDisplay,
 		))
 	}
 
