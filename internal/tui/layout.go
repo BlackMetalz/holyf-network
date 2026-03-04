@@ -26,7 +26,8 @@ var defaultPanels = []panelInfo{
 }
 
 // createPanels creates 4 tview.TextView panels.
-// Returns a slice of panels in order: [topLeft, topRight, bottomLeft, bottomRight].
+// Returns a slice in logical order:
+// [Connection States, Interface Stats, Top Connections, Conntrack].
 func createPanels() []*tview.TextView {
 	panels := make([]*tview.TextView, len(defaultPanels))
 
@@ -67,28 +68,28 @@ func createStatusBar(interfaceName string) *tview.TextView {
 //
 // Layout:
 //
-//	┌─ Connection States ──┬─ Interface Stats ────┐
-//	│                      │                      │
-//	├─ Top Connections ────┼─ Conntrack ──────────┤
-//	│                      │                      │
-//	└──────────────────────┴──────────────────────┘
+//	┌─ Top Connections ────┬─ Connection States ─┐
+//	│                      ├─ Interface Stats ───┤
+//	│                      ├─ Conntrack ─────────┤
+//	│                      │                     │
+//	└──────────────────────┴─────────────────────┘
 //	 <status bar>
 func createGrid(panels []*tview.TextView, statusBar *tview.TextView) *tview.Grid {
 	grid := tview.NewGrid()
 
-	// SetRows: two equal rows for panels (-1 = fill remaining), 1 row for status bar
-	// SetColumns: two equal columns (-1 = fill remaining)
-	grid.SetRows(0, 0, 1)
-	grid.SetColumns(0, 0)
+	// Rows: 3 content rows + 1 status row.
+	// Cols: left is wider for Top Connections, right is narrower stack.
+	grid.SetRows(0, 0, 0, 1)
+	grid.SetColumns(-3, -2)
 
 	// AddItem(primitive, row, col, rowSpan, colSpan, minHeight, minWidth, focus)
-	grid.AddItem(panels[0], 0, 0, 1, 1, 0, 0, false) // Top-left
-	grid.AddItem(panels[1], 0, 1, 1, 1, 0, 0, false) // Top-right
-	grid.AddItem(panels[2], 1, 0, 1, 1, 0, 0, false) // Bottom-left
-	grid.AddItem(panels[3], 1, 1, 1, 1, 0, 0, false) // Bottom-right
+	grid.AddItem(panels[2], 0, 0, 3, 1, 0, 0, false) // Left: Top Connections (spans all content rows)
+	grid.AddItem(panels[0], 0, 1, 1, 1, 0, 0, false) // Right top: Connection States
+	grid.AddItem(panels[1], 1, 1, 1, 1, 0, 0, false) // Right middle: Interface Stats
+	grid.AddItem(panels[3], 2, 1, 1, 1, 0, 0, false) // Right bottom: Conntrack
 
-	// Status bar spans both columns at the bottom (row 2)
-	grid.AddItem(statusBar, 2, 0, 1, 2, 0, 0, false)
+	// Status bar spans both columns at the bottom.
+	grid.AddItem(statusBar, 3, 0, 1, 2, 0, 0, false)
 
 	return grid
 }

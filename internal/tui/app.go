@@ -461,7 +461,26 @@ func (a *App) topConnectionsDisplayLimit() int {
 	if a.zoomed {
 		return 100
 	}
-	return 20
+
+	// Use panel height so Top Connections (normal + group view) scales with layout.
+	if len(a.panels) <= 2 || a.panels[2] == nil {
+		return 20
+	}
+
+	_, _, _, height := a.panels[2].GetInnerRect()
+	if height <= 0 {
+		return 20
+	}
+
+	// Reserve lines for chips/help text, table headers, and footer.
+	limit := height - 7
+	if limit < 5 {
+		return 5
+	}
+	if limit > 100 {
+		return 100
+	}
+	return limit
 }
 
 func (a *App) visibleTopConnections() []collector.Connection {
