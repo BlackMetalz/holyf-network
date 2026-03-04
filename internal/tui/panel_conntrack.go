@@ -39,7 +39,7 @@ func renderConntrackPanel(rates collector.ConntrackRates) string {
 
 	// New rate and drops
 	if !rates.StatsAvailable {
-		sb.WriteString("  [dim]Stats unavailable (install conntrack-tools)[white]\n")
+		sb.WriteString("  [dim]Stats unavailable (install conntrack-tools, run with sudo)[white]\n")
 	} else if rates.FirstReading {
 		sb.WriteString("  [dim]Rates available after next refresh[white]\n")
 	} else {
