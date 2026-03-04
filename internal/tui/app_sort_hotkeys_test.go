@@ -8,7 +8,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-func newSortHotkeyTestApp(startMode SortMode, selectedIndex int) *App {
+func newSortHotkeyTestApp(startMode SortMode, startDesc bool, selectedIndex int) *App {
 	panels := []*tview.TextView{
 		tview.NewTextView(),
 		tview.NewTextView(),
@@ -26,6 +26,7 @@ func newSortHotkeyTestApp(startMode SortMode, selectedIndex int) *App {
 		panels:              panels,
 		focusIndex:          2,
 		sortMode:            startMode,
+		sortDesc:            startDesc,
 		selectedTalkerIndex: selectedIndex,
 	}
 }
@@ -40,9 +41,10 @@ func TestDirectSortModeForRune(t *testing.T) {
 		ok   bool
 	}{
 		{name: "queue", key: 'Q', want: SortByQueue, ok: true},
-		{name: "state", key: 'S', want: SortByState, ok: true},
-		{name: "peer", key: 'P', want: SortByPeer, ok: true},
-		{name: "process", key: 'R', want: SortByProcess, ok: true},
+		{name: "conns", key: 'C', want: SortByConns, ok: true},
+		{name: "port", key: 'P', want: SortByPort, ok: true},
+		{name: "state removed", key: 'S', want: SortByQueue, ok: false},
+		{name: "process removed", key: 'R', want: SortByQueue, ok: false},
 		{name: "lowercase ignored", key: 'q', want: SortByQueue, ok: false},
 		{name: "non sort key", key: 'x', want: SortByQueue, ok: false},
 	}
@@ -69,74 +71,60 @@ func TestHandleKeyEventSortKeysResetSelectionAndRender(t *testing.T) {
 		name      string
 		key       rune
 		startMode SortMode
+		startDesc bool
 		wantMode  SortMode
+		wantDesc  bool
+		handled   bool
 	}{
-		{name: "cycle with o", key: 'o', startMode: SortByQueue, wantMode: SortByState},
-		{name: "direct queue", key: 'Q', startMode: SortByProcess, wantMode: SortByQueue},
-		{name: "direct state", key: 'S', startMode: SortByQueue, wantMode: SortByState},
-		{name: "direct peer", key: 'P', startMode: SortByQueue, wantMode: SortByPeer},
-		{name: "direct process", key: 'R', startMode: SortByQueue, wantMode: SortByProcess},
+		{name: "queue first press keeps desc", key: 'Q', startMode: SortByConns, startDesc: false, wantMode: SortByQueue, wantDesc: true, handled: true},
+		{name: "same mode toggles to asc", key: 'Q', startMode: SortByQueue, startDesc: true, wantMode: SortByQueue, wantDesc: false, handled: true},
+		{name: "same mode toggles back to desc", key: 'Q', startMode: SortByQueue, startDesc: false, wantMode: SortByQueue, wantDesc: true, handled: true},
+		{name: "conns mode first press desc", key: 'C', startMode: SortByQueue, startDesc: true, wantMode: SortByConns, wantDesc: true, handled: true},
+		{name: "port mode first press desc", key: 'P', startMode: SortByQueue, startDesc: true, wantMode: SortByPort, wantDesc: true, handled: true},
+		{name: "o removed", key: 'o', startMode: SortByQueue, startDesc: true, wantMode: SortByQueue, wantDesc: true, handled: false},
 	}
 
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			a := newSortHotkeyTestApp(tc.startMode, 4)
+			a := newSortHotkeyTestApp(tc.startMode, tc.startDesc, 4)
 			before := a.panels[2].GetText(true)
 
 			ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, tc.key, 0))
-			if ret != nil {
+			if tc.handled && ret != nil {
 				t.Fatalf("expected nil return for handled key %q, got event back", tc.key)
+			}
+			if !tc.handled && ret == nil {
+				t.Fatalf("expected unhandled key %q to return event", tc.key)
 			}
 			if a.sortMode != tc.wantMode {
 				t.Fatalf("sort mode mismatch for key %q: got=%v want=%v", tc.key, a.sortMode, tc.wantMode)
 			}
-			if a.selectedTalkerIndex != 0 {
+			if a.sortDesc != tc.wantDesc {
+				t.Fatalf("sort direction mismatch for key %q: got=%v want=%v", tc.key, a.sortDesc, tc.wantDesc)
+			}
+			if tc.handled && a.selectedTalkerIndex != 0 {
 				t.Fatalf("selectedTalkerIndex should reset to 0, got=%d", a.selectedTalkerIndex)
 			}
 
 			after := a.panels[2].GetText(true)
-			if after == before {
+			if tc.handled && after == before {
 				t.Fatalf("panel text did not rerender for key %q", tc.key)
 			}
 		})
 	}
 }
 
-func TestDirectSortThenCycleTransition(t *testing.T) {
+func TestTopConnectionsSortHintsIncludeDirectOnly(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		key      rune
-		wantNext SortMode
-	}{
-		{key: 'Q', wantNext: SortByState},
-		{key: 'S', wantNext: SortByPeer},
-		{key: 'P', wantNext: SortByProcess},
-		{key: 'R', wantNext: SortByQueue},
+	panel := renderTalkersPanel(nil, "", "", 20, false, 0, SortByQueue, true)
+	if strings.Contains(panel, "o=cycle sort") {
+		t.Fatalf("hint line should not mention cycle sort key")
 	}
-
-	for _, tc := range tests {
-		mode, ok := directSortModeForRune(tc.key)
-		if !ok {
-			t.Fatalf("expected direct sort key %q to be mapped", tc.key)
-		}
-		if got := NextSortMode(mode); got != tc.wantNext {
-			t.Fatalf("next sort mismatch for key %q: got=%v want=%v", tc.key, got, tc.wantNext)
-		}
-	}
-}
-
-func TestTopConnectionsSortHintsIncludeCycleAndDirect(t *testing.T) {
-	t.Parallel()
-
-	panel := renderTalkersPanel(nil, "", "", 20, false, 0, SortByQueue)
-	if !strings.Contains(panel, "o=cycle sort") {
-		t.Fatalf("hint line should mention cycle sort key")
-	}
-	if !strings.Contains(panel, "Shift+Q/S/P/R=direct sort") {
-		t.Fatalf("hint line should mention direct Shift sort keys")
+	if !strings.Contains(panel, "Shift+Q/C/P sort") {
+		t.Fatalf("hint line should mention direct sort keys")
 	}
 }
 
@@ -144,7 +132,10 @@ func TestStatusHotkeysIncludeDirectSortKeys(t *testing.T) {
 	t.Parallel()
 
 	_, plain := statusHotkeysForPage("main")
-	if !strings.Contains(plain, "Q/S/P/R") {
+	if strings.Contains(plain, " o ") {
+		t.Fatalf("main hotkeys should not mention o, got: %q", plain)
+	}
+	if !strings.Contains(plain, "Shift+Q/C/P") {
 		t.Fatalf("main hotkeys should mention direct sort keys, got: %q", plain)
 	}
 }

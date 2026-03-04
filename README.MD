@@ -58,8 +58,9 @@ sudo holyf-network -r 5
 # Tab / Shift+Tab: move focus between panels
 # Up / Down: select row in Top Connections
 # Enter / k: block selected Top Connections row
-# o: cycle sort mode (Queue -> State -> Peer -> Process)
-# Shift+Q / Shift+S / Shift+P / Shift+R: set sort mode directly
+# Shift+Q: sort by Queue (press again toggles DESC/ASC)
+# Shift+C: sort by Conns (press again toggles DESC/ASC)
+# Shift+P: sort by Port (press again toggles DESC/ASC)
 # g: toggle group-by-peer view
 # /: search Top Connections by text (contains match)
 # f: port filter (press f again to clear all filters)
@@ -122,7 +123,7 @@ Replay hotkeys:
 - `Up` / `Down`: select row
 - `f`: port filter (press again to clear filters)
 - `/`: grep-like contains filter for current snapshot
-- `o` / `Shift+Q/S/P/R`: sort mode
+- `Shift+Q/C/P`: sort mode (press same key to toggle DESC/ASC)
 - `s`: mask IP display
 - `?`: help
 - `q`: quit

@@ -48,6 +48,8 @@ type App struct {
 	selectedTalkerIndex int
 	// Sort mode for Top Connections. Default: SortByQueue.
 	sortMode SortMode
+	// Sort direction for Top Connections. true=DESC, false=ASC.
+	sortDesc bool
 	// Group view mode: when true, show per-peer aggregates instead of individual connections.
 	groupView bool
 
@@ -113,6 +115,7 @@ func NewApp(
 		healthThresholds:  healthThresholds,
 		actionLogs:        make([]string, 0, 32),
 		actionHistoryPath: defaultActionHistoryPath(),
+		sortDesc:          true,
 	}
 }
 
@@ -352,12 +355,12 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'h':
 			a.promptActionLog()
 			return nil
-		case 'o':
-			a.applyTopConnectionSortMode(NextSortMode(a.sortMode))
-			return nil
-		case 'Q', 'S', 'P', 'R':
-			mode, _ := directSortModeForRune(event.Rune())
-			a.applyTopConnectionSortMode(mode)
+		case 'Q', 'C', 'P':
+			mode, ok := directSortModeForRune(event.Rune())
+			if !ok {
+				return event
+			}
+			a.applyTopConnectionSortInput(mode)
 			return nil
 		case 'g':
 			a.groupView = !a.groupView
@@ -390,19 +393,22 @@ func directSortModeForRune(r rune) (SortMode, bool) {
 	switch r {
 	case 'Q':
 		return SortByQueue, true
-	case 'S':
-		return SortByState, true
+	case 'C':
+		return SortByConns, true
 	case 'P':
-		return SortByPeer, true
-	case 'R':
-		return SortByProcess, true
+		return SortByPort, true
 	default:
 		return SortByQueue, false
 	}
 }
 
-func (a *App) applyTopConnectionSortMode(mode SortMode) {
-	a.sortMode = mode
+func (a *App) applyTopConnectionSortInput(mode SortMode) {
+	if a.sortMode == mode {
+		a.sortDesc = !a.sortDesc
+	} else {
+		a.sortMode = mode
+		a.sortDesc = true // first hit on mode starts DESC
+	}
 	a.selectedTalkerIndex = 0
 	a.renderTopConnectionsPanel()
 }
@@ -550,7 +556,7 @@ func statusHotkeysForPage(page string) (styled string, plain string) {
 	case "blocked-peers-remove-result", "block-summary":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim]r p f k o Q/S/P/R g b h z ? q[white]", "r p f k o Q/S/P/R g b h z ? q"
+		return "[dim]r p f k Shift+Q/C/P g b h z ? q[white]", "r p f k Shift+Q/C/P g b h z ? q"
 	}
 }
 

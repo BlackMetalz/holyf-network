@@ -150,20 +150,51 @@ func TestHistoryAggregateSortModes(t *testing.T) {
 	h.refs = []history.SnapshotRef{{}}
 	h.currentIndex = 0
 	h.currentRecord = history.SnapshotRecord{Groups: []history.SnapshotGroup{
-		{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 5, TotalQueue: 50, States: map[string]int{"ESTABLISHED": 5}},
-		{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "nginx", ConnCount: 2, TotalQueue: 10, States: map[string]int{"CLOSE_WAIT": 2}},
+		{PeerIP: "198.51.100.20", LocalPort: 443, ProcName: "sshd", ConnCount: 5, TotalQueue: 10, States: map[string]int{"ESTABLISHED": 5}},
+		{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "nginx", ConnCount: 2, TotalQueue: 50, States: map[string]int{"CLOSE_WAIT": 2}},
 	}}
 
 	h.sortMode = SortByQueue
 	rows := h.visibleRows()
-	if len(rows) != 2 || rows[0].PeerIP != "198.51.100.20" {
+	if len(rows) != 2 || rows[0].PeerIP != "198.51.100.10" {
 		t.Fatalf("queue sort should prioritize higher queue, got=%+v", rows)
 	}
 
-	h.sortMode = SortByState
+	h.sortMode = SortByConns
 	rows = h.visibleRows()
-	if len(rows) != 2 || dominantState(rows[0].States) != "CLOSE_WAIT" {
-		t.Fatalf("state sort should order alphabetically by dominant state, got=%+v", rows)
+	if len(rows) != 2 || rows[0].PeerIP != "198.51.100.20" {
+		t.Fatalf("conns sort should prioritize higher connection count, got=%+v", rows)
+	}
+
+	h.sortMode = SortByPort
+	rows = h.visibleRows()
+	if len(rows) != 2 || rows[0].LocalPort != 443 {
+		t.Fatalf("port sort (desc default) should prioritize higher local port, got=%+v", rows)
+	}
+}
+
+func TestHistoryAggregateSortDirectionToggle(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h.refs = []history.SnapshotRef{{}}
+	h.currentIndex = 0
+	h.currentRecord = history.SnapshotRecord{Groups: []history.SnapshotGroup{
+		{PeerIP: "198.51.100.20", LocalPort: 443, ProcName: "sshd", ConnCount: 5, TotalQueue: 10},
+		{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "nginx", ConnCount: 2, TotalQueue: 50},
+	}}
+
+	h.sortMode = SortByConns
+	h.sortDesc = true
+	rows := h.visibleRows()
+	if len(rows) != 2 || rows[0].ConnCount != 5 {
+		t.Fatalf("desc conns should prioritize higher count, got=%+v", rows)
+	}
+
+	h.sortDesc = false
+	rows = h.visibleRows()
+	if len(rows) != 2 || rows[0].ConnCount != 2 {
+		t.Fatalf("asc conns should prioritize lower count, got=%+v", rows)
 	}
 }
 

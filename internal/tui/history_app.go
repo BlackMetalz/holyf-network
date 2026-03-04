@@ -42,6 +42,7 @@ type HistoryApp struct {
 	portFilter    string
 	textFilter    string
 	sortMode      SortMode
+	sortDesc      bool
 	selectedIndex int
 	followLatest  bool
 
@@ -69,6 +70,7 @@ func NewHistoryApp(dataDir, startAt, segmentFile string, sensitiveIP bool, appVe
 		sensitiveIP:  sensitiveIP,
 		appVersion:   version,
 		sortMode:     SortByQueue,
+		sortDesc:     true,
 		currentIndex: -1,
 		stopChan:     make(chan struct{}),
 	}
@@ -252,7 +254,7 @@ func (h *HistoryApp) visibleRows() []history.SnapshotGroup {
 	}
 
 	items := append([]history.SnapshotGroup(nil), filtered...)
-	sortHistoryGroups(items, h.sortMode)
+	sortHistoryGroups(items, h.sortMode, h.sortDesc)
 
 	limit := h.topDisplayLimit()
 	if len(items) > limit {
@@ -344,6 +346,7 @@ func (h *HistoryApp) renderPanel() {
 		h.sensitiveIP,
 		h.selectedIndex,
 		h.sortMode,
+		h.sortDesc,
 	)
 
 	h.panel.SetText(header + "\n" + body)

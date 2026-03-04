@@ -57,12 +57,12 @@ func TestRenderTalkersPanelPortFilterChipText(t *testing.T) {
 
 	conns := topConnectionFixtures()
 
-	allText := renderTalkersPanel(conns, "", "", 20, false, 0, SortByQueue)
+	allText := renderTalkersPanel(conns, "", "", 20, false, 0, SortByQueue, true)
 	if !strings.Contains(allText, "Port Filter = ALL") {
 		t.Fatalf("default chip should render Port Filter = ALL, got: %q", allText)
 	}
 
-	selectedText := renderTalkersPanel(conns, "443", "", 20, false, 0, SortByQueue)
+	selectedText := renderTalkersPanel(conns, "443", "", 20, false, 0, SortByQueue, true)
 	if !strings.Contains(selectedText, "Port Filter = 443") {
 		t.Fatalf("selected chip should render Port Filter = 443, got: %q", selectedText)
 	}

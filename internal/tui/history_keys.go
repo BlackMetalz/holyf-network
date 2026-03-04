@@ -68,18 +68,9 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 't', 'T':
 			h.promptJumpToTime()
 			return nil
-		case 'o':
-			h.sortMode = NextSortMode(h.sortMode)
-			h.selectedIndex = 0
-			h.renderPanel()
-			h.updateStatusBar()
-			return nil
-		case 'Q', 'S', 'P', 'R':
+		case 'Q', 'C', 'P':
 			mode, _ := directSortModeForRune(event.Rune())
-			h.sortMode = mode
-			h.selectedIndex = 0
-			h.renderPanel()
-			h.updateStatusBar()
+			h.applySortInput(mode)
 			return nil
 		case 's':
 			h.sensitiveIP = !h.sensitiveIP
@@ -339,8 +330,20 @@ func historyStatusHotkeysForPage(page string) (styled string, plain string) {
 	case "history-filter", "history-search", "history-jump-time":
 		return "[dim]Enter[white]=apply [dim]Esc[white]=cancel", "Enter=apply Esc=cancel"
 	default:
-		return "[dim]]=next [[=prev a e t f / o Q/S/P/R s z L ? q[white]", "]=next [=prev a e t f / o Q/S/P/R s z L ? q"
+		return "[dim][[=prev ]=next a e t f / Shift+Q/C/P s z L ? q[white]", "[=prev ]=next a e t f / Shift+Q/C/P s z L ? q"
 	}
+}
+
+func (h *HistoryApp) applySortInput(mode SortMode) {
+	if h.sortMode == mode {
+		h.sortDesc = !h.sortDesc
+	} else {
+		h.sortMode = mode
+		h.sortDesc = true // first hit on mode starts DESC
+	}
+	h.selectedIndex = 0
+	h.renderPanel()
+	h.updateStatusBar()
 }
 
 func (h *HistoryApp) snapshotSummary() string {

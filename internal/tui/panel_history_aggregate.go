@@ -9,9 +9,9 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/history"
 )
 
-const historyAggregateHintLine = "  [dim]Use ↑/↓ select, ]=next snapshot, [=previous snapshot, t=jump-time, /=search, f=port/clear, o=cycle sort, Shift+Q/S/P/R=direct sort, L=follow[white]"
+const historyAggregateHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, t=jump-time, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC), L=follow[white]"
 
-func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode) string {
+func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -32,7 +32,7 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		portChip,
 		maskChip,
 		searchChip,
-		sortMode.Label(),
+		sortLabelWithDirection(sortMode, sortDesc),
 	))
 	sb.WriteString(historyAggregateHintLine)
 	sb.WriteString("\n\n")
@@ -55,7 +55,7 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 	}
 
 	items := append([]history.SnapshotGroup(nil), filtered...)
-	sortHistoryGroups(items, sortMode)
+	sortHistoryGroups(items, sortMode, sortDesc)
 
 	if selectedIndex < 0 {
 		selectedIndex = 0
@@ -119,51 +119,55 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 	return sb.String()
 }
 
-func sortHistoryGroups(rows []history.SnapshotGroup, mode SortMode) {
+func sortHistoryGroups(rows []history.SnapshotGroup, mode SortMode, desc bool) {
 	switch mode {
 	case SortByQueue:
 		sort.SliceStable(rows, func(i, j int) bool {
 			if rows[i].TotalQueue != rows[j].TotalQueue {
-				return rows[i].TotalQueue > rows[j].TotalQueue
+				return compareInt64(rows[i].TotalQueue, rows[j].TotalQueue, desc)
 			}
-			return rows[i].ConnCount > rows[j].ConnCount
+			if rows[i].ConnCount != rows[j].ConnCount {
+				return compareInt(rows[i].ConnCount, rows[j].ConnCount, desc)
+			}
+			if rows[i].LocalPort != rows[j].LocalPort {
+				return compareInt(rows[i].LocalPort, rows[j].LocalPort, desc)
+			}
+			if rows[i].PeerIP != rows[j].PeerIP {
+				return rows[i].PeerIP < rows[j].PeerIP
+			}
+			return rows[i].ProcName < rows[j].ProcName
 		})
-	case SortByState:
+	case SortByConns:
 		sort.SliceStable(rows, func(i, j int) bool {
-			si, sj := dominantState(rows[i].States), dominantState(rows[j].States)
-			if si != sj {
-				return si < sj
+			if rows[i].ConnCount != rows[j].ConnCount {
+				return compareInt(rows[i].ConnCount, rows[j].ConnCount, desc)
 			}
 			if rows[i].TotalQueue != rows[j].TotalQueue {
-				return rows[i].TotalQueue > rows[j].TotalQueue
-			}
-			return rows[i].ConnCount > rows[j].ConnCount
-		})
-	case SortByPeer:
-		sort.SliceStable(rows, func(i, j int) bool {
-			if rows[i].PeerIP != rows[j].PeerIP {
-				return rows[i].PeerIP < rows[j].PeerIP
+				return compareInt64(rows[i].TotalQueue, rows[j].TotalQueue, desc)
 			}
 			if rows[i].LocalPort != rows[j].LocalPort {
-				return rows[i].LocalPort < rows[j].LocalPort
-			}
-			if rows[i].ProcName != rows[j].ProcName {
-				return rows[i].ProcName < rows[j].ProcName
-			}
-			return rows[i].TotalQueue > rows[j].TotalQueue
-		})
-	case SortByProcess:
-		sort.SliceStable(rows, func(i, j int) bool {
-			if rows[i].ProcName != rows[j].ProcName {
-				return rows[i].ProcName < rows[j].ProcName
+				return compareInt(rows[i].LocalPort, rows[j].LocalPort, desc)
 			}
 			if rows[i].PeerIP != rows[j].PeerIP {
 				return rows[i].PeerIP < rows[j].PeerIP
 			}
+			return rows[i].ProcName < rows[j].ProcName
+		})
+	case SortByPort:
+		sort.SliceStable(rows, func(i, j int) bool {
 			if rows[i].LocalPort != rows[j].LocalPort {
-				return rows[i].LocalPort < rows[j].LocalPort
+				return compareInt(rows[i].LocalPort, rows[j].LocalPort, desc)
 			}
-			return rows[i].TotalQueue > rows[j].TotalQueue
+			if rows[i].ConnCount != rows[j].ConnCount {
+				return compareInt(rows[i].ConnCount, rows[j].ConnCount, desc)
+			}
+			if rows[i].TotalQueue != rows[j].TotalQueue {
+				return compareInt64(rows[i].TotalQueue, rows[j].TotalQueue, desc)
+			}
+			if rows[i].PeerIP != rows[j].PeerIP {
+				return rows[i].PeerIP < rows[j].PeerIP
+			}
+			return rows[i].ProcName < rows[j].ProcName
 		})
 	}
 }

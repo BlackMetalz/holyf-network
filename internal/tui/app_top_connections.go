@@ -46,7 +46,7 @@ func (a *App) visibleTopConnections() []collector.Connection {
 	}
 	// Copy before sorting to avoid mutating latestTalkers backing array.
 	items := append([]collector.Connection(nil), filtered...)
-	sortConnections(items, a.sortMode)
+	sortConnections(items, a.sortMode, a.sortDesc)
 
 	limit := a.topConnectionsDisplayLimit()
 	if len(items) > limit {
@@ -116,6 +116,7 @@ func (a *App) renderTopConnectionsPanel() {
 		a.sensitiveIP,
 		a.selectedTalkerIndex,
 		a.sortMode,
+		a.sortDesc,
 	))
 }
 

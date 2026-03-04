@@ -15,17 +15,16 @@ import (
 type SortMode int
 
 const (
-	SortByQueue   SortMode = iota // tx_queue + rx_queue descending
-	SortByState                   // state name alphabetical, then activity desc
-	SortByPeer                    // group by remote IP, highest connection count first
-	SortByProcess                 // process name alphabetical, then activity desc
+	SortByQueue SortMode = iota // tx_queue + rx_queue descending
+	SortByConns                 // peer connection count descending
+	SortByPort                  // local port ascending
 )
 
 const (
-	defaultTalkersHintLine  = "  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, o=cycle sort, Shift+Q/S/P/R=direct sort[white]"
-	readOnlyTalkersHintLine = "  [dim]Use ↑/↓ select, left/right bracket=snapshot, a=oldest, e=latest, t=jump-time, /=search, f=port/clear, o=cycle sort, Shift+Q/S/P/R=direct sort, g=group, L=follow[white]"
+	defaultTalkersHintLine  = "  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC)[white]"
+	readOnlyTalkersHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC), g=group, L=follow[white]"
 	defaultGroupHintLine    = "  [dim]Use ↑/↓ select, g=connections view, /=search, f=port/clear[white]"
-	readOnlyGroupHintLine   = "  [dim]Use ↑/↓ select, left/right bracket=snapshot, a=oldest, e=latest, t=jump-time, g=connections view, /=search, f=port/clear, L=follow[white]"
+	readOnlyGroupHintLine   = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, g=connections view, /=search, f=port/clear, L=follow[white]"
 )
 
 // Label returns a short display name for the status bar chip.
@@ -33,37 +32,51 @@ func (m SortMode) Label() string {
 	switch m {
 	case SortByQueue:
 		return "QUEUE"
-	case SortByState:
-		return "STATE"
-	case SortByPeer:
-		return "PEER"
-	case SortByProcess:
-		return "PROCESS"
+	case SortByConns:
+		return "CONNS"
+	case SortByPort:
+		return "PORT"
 	default:
 		return "QUEUE"
 	}
 }
 
-// NextSortMode cycles to the next sort mode.
-func NextSortMode(m SortMode) SortMode {
-	return (m + 1) % 4
+func sortLabelWithDirection(mode SortMode, desc bool) string {
+	dir := "ASC"
+	if desc {
+		dir = "DESC"
+	}
+	return mode.Label() + ":" + dir
+}
+
+func compareInt(a, b int, desc bool) bool {
+	if desc {
+		return a > b
+	}
+	return a < b
+}
+
+func compareInt64(a, b int64, desc bool) bool {
+	if desc {
+		return a > b
+	}
+	return a < b
 }
 
 // sortConnections sorts a slice in-place according to the given mode.
-func sortConnections(conns []collector.Connection, mode SortMode) {
+func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
 	switch mode {
 	case SortByQueue:
 		sort.SliceStable(conns, func(i, j int) bool {
-			return conns[i].Activity > conns[j].Activity
-		})
-	case SortByState:
-		sort.SliceStable(conns, func(i, j int) bool {
-			if conns[i].State != conns[j].State {
-				return conns[i].State < conns[j].State
+			if conns[i].Activity != conns[j].Activity {
+				return compareInt64(conns[i].Activity, conns[j].Activity, desc)
 			}
-			return conns[i].Activity > conns[j].Activity
+			if conns[i].LocalPort != conns[j].LocalPort {
+				return compareInt(conns[i].LocalPort, conns[j].LocalPort, desc)
+			}
+			return normalizeIP(conns[i].RemoteIP) < normalizeIP(conns[j].RemoteIP)
 		})
-	case SortByPeer:
+	case SortByConns:
 		// Count connections per remote IP, then sort by count desc.
 		counts := make(map[string]int)
 		for _, c := range conns {
@@ -73,20 +86,25 @@ func sortConnections(conns []collector.Connection, mode SortMode) {
 			ci := counts[normalizeIP(conns[i].RemoteIP)]
 			cj := counts[normalizeIP(conns[j].RemoteIP)]
 			if ci != cj {
-				return ci > cj
+				return compareInt(ci, cj, desc)
 			}
-			if normalizeIP(conns[i].RemoteIP) != normalizeIP(conns[j].RemoteIP) {
-				return normalizeIP(conns[i].RemoteIP) < normalizeIP(conns[j].RemoteIP)
+			if conns[i].Activity != conns[j].Activity {
+				return compareInt64(conns[i].Activity, conns[j].Activity, desc)
 			}
-			return conns[i].Activity > conns[j].Activity
+			if conns[i].LocalPort != conns[j].LocalPort {
+				return compareInt(conns[i].LocalPort, conns[j].LocalPort, desc)
+			}
+			return normalizeIP(conns[i].RemoteIP) < normalizeIP(conns[j].RemoteIP)
 		})
-	case SortByProcess:
+	case SortByPort:
 		sort.SliceStable(conns, func(i, j int) bool {
-			pi, pj := conns[i].ProcName, conns[j].ProcName
-			if pi != pj {
-				return pi < pj
+			if conns[i].LocalPort != conns[j].LocalPort {
+				return compareInt(conns[i].LocalPort, conns[j].LocalPort, desc)
 			}
-			return conns[i].Activity > conns[j].Activity
+			if conns[i].Activity != conns[j].Activity {
+				return compareInt64(conns[i].Activity, conns[j].Activity, desc)
+			}
+			return normalizeIP(conns[i].RemoteIP) < normalizeIP(conns[j].RemoteIP)
 		})
 	}
 }
@@ -94,15 +112,15 @@ func sortConnections(conns []collector.Connection, mode SortMode) {
 // renderTalkersPanel formats the top connections for the TUI panel.
 // If portFilter is set, only connections matching that port are shown.
 // maxRows controls how many connections to display (use more when zoomed).
-func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode) string {
-	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, defaultTalkersHintLine)
+func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool) string {
+	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, defaultTalkersHintLine)
 }
 
-func renderTalkersPanelReadOnly(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode) string {
-	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, readOnlyTalkersHintLine)
+func renderTalkersPanelReadOnly(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool) string {
+	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, readOnlyTalkersHintLine)
 }
 
-func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, hintLine string) string {
+func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, hintLine string) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -123,7 +141,7 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 		portChip,
 		maskChip,
 		searchChip,
-		sortMode.Label(),
+		sortLabelWithDirection(sortMode, sortDesc),
 	))
 	sb.WriteString(hintLine)
 	sb.WriteString("\n\n")
@@ -147,7 +165,7 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 	}
 
 	// Apply sort on the filtered result set.
-	sortConnections(filtered, sortMode)
+	sortConnections(filtered, sortMode, sortDesc)
 
 	if selectedIndex < 0 {
 		selectedIndex = 0
