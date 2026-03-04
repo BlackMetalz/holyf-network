@@ -297,9 +297,11 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			a.promptActionLog()
 			return nil
 		case 'o':
-			a.sortMode = NextSortMode(a.sortMode)
-			a.selectedTalkerIndex = 0
-			a.renderTopConnectionsPanel()
+			a.applyTopConnectionSortMode(NextSortMode(a.sortMode))
+			return nil
+		case 'Q', 'S', 'P', 'R':
+			mode, _ := directSortModeForRune(event.Rune())
+			a.applyTopConnectionSortMode(mode)
 			return nil
 		case 'g':
 			a.groupView = !a.groupView
@@ -326,6 +328,27 @@ func (a *App) focusNext() {
 func (a *App) focusPrev() {
 	a.focusIndex = (a.focusIndex - 1 + len(a.panels)) % len(a.panels)
 	highlightPanel(a.panels, a.focusIndex)
+}
+
+func directSortModeForRune(r rune) (SortMode, bool) {
+	switch r {
+	case 'Q':
+		return SortByQueue, true
+	case 'S':
+		return SortByState, true
+	case 'P':
+		return SortByPeer, true
+	case 'R':
+		return SortByProcess, true
+	default:
+		return SortByQueue, false
+	}
+}
+
+func (a *App) applyTopConnectionSortMode(mode SortMode) {
+	a.sortMode = mode
+	a.selectedTalkerIndex = 0
+	a.renderTopConnectionsPanel()
 }
 
 func (a *App) showHelp() {
@@ -642,7 +665,7 @@ func statusHotkeysForPage(page string) (styled string, plain string) {
 	case "blocked-peers-remove-result", "block-summary":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim]r p f k o g b h z ? q[white]", "r p f k o g b h z ? q"
+		return "[dim]r p f k o Q/S/P/R g b h z ? q[white]", "r p f k o Q/S/P/R g b h z ? q"
 	}
 }
 

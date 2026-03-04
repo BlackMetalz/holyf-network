@@ -109,7 +109,7 @@ func renderTalkersPanel(conns []collector.Connection, portFilter string, textFil
 		searchChip,
 		sortMode.Label(),
 	))
-	sb.WriteString("  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, o=sort[white]\n\n")
+	sb.WriteString("  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, o=cycle sort, Shift+Q/S/P/R=direct sort[white]\n\n")
 
 	if len(conns) == 0 {
 		sb.WriteString("  No active connections found")

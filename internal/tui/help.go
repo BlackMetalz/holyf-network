@@ -17,10 +17,15 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]Up/Down[white]     Select row (Top Connections)
 [yellow]Enter[white]       Block selected row
 [yellow]k[white]           Block peer (selected/default)
-[yellow]o[white]           Cycle sort (Queue→State→Peer→Process)
+[yellow]o[white]           Cycle sort mode
+[yellow]Shift+Q[white]     Sort by Queue
+[yellow]Shift+S[white]     Sort by State
+[yellow]Shift+P[white]     Sort by Peer
+[yellow]Shift+R[white]     Sort by Process
 [yellow]g[white]           Toggle group-by-peer view
 [yellow]b[white]           Show blocked peers
 [yellow]h[white]           Show action log (latest 10)
+[yellow]z[white]           Toggle zoom (focused panel)
 [yellow]?[white]           Toggle this help
 [yellow]q[white]           Quit
 
@@ -47,7 +52,7 @@ func createHelpModal() *tview.Flex {
 	//
 	inner := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).      // Top spacer
-		AddItem(helpView, 15, 0, true). // Help content (fixed height)
+		AddItem(helpView, 20, 0, true). // Help content (fixed height)
 		AddItem(nil, 0, 1, false)       // Bottom spacer
 
 	modal := tview.NewFlex().

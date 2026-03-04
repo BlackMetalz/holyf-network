@@ -31,16 +31,23 @@ holyf-network
 # Set refresh rate to 5 seconds
 holyf-network -r 5
 
-# Runtime toggle inside TUI
-# Press `s` to turn sensitive IP masking on/off
-# Press `k` on Top Connections to input peer IP/local port + block minutes (default: 10)
-# Press `b` to list active blocks and remove selected peer block
-# Press `f` to filter Top Connections by port
-# Press `p` to pause/resume auto-refresh
-# Press `r` to refresh now
-# Press `z` to zoom/unzoom panel
-# Press `?` to show help
-# Press `q` to quit
+# Keyboard shortcuts inside TUI
+# Tab / Shift+Tab: move focus between panels
+# Up / Down: select row in Top Connections
+# Enter / k: block selected Top Connections row
+# o: cycle sort mode (Queue -> State -> Peer -> Process)
+# Shift+Q / Shift+S / Shift+P / Shift+R: set sort mode directly
+# g: toggle group-by-peer view
+# /: search Top Connections by text (contains match)
+# f: port filter (press f again to clear all filters)
+# s: toggle sensitive IP masking
+# b: list active blocks and remove selected peer block
+# h: show action log (latest 10)
+# p: pause/resume auto-refresh
+# r: refresh now
+# z: zoom/unzoom focused panel
+# ?: show help
+# q: quit
 ```
 
 Default threshold file:
