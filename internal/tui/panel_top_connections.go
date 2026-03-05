@@ -122,15 +122,15 @@ func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
 // renderTalkersPanel formats the top connections for the TUI panel.
 // If portFilter is set, only connections matching that port are shown.
 // maxRows controls how many connections to display (use more when zoomed).
-func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
-	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthAvailable, defaultTalkersHintLine)
+func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
+	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, defaultTalkersHintLine)
 }
 
-func renderTalkersPanelReadOnly(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
-	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthAvailable, readOnlyTalkersHintLine)
+func renderTalkersPanelReadOnly(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
+	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, readOnlyTalkersHintLine)
 }
 
-func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthAvailable bool, hintLine string) string {
+func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, hintLine string) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -154,8 +154,10 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 		sortLabelWithDirection(sortMode, sortDesc),
 	))
 	sb.WriteString(hintLine)
-	if !bandwidthAvailable {
-		sb.WriteString("\n  [yellow]Bandwidth counters unavailable for this sample (need conntrack baseline + privileges)[white]")
+	if strings.TrimSpace(bandwidthNote) != "" {
+		sb.WriteString("\n  [yellow]")
+		sb.WriteString(truncateRight(strings.TrimSpace(bandwidthNote), 160))
+		sb.WriteString("[white]")
 	}
 	sb.WriteString("\n\n")
 
@@ -561,15 +563,15 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 }
 
 // renderPeerGroupPanel renders the per-peer aggregate view.
-func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
-	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, thresholds, bandwidthAvailable, defaultGroupHintLine)
+func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, thresholds config.HealthThresholds, bandwidthNote string) string {
+	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, thresholds, bandwidthNote, defaultGroupHintLine)
 }
 
-func renderPeerGroupPanelReadOnly(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
-	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, thresholds, bandwidthAvailable, readOnlyGroupHintLine)
+func renderPeerGroupPanelReadOnly(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, thresholds config.HealthThresholds, bandwidthNote string) string {
+	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, thresholds, bandwidthNote, readOnlyGroupHintLine)
 }
 
-func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, thresholds config.HealthThresholds, bandwidthAvailable bool, hintLine string) string {
+func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, thresholds config.HealthThresholds, bandwidthNote string, hintLine string) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -587,8 +589,10 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 		searchChip,
 	))
 	sb.WriteString(hintLine)
-	if !bandwidthAvailable {
-		sb.WriteString("\n  [yellow]Bandwidth counters unavailable for this sample (need conntrack baseline + privileges)[white]")
+	if strings.TrimSpace(bandwidthNote) != "" {
+		sb.WriteString("\n  [yellow]")
+		sb.WriteString(truncateRight(strings.TrimSpace(bandwidthNote), 160))
+		sb.WriteString("[white]")
 	}
 	sb.WriteString("\n\n")
 

@@ -106,7 +106,7 @@ func (a *App) renderTopConnectionsPanel() {
 			a.sensitiveIP,
 			a.selectedTalkerIndex,
 			a.healthThresholds,
-			a.topBandwidthAvailable,
+			a.topBandwidthNote,
 		))
 		return
 	}
@@ -120,7 +120,7 @@ func (a *App) renderTopConnectionsPanel() {
 		a.sortMode,
 		a.sortDesc,
 		a.healthThresholds,
-		a.topBandwidthAvailable,
+		a.topBandwidthNote,
 	))
 }
 

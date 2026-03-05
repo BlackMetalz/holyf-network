@@ -46,8 +46,8 @@ type App struct {
 	// Latest top connections snapshot used by actions (kill peer, etc.).
 	latestTalkers []collector.Connection
 	// Current top-connection bandwidth sample metadata.
-	topSampleSeconds      float64
-	topBandwidthAvailable bool
+	topSampleSeconds float64
+	topBandwidthNote string
 	// Selected row in Top Connections (within currently visible rows).
 	selectedTalkerIndex int
 	// Sort mode for Top Connections. Default: SortByBandwidth.
@@ -258,18 +258,23 @@ func (a *App) refreshData() {
 	if err != nil {
 		a.latestTalkers = nil
 		a.topSampleSeconds = 0
-		a.topBandwidthAvailable = false
+		a.topBandwidthNote = ""
 		a.selectedTalkerIndex = 0
 		a.panels[2].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
 		bwSample := collector.BandwidthSnapshot{}
+		a.topBandwidthNote = ""
 		flows, flowErr := collector.CollectConntrackFlowsTCP()
 		if flowErr == nil && a.bwTracker != nil {
 			bwSample = a.bwTracker.BuildSnapshot(flows, time.Now())
 			talkers = collector.EnrichConnectionsWithBandwidth(talkers, bwSample)
+			if !bwSample.Available {
+				a.topBandwidthNote = "Bandwidth baseline is warming up (first sample has no delta yet; press r or wait next refresh)."
+			}
+		} else if flowErr != nil {
+			a.topBandwidthNote = "Bandwidth unavailable: cannot read conntrack flow counters (check conntrack command and privileges)."
 		}
 		a.topSampleSeconds = bwSample.SampleSeconds
-		a.topBandwidthAvailable = bwSample.Available
 
 		a.latestTalkers = talkers
 		a.renderTopConnectionsPanel()

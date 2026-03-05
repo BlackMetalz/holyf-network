@@ -58,12 +58,12 @@ func TestRenderTalkersPanelPortFilterChipText(t *testing.T) {
 
 	conns := topConnectionFixtures()
 
-	allText := renderTalkersPanel(conns, "", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), false)
+	allText := renderTalkersPanel(conns, "", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(allText, "Port Filter = ALL") {
 		t.Fatalf("default chip should render Port Filter = ALL, got: %q", allText)
 	}
 
-	selectedText := renderTalkersPanel(conns, "443", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), false)
+	selectedText := renderTalkersPanel(conns, "443", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(selectedText, "Port Filter = 443") {
 		t.Fatalf("selected chip should render Port Filter = 443, got: %q", selectedText)
 	}
@@ -74,12 +74,12 @@ func TestRenderPeerGroupPanelPortFilterChipText(t *testing.T) {
 
 	conns := topConnectionFixtures()
 
-	allText := renderPeerGroupPanel(conns, "", "", 20, false, 0, config.DefaultHealthThresholds(), false)
+	allText := renderPeerGroupPanel(conns, "", "", 20, false, 0, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(allText, "Port Filter = ALL") {
 		t.Fatalf("group chip should render Port Filter = ALL, got: %q", allText)
 	}
 
-	selectedText := renderPeerGroupPanel(conns, "443", "", 20, false, 0, config.DefaultHealthThresholds(), false)
+	selectedText := renderPeerGroupPanel(conns, "443", "", 20, false, 0, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(selectedText, "Port Filter = 443") {
 		t.Fatalf("group chip should render Port Filter = 443, got: %q", selectedText)
 	}

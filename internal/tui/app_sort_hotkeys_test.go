@@ -120,7 +120,7 @@ func TestHandleKeyEventSortKeysResetSelectionAndRender(t *testing.T) {
 func TestTopConnectionsSortHintsIncludeDirectOnly(t *testing.T) {
 	t.Parallel()
 
-	panel := renderTalkersPanel(nil, "", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), false)
+	panel := renderTalkersPanel(nil, "", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), "")
 	if strings.Contains(panel, "o=cycle sort") {
 		t.Fatalf("hint line should not mention cycle sort key")
 	}
