@@ -100,6 +100,46 @@ func TestBandwidthTrackerClampsCounterReset(t *testing.T) {
 	}
 }
 
+func TestBandwidthTrackerFirstSeenFlowAfterBaselineCountsCurrentBytes(t *testing.T) {
+	t.Parallel()
+
+	tracker := NewBandwidthTracker()
+	t1 := time.Date(2026, 3, 5, 10, 0, 0, 0, time.UTC)
+	t2 := t1.Add(5 * time.Second)
+
+	// First call sets global baseline with one unrelated flow.
+	baseline := ConntrackFlow{
+		Orig:       FlowTuple{SrcIP: "10.0.0.2", SrcPort: 40000, DstIP: "10.0.0.1", DstPort: 22},
+		Reply:      FlowTuple{SrcIP: "10.0.0.1", SrcPort: 22, DstIP: "10.0.0.2", DstPort: 40000},
+		OrigBytes:  100,
+		ReplyBytes: 200,
+	}
+	tracker.BuildSnapshot([]ConntrackFlow{baseline}, t1)
+
+	// New short-lived flow appears after baseline.
+	newFlow := ConntrackFlow{
+		Orig:       FlowTuple{SrcIP: "10.0.0.3", SrcPort: 50000, DstIP: "10.0.0.1", DstPort: 8080},
+		Reply:      FlowTuple{SrcIP: "10.0.0.1", SrcPort: 8080, DstIP: "10.0.0.3", DstPort: 50000},
+		OrigBytes:  4096,
+		ReplyBytes: 8192,
+	}
+	snapshot := tracker.BuildSnapshot([]ConntrackFlow{newFlow}, t2)
+	if !snapshot.Available {
+		t.Fatalf("snapshot should be available after baseline")
+	}
+
+	localTuple := FlowTuple{
+		SrcIP:   "10.0.0.1",
+		SrcPort: 8080,
+		DstIP:   "10.0.0.3",
+		DstPort: 50000,
+	}
+	bw := snapshot.ByTuple[localTuple]
+	if bw.TxBytesDelta != 8192 || bw.RxBytesDelta != 4096 || bw.TotalBytesDelta != 12288 {
+		t.Fatalf("first-seen flow should contribute current bytes, got %+v", bw)
+	}
+}
+
 func TestEnrichConnectionsWithBandwidth(t *testing.T) {
 	t.Parallel()
 

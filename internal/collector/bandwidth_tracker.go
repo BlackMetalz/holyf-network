@@ -74,6 +74,11 @@ func (t *BandwidthTracker) BuildSnapshot(flows []ConntrackFlow, capturedAt time.
 			if prev, ok := t.prev[flowID]; ok {
 				origDelta = clampDelta(flow.OrigBytes - prev.origBytes)
 				replyDelta = clampDelta(flow.ReplyBytes - prev.replyBytes)
+			} else {
+				// Flow first-seen after baseline.
+				// Count current bytes as interval delta so short-lived flows are visible.
+				origDelta = clampDelta(flow.OrigBytes)
+				replyDelta = clampDelta(flow.ReplyBytes)
 			}
 		}
 

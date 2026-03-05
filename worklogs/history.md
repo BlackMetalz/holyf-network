@@ -6,6 +6,7 @@ Add daemon mode, idea like atop
 
 # v0.1.x
 Better UX? xD
+Able to group/kill establised/block connections
 
 ![first version](../images/history/v0.1.x.png)
 
