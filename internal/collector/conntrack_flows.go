@@ -26,7 +26,7 @@ type ConntrackFlow struct {
 // CollectConntrackFlowsTCP reads TCP flow counters from conntrack.
 // It requires conntrack-tools and typically root/sudo privileges.
 func CollectConntrackFlowsTCP() ([]ConntrackFlow, error) {
-	out, err := exec.Command("conntrack", "-L", "-p", "tcp", "-o", "extended").CombinedOutput()
+	out, err := exec.Command("conntrack", "-L", "-p", "tcp", "-o", "extended", "-n").CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
 		if msg == "" {
@@ -37,20 +37,36 @@ func CollectConntrackFlowsTCP() ([]ConntrackFlow, error) {
 
 	lines := strings.Split(string(out), "\n")
 	flows := make([]ConntrackFlow, 0, len(lines))
+	candidateLines := 0
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
+		// Ignore non-flow informational lines from conntrack output.
+		if !looksLikeConntrackFlowLine(line) {
+			continue
+		}
+		candidateLines++
 		flow, ok := parseConntrackFlowLine(line)
 		if !ok {
 			continue
 		}
 		flows = append(flows, flow)
 	}
+	if candidateLines > 0 && len(flows) == 0 {
+		return nil, fmt.Errorf("conntrack flow parse failed: no valid TCP flow rows decoded")
+	}
 
 	// Empty result can be legitimate: no current TCP conntrack entries.
 	return flows, nil
+}
+
+func looksLikeConntrackFlowLine(line string) bool {
+	return strings.Contains(line, "src=") &&
+		strings.Contains(line, "dst=") &&
+		strings.Contains(line, "sport=") &&
+		strings.Contains(line, "dport=")
 }
 
 func parseConntrackFlowLine(line string) (ConntrackFlow, bool) {
