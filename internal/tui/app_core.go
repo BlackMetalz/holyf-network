@@ -272,7 +272,7 @@ func (a *App) refreshData() {
 				a.topBandwidthNote = "Bandwidth baseline is warming up (first sample has no delta yet; press r or wait next refresh)."
 			}
 		} else if flowErr != nil {
-			a.topBandwidthNote = "Bandwidth unavailable: cannot read conntrack flow counters (check conntrack command and privileges)."
+			a.topBandwidthNote = "Bandwidth unavailable: " + shortStatus(flowErr.Error(), 140)
 		}
 		a.topSampleSeconds = bwSample.SampleSeconds
 

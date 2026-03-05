@@ -50,3 +50,14 @@ func TestParseConntrackFlowLineInvalid(t *testing.T) {
 		t.Fatalf("expected parse to fail for missing bytes fields")
 	}
 }
+
+func TestLooksLikeConntrackFlowLine(t *testing.T) {
+	t.Parallel()
+
+	if !looksLikeConntrackFlowLine("tcp 6 431999 ESTABLISHED src=1.1.1.1 dst=2.2.2.2 sport=123 dport=80") {
+		t.Fatalf("expected flow-like line to be detected")
+	}
+	if looksLikeConntrackFlowLine("conntrack v1.4.7 (conntrack-tools)") {
+		t.Fatalf("expected non-flow line to be ignored")
+	}
+}

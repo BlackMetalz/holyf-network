@@ -2,6 +2,7 @@ package collector
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -55,7 +56,24 @@ func CollectConntrackFlowsTCP() ([]ConntrackFlow, error) {
 		flows = append(flows, flow)
 	}
 	if candidateLines > 0 && len(flows) == 0 {
+		if enabled, ok := conntrackAccountingEnabled(); ok && !enabled {
+			return nil, fmt.Errorf("conntrack bytes accounting disabled (set net.netfilter.nf_conntrack_acct=1)")
+		}
 		return nil, fmt.Errorf("conntrack flow parse failed: no valid TCP flow rows decoded")
+	}
+	if len(flows) > 0 {
+		allZero := true
+		for _, flow := range flows {
+			if flow.OrigBytes > 0 || flow.ReplyBytes > 0 {
+				allZero = false
+				break
+			}
+		}
+		if allZero {
+			if enabled, ok := conntrackAccountingEnabled(); ok && !enabled {
+				return nil, fmt.Errorf("conntrack bytes accounting disabled (set net.netfilter.nf_conntrack_acct=1)")
+			}
+		}
 	}
 
 	// Empty result can be legitimate: no current TCP conntrack entries.
@@ -67,6 +85,22 @@ func looksLikeConntrackFlowLine(line string) bool {
 		strings.Contains(line, "dst=") &&
 		strings.Contains(line, "sport=") &&
 		strings.Contains(line, "dport=")
+}
+
+func conntrackAccountingEnabled() (enabled bool, known bool) {
+	data, err := os.ReadFile("/proc/sys/net/netfilter/nf_conntrack_acct")
+	if err != nil {
+		return false, false
+	}
+	raw := strings.TrimSpace(string(data))
+	switch raw {
+	case "1":
+		return true, true
+	case "0":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func parseConntrackFlowLine(line string) (ConntrackFlow, bool) {
