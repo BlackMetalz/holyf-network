@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/BlackMetalz/holyf-network/internal/history"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -47,10 +48,11 @@ type HistoryApp struct {
 	selectedIndex int
 	followLatest  bool
 
-	statusNote      string
-	statusNoteUntil time.Time
-	lastStatusNote  string
-	snapshotMessage string
+	statusNote       string
+	statusNoteUntil  time.Time
+	lastStatusNote   string
+	snapshotMessage  string
+	healthThresholds config.HealthThresholds
 
 	stopChan chan struct{}
 }
@@ -66,17 +68,18 @@ func NewHistoryApp(dataDir, startAt, segmentFile string, sensitiveIP bool, appVe
 	}
 
 	return &HistoryApp{
-		app:          tview.NewApplication(),
-		dataDir:      history.ExpandPath(dataDir),
-		startAt:      startAt,
-		segmentFile:  strings.TrimSpace(segmentFile),
-		sensitiveIP:  sensitiveIP,
-		appVersion:   version,
-		sortMode:     SortByQueue,
-		sortDesc:     true,
-		skipEmpty:    true,
-		currentIndex: -1,
-		stopChan:     make(chan struct{}),
+		app:              tview.NewApplication(),
+		dataDir:          history.ExpandPath(dataDir),
+		startAt:          startAt,
+		segmentFile:      strings.TrimSpace(segmentFile),
+		sensitiveIP:      sensitiveIP,
+		appVersion:       version,
+		sortMode:         SortByBandwidth,
+		sortDesc:         true,
+		skipEmpty:        true,
+		currentIndex:     -1,
+		stopChan:         make(chan struct{}),
+		healthThresholds: config.DefaultHealthThresholds(),
 	}
 }
 
@@ -343,6 +346,11 @@ func (h *HistoryApp) renderPanel() {
 		len(rec.Groups),
 		h.replayScopeLabel(),
 	)
+	if rec.BandwidthAvailable && rec.SampleSeconds > 0 {
+		header += fmt.Sprintf("  [dim]BW sample: %.1fs (conntrack delta)[white]\n", rec.SampleSeconds)
+	} else {
+		header += "  [dim]BW sample: unavailable[white]\n"
+	}
 	if strings.TrimSpace(h.snapshotMessage) != "" {
 		header += fmt.Sprintf("  [yellow]%s[white]\n", shortStatus(h.snapshotMessage, 160))
 	}
@@ -380,6 +388,8 @@ func (h *HistoryApp) renderPanel() {
 		h.sortMode,
 		h.sortDesc,
 		h.skipEmpty,
+		h.healthThresholds,
+		rec.BandwidthAvailable,
 	)
 
 	h.panel.SetText(header + "\n" + body)

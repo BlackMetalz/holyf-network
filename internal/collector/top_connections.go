@@ -19,12 +19,19 @@ type Connection struct {
 	RemoteIP   string
 	RemotePort int
 	State      string
-	TxQueue    int64  // Bytes waiting to be sent
-	RxQueue    int64  // Bytes waiting to be read
-	Activity   int64  // TxQueue + RxQueue (sort key)
-	Inode      string // Socket inode number (for PID lookup)
-	PID        int    // Process ID owning this socket (0 = unknown)
-	ProcName   string // Process name from /proc/[pid]/comm
+	TxQueue    int64 // Bytes waiting to be sent
+	RxQueue    int64 // Bytes waiting to be read
+	Activity   int64 // TxQueue + RxQueue (sort key)
+	// Bandwidth metrics computed from conntrack byte deltas.
+	TxBytesDelta     int64   // Bytes sent during sample interval (local -> peer)
+	RxBytesDelta     int64   // Bytes received during sample interval (peer -> local)
+	TotalBytesDelta  int64   // TxBytesDelta + RxBytesDelta
+	TxBytesPerSec    float64 // Tx bytes/sec over sample interval
+	RxBytesPerSec    float64 // Rx bytes/sec over sample interval
+	TotalBytesPerSec float64 // Total bytes/sec over sample interval
+	Inode            string  // Socket inode number (for PID lookup)
+	PID              int     // Process ID owning this socket (0 = unknown)
+	ProcName         string  // Process name from /proc/[pid]/comm
 }
 
 // CollectTopTalkers parses /proc/net/tcp + tcp6 and returns

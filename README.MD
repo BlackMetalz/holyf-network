@@ -58,10 +58,10 @@ sudo holyf-network -r 5
 # Tab / Shift+Tab: move focus between panels
 # Up / Down: select row in Top Connections
 # Enter / k: block selected Top Connections row
-# Shift+Q: sort by Queue (press again toggles DESC/ASC)
+# Shift+B: sort by Bandwidth (press again toggles DESC/ASC)
 # Shift+C: sort by Conns (press again toggles DESC/ASC)
 # Shift+P: sort by Port (press again toggles DESC/ASC)
-# i: explain Send-Q / Recv-Q
+# i: explain Send-Q / Recv-Q / TX/s / RX/s / TOTALΔ
 # g: toggle group-by-peer view
 # /: search Top Connections by text (contains match)
 # f: port filter (press f again to clear all filters)
@@ -102,6 +102,8 @@ Daemon notes:
 - `--top-limit` is the max aggregate rows stored per snapshot.
 - Retention policy: remove old segments beyond `--retention-hours`.
 - A lock file prevents multiple daemons writing the same `--data-dir`.
+- For bandwidth monitoring, use shorter interval (`--interval 5..10`) to capture bursts better.
+- For connection trend monitoring, keep default interval (`30s`) to reduce noise/storage.
 
 ## Replay (History) Mode
 
@@ -124,8 +126,8 @@ Replay hotkeys:
 - `Up` / `Down`: select row
 - `f`: port filter (press again to clear filters)
 - `/`: grep-like contains filter for current snapshot
-- `Shift+Q/C/P`: sort mode (press same key to toggle DESC/ASC)
-- `i`: explain Send-Q / Recv-Q
+- `Shift+B/C/P`: sort mode (press same key to toggle DESC/ASC)
+- `i`: explain Send-Q / Recv-Q / TX/s / RX/s / TOTALΔ
 - `s`: mask IP display
 - `x`: toggle skip-empty snapshot navigation
 - `?`: help
@@ -136,6 +138,10 @@ Replay hotkeys:
 Replay mode is read-only: no block/kill actions are executed.
 Replay view is aggregate-only: rows are grouped by `peer_ip + local_port + proc_name`.
 History reader accepts only this aggregate snapshot format.
+Bandwidth columns:
+- `TX/s`, `RX/s`: conntrack byte-delta throughput rate for current sample interval.
+- `TOTALΔ`: total bytes transferred during current sample interval.
+- `Send-Q/Recv-Q`: kernel queue backlog snapshot (not throughput counters).
 
 Default threshold file:
 
@@ -153,6 +159,14 @@ crit = 50
 warn = 70
 crit = 85
 
+[bandwidth_per_sec]
+warn = 52428800
+crit = 157286400
+
+[bandwidth_per_snapshot]
+warn = 524288000
+crit = 2147483648
+
 [retrans_sample]
 # Only evaluate retrans health if BOTH conditions are met.
 min_established = 20
@@ -167,3 +181,4 @@ holyf-network --health-config /etc/holyf-network/health_thresholds.toml
 
 Notes:
 - If retrans sample is below thresholds, UI shows `LOW SAMPLE` and does not trigger retrans WARN/CRIT.
+- `bandwidth_per_sec` and `bandwidth_per_snapshot` control BW column warn/crit coloring (`TX/s`, `RX/s`, `TOTALΔ`).

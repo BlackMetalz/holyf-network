@@ -13,7 +13,7 @@ func TestHistoryStatusHotkeysForModalPages(t *testing.T) {
 		{page: "history-filter", wantPlain: "Enter=apply Esc=cancel"},
 		{page: "history-search", wantPlain: "Enter=apply Esc=cancel"},
 		{page: "history-jump-time", wantPlain: "Enter=apply Esc=cancel"},
-		{page: "main", wantPlain: "[=prev ]=next a e t f / Shift+Q/C/P s i x z L ? q"},
+		{page: "main", wantPlain: "[=prev ]=next a e t f / Shift+B/C/P s i x z L ? q"},
 		{page: "history-socket-queue-explain", wantPlain: "Enter=close Esc=close"},
 	}
 

@@ -48,6 +48,12 @@ func AggregateConnections(conns []collector.Connection, limit int) []SnapshotGro
 		group.TxQueue += conn.TxQueue
 		group.RxQueue += conn.RxQueue
 		group.TotalQueue += conn.Activity
+		group.TxBytesDelta += conn.TxBytesDelta
+		group.RxBytesDelta += conn.RxBytesDelta
+		group.TotalBytesDelta += conn.TotalBytesDelta
+		group.TxBytesPerSec += conn.TxBytesPerSec
+		group.RxBytesPerSec += conn.RxBytesPerSec
+		group.TotalBytesPerSec += conn.TotalBytesPerSec
 		state := strings.TrimSpace(conn.State)
 		if state == "" {
 			state = "UNKNOWN"
@@ -61,6 +67,9 @@ func AggregateConnections(conns []collector.Connection, limit int) []SnapshotGro
 	}
 
 	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].TotalBytesDelta != rows[j].TotalBytesDelta {
+			return rows[i].TotalBytesDelta > rows[j].TotalBytesDelta
+		}
 		if rows[i].ConnCount != rows[j].ConnCount {
 			return rows[i].ConnCount > rows[j].ConnCount
 		}

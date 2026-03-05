@@ -60,3 +60,34 @@ func TestHealthThresholdsNormalizeRetransSample(t *testing.T) {
 		t.Fatalf("min_out_segs_per_sec should clamp to 0, got=%v", thresholds.RetransMinOutSegsPerSec)
 	}
 }
+
+func TestLoadHealthThresholdsBandwidthOverrides(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "health_bw.toml")
+	content := `
+[bandwidth_per_sec]
+warn = 1000
+crit = 2000
+
+[bandwidth_per_snapshot]
+warn = 5000
+crit = 9000
+`
+
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	thresholds, err := LoadHealthThresholds(path)
+	if err != nil {
+		t.Fatalf("load thresholds: %v", err)
+	}
+	if thresholds.BandwidthPerSec.Warn != 1000 || thresholds.BandwidthPerSec.Crit != 2000 {
+		t.Fatalf("bandwidth_per_sec mismatch: %+v", thresholds.BandwidthPerSec)
+	}
+	if thresholds.BandwidthPerSnapshot.Warn != 5000 || thresholds.BandwidthPerSnapshot.Crit != 9000 {
+		t.Fatalf("bandwidth_per_snapshot mismatch: %+v", thresholds.BandwidthPerSnapshot)
+	}
+}

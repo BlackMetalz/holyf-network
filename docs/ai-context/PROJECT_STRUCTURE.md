@@ -17,6 +17,8 @@ This is the current high-signal layout (non-essential folders omitted):
 │   ├── collector/
 │   │   ├── connections.go
 │   │   ├── top_connections.go
+│   │   ├── conntrack_flows.go
+│   │   ├── bandwidth_tracker.go
 │   │   ├── tcp_retransmits.go
 │   │   ├── interface_stats.go
 │   │   └── conntrack.go
@@ -72,6 +74,7 @@ This is the current high-signal layout (non-essential folders omitted):
     - `/sys/class/net/<iface>/statistics/*`
     - `/proc/sys/net/netfilter/nf_conntrack_*`
     - `conntrack -S` command
+    - `conntrack -L -p tcp -o extended` command (flow byte counters for bandwidth delta)
 
 - `internal/actions`
   - Side-effecting runtime actions:
@@ -87,6 +90,7 @@ This is the current high-signal layout (non-essential folders omitted):
   - Snapshot persistence/indexing for daemon + replay flow.
   - NDJSON writer with retention and lock file.
   - Reader/indexer for timeline replay.
+  - Aggregate snapshots persist queue + bandwidth metrics per peer/port/proc row.
 
 - `internal/tui`
   - App state machine, keyboard handling, modal flows, rendering panels.

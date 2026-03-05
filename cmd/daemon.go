@@ -304,6 +304,7 @@ func newDaemonRunCmd() *cobra.Command {
 				return err
 			}
 			defer writer.Close()
+			bwTracker := collector.NewBandwidthTracker()
 
 			version := resolveBuildVersion(Version)
 			fmt.Printf("holyf-network daemon started | iface=%s interval=%ds top-limit=%d data-dir=%s retention=%dh\n",
@@ -323,26 +324,45 @@ func newDaemonRunCmd() *cobra.Command {
 					fmt.Printf("[%s] capture failed: %v\n", ts.Format(time.RFC3339), err)
 					return
 				}
+
+				bwSample := collector.BandwidthSnapshot{}
+				flows, flowErr := collector.CollectConntrackFlowsTCP()
+				if flowErr == nil {
+					bwSample = bwTracker.BuildSnapshot(flows, ts)
+					conns = collector.EnrichConnectionsWithBandwidth(conns, bwSample)
+				}
+
 				groups := history.AggregateConnections(conns, opts.topLimit)
+				totalDelta := int64(0)
+				for _, row := range groups {
+					totalDelta += row.TotalBytesDelta
+				}
 				result, err := writer.Append(history.SnapshotRecord{
-					CapturedAt: ts.Local(),
-					Interface:  opts.ifaceName,
-					TopLimit:   opts.topLimit,
-					Groups:     groups,
-					Version:    version,
+					CapturedAt:         ts.Local(),
+					Interface:          opts.ifaceName,
+					TopLimit:           opts.topLimit,
+					SampleSeconds:      bwSample.SampleSeconds,
+					BandwidthAvailable: bwSample.Available,
+					Groups:             groups,
+					Version:            version,
 				})
 				if err != nil {
 					fmt.Printf("[%s] write failed: %v\n", ts.Format(time.RFC3339), err)
 					return
 				}
 
-				fmt.Printf("[%s] captured %d connections -> %d aggregate rows (cap=%d) -> %s\n",
+				fmt.Printf("[%s] captured %d connections -> %d aggregate rows (cap=%d) | bw_available=%t | total_delta=%s -> %s\n",
 					ts.Format(time.RFC3339),
 					len(conns),
 					len(groups),
 					opts.topLimit,
+					bwSample.Available,
+					humanBytes(totalDelta),
 					filepath.Base(result.SegmentPath),
 				)
+				if flowErr != nil {
+					fmt.Printf("[%s] bandwidth capture unavailable: %v\n", ts.Format(time.RFC3339), flowErr)
+				}
 				if result.Prune.RemovedByAge > 0 {
 					fmt.Printf("[%s] pruned files: age=%d\n",
 						ts.Format(time.RFC3339),
@@ -495,4 +515,17 @@ func isProcessRunning(pid int) bool {
 		return true
 	}
 	return false
+}
+
+func humanBytes(n int64) string {
+	if n >= 1024*1024*1024 {
+		return fmt.Sprintf("%.1fGB", float64(n)/(1024*1024*1024))
+	}
+	if n >= 1024*1024 {
+		return fmt.Sprintf("%.1fMB", float64(n)/(1024*1024))
+	}
+	if n >= 1024 {
+		return fmt.Sprintf("%.1fKB", float64(n)/1024)
+	}
+	return fmt.Sprintf("%dB", n)
 }

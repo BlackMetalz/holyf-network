@@ -6,12 +6,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/BlackMetalz/holyf-network/internal/history"
 )
 
-const historyAggregateHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, t=jump-time, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC), i=explain qcols, x=skip-empty, L=follow[white]"
+const historyAggregateHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, t=jump-time, /=search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i=explain qcols, x=skip-empty, L=follow[white]"
 
-func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, skipEmpty bool) string {
+func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, skipEmpty bool, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -40,6 +41,9 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		skipChip,
 	))
 	sb.WriteString(historyAggregateHintLine)
+	if !bandwidthAvailable {
+		sb.WriteString("\n  [yellow]Bandwidth counters unavailable in this snapshot[white]")
+	}
 	sb.WriteString("\n\n")
 
 	if len(rows) == 0 {
@@ -73,17 +77,21 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		peerColWidth  = 24
 		portColWidth  = 6
 		procColWidth  = 14
-		connsColWidth = 7
-		queueColWidth = 8
+		connsColWidth = 6
+		queueColWidth = 7
+		bwColWidth    = 9
 	)
 	sb.WriteString(fmt.Sprintf(
-		"  [dim]%-*s %*s %-*s %*s %*s %*s %s[white]\n",
+		"  [dim]%-*s %*s %-*s %*s %*s %*s %*s %*s %*s %s[white]\n",
 		peerColWidth, "PEER",
 		portColWidth, "PORT",
 		procColWidth, "PROC",
 		connsColWidth, "CONNS",
 		queueColWidth, "SEND-Q",
 		queueColWidth, "RECV-Q",
+		bwColWidth, "TX/s",
+		bwColWidth, "RX/s",
+		bwColWidth, "TOTALΔ",
 		"STATES",
 	))
 
@@ -103,6 +111,9 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		conns := strconv.Itoa(row.ConnCount)
 		sendQ := formatBytes(row.TxQueue)
 		recvQ := formatBytes(row.RxQueue)
+		txRate := formatBytesRateCompact(row.TxBytesPerSec)
+		rxRate := formatBytesRateCompact(row.RxBytesPerSec)
+		totalDelta := formatBytes(row.TotalBytesDelta)
 		states := truncateRight(formatStateSummary(row.States), 34)
 		sendQColor := "dim"
 		if row.TxQueue > 0 {
@@ -114,6 +125,9 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		}
 		sendQField := fmt.Sprintf("[%s]%*s[white]", sendQColor, queueColWidth, sendQ)
 		recvQField := fmt.Sprintf("[%s]%*s[white]", recvQColor, queueColWidth, recvQ)
+		txRateField := fmt.Sprintf("[%s]%*s[white]", bandwidthColor(row.TxBytesPerSec, thresholds.BandwidthPerSec), bwColWidth, txRate)
+		rxRateField := fmt.Sprintf("[%s]%*s[white]", bandwidthColor(row.RxBytesPerSec, thresholds.BandwidthPerSec), bwColWidth, rxRate)
+		totalDeltaField := fmt.Sprintf("[%s]%*s[white]", bandwidthColor(float64(row.TotalBytesDelta), thresholds.BandwidthPerSnapshot), bwColWidth, totalDelta)
 
 		prefix := "  "
 		if i == selectedIndex {
@@ -121,7 +135,7 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		}
 
 		sb.WriteString(fmt.Sprintf(
-			"%s[aqua]%-*s[white] %*s %-*s %*s %s %s [green]%s[white]\n",
+			"%s[aqua]%-*s[white] %*s %-*s %*s %s %s %s %s %s [green]%s[white]\n",
 			prefix,
 			peerColWidth, peer,
 			portColWidth, port,
@@ -129,6 +143,9 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 			connsColWidth, conns,
 			sendQField,
 			recvQField,
+			txRateField,
+			rxRateField,
+			totalDeltaField,
 			states,
 		))
 	}
@@ -139,10 +156,10 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 
 func sortHistoryGroups(rows []history.SnapshotGroup, mode SortMode, desc bool) {
 	switch mode {
-	case SortByQueue:
+	case SortByBandwidth:
 		sort.SliceStable(rows, func(i, j int) bool {
-			if rows[i].TotalQueue != rows[j].TotalQueue {
-				return compareInt64(rows[i].TotalQueue, rows[j].TotalQueue, desc)
+			if rows[i].TotalBytesDelta != rows[j].TotalBytesDelta {
+				return compareInt64(rows[i].TotalBytesDelta, rows[j].TotalBytesDelta, desc)
 			}
 			if rows[i].ConnCount != rows[j].ConnCount {
 				return compareInt(rows[i].ConnCount, rows[j].ConnCount, desc)
@@ -160,8 +177,8 @@ func sortHistoryGroups(rows []history.SnapshotGroup, mode SortMode, desc bool) {
 			if rows[i].ConnCount != rows[j].ConnCount {
 				return compareInt(rows[i].ConnCount, rows[j].ConnCount, desc)
 			}
-			if rows[i].TotalQueue != rows[j].TotalQueue {
-				return compareInt64(rows[i].TotalQueue, rows[j].TotalQueue, desc)
+			if rows[i].TotalBytesDelta != rows[j].TotalBytesDelta {
+				return compareInt64(rows[i].TotalBytesDelta, rows[j].TotalBytesDelta, desc)
 			}
 			if rows[i].LocalPort != rows[j].LocalPort {
 				return compareInt(rows[i].LocalPort, rows[j].LocalPort, desc)
@@ -179,8 +196,8 @@ func sortHistoryGroups(rows []history.SnapshotGroup, mode SortMode, desc bool) {
 			if rows[i].ConnCount != rows[j].ConnCount {
 				return compareInt(rows[i].ConnCount, rows[j].ConnCount, desc)
 			}
-			if rows[i].TotalQueue != rows[j].TotalQueue {
-				return compareInt64(rows[i].TotalQueue, rows[j].TotalQueue, desc)
+			if rows[i].TotalBytesDelta != rows[j].TotalBytesDelta {
+				return compareInt64(rows[i].TotalBytesDelta, rows[j].TotalBytesDelta, desc)
 			}
 			if rows[i].PeerIP != rows[j].PeerIP {
 				return rows[i].PeerIP < rows[j].PeerIP
@@ -218,7 +235,15 @@ func filterHistoryGroupsByText(rows []history.SnapshotGroup, query string) []his
 			strconv.Itoa(row.LocalPort),
 			row.ProcName,
 			strconv.Itoa(row.ConnCount),
+			formatBytes(row.TxQueue),
+			formatBytes(row.RxQueue),
 			formatBytes(row.TotalQueue),
+			formatBytes(row.TxBytesDelta),
+			formatBytes(row.RxBytesDelta),
+			formatBytes(row.TotalBytesDelta),
+			formatBytesRateCompact(row.TxBytesPerSec),
+			formatBytesRateCompact(row.RxBytesPerSec),
+			formatBytesRateCompact(row.TotalBytesPerSec),
 			formatStateSummary(row.States),
 		}, " "))
 		if strings.Contains(haystack, needle) {

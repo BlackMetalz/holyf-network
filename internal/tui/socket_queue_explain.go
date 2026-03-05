@@ -11,10 +11,13 @@ func buildSocketQueueExplainText(aggregate bool) string {
 	lines := []string{
 		"  [yellow]Send-Q[white]: bytes queued in kernel send buffer (waiting to be sent/acked).",
 		"  [yellow]Recv-Q[white]: bytes received by kernel but not yet read by application.",
+		"  [yellow]TX/s, RX/s[white]: throughput rate from conntrack byte delta over sample interval.",
+		"  [yellow]TOTALΔ[white]: total bytes (TX+RX) observed in the current sample interval.",
 		"",
 		"  These are [yellow]backlog snapshot[white] values at one moment in time.",
 		"  They are [yellow]NOT[white] throughput counters (not B/s, not total bytes sent/recv).",
-		"  [dim]0B does not mean no traffic; it means no queued backlog at snapshot time.[white]",
+		"  [dim]0B in Send-Q/Recv-Q does not mean no traffic; it means no queued backlog now.[white]",
+		"  [dim]Bandwidth values need conntrack baseline + enough privileges.[white]",
 	}
 	if aggregate {
 		lines = append(lines,

@@ -26,7 +26,9 @@ flowchart TD
 3. Collect connection state counts.
 4. Collect interface stats and rates.
 5. Collect top talkers (`/proc/net/tcp*`, PID mapping from `/proc/<pid>/fd`).
-6. Render panels and status bar.
+6. Collect conntrack TCP flow byte counters and compute interval deltas.
+7. Enrich top talkers with throughput metrics (`TX/s`, `RX/s`, `TOTALΔ`).
+8. Render panels and status bar.
 
 Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).
 
@@ -38,6 +40,8 @@ Package: `internal/history` + `cmd/daemon.go`
 2. Worker resolves interface (`--interface`) and starts `SnapshotWriter` with lock file (`.daemon.lock`) under `--data-dir`.
 3. Every `--interval` seconds:
    - call `collector.CollectTopTalkers(0)` to sample current connections
+   - call `collector.CollectConntrackFlowsTCP()` and compute byte deltas from previous sample
+   - enrich connections with bandwidth fields
    - aggregate by `peer_ip + local_port + proc_name`
    - write one aggregate `SnapshotRecord` as NDJSON line
 4. Segment file naming by server local day: `connections-YYYYMMDD.jsonl`.
@@ -46,6 +50,9 @@ Package: `internal/history` + `cmd/daemon.go`
 6. `daemon stop` sends `SIGTERM` (fallback `SIGKILL`) and removes PID file.
 7. `daemon status` reads PID file and reports running/stopped state.
 8. Worker handles `SIGINT/SIGTERM` and closes cleanly.
+9. Interval guidance:
+   - bandwidth-focused monitoring: `5-10s`
+   - connection trend monitoring: `30s` default
 
 ## 4) Snapshot Storage Model
 
@@ -60,8 +67,14 @@ Single format policy:
   - `CapturedAt`
   - `Interface`
   - `TopLimit` (max aggregate rows)
+  - `SampleSeconds`
+  - `BandwidthAvailable`
   - `Groups []SnapshotGroup`
   - `Version`
+
+- `SnapshotGroup`
+  - queue snapshot fields: `TxQueue`, `RxQueue`, `TotalQueue`
+  - bandwidth fields: `TxBytesDelta`, `RxBytesDelta`, `TotalBytesDelta`, `TxBytesPerSec`, `RxBytesPerSec`, `TotalBytesPerSec`
 
 - `SnapshotRef`
   - `FilePath`
@@ -104,6 +117,7 @@ Behavior constraints:
 - replay renders aggregate rows only
 - kill/block hotkeys (`Enter`, `k`, `b`) are explicitly blocked with status note
 - search/filter apply only to current snapshot
+- replay renders queue + bandwidth columns from aggregate rows
 
 ## 6) UI Composition
 
@@ -141,6 +155,7 @@ Behavior constraints:
 
 - Linux runtime (`/proc`, `/sys`, netfilter tooling).
 - Collector path relies on kernel network procfs/sysfs files.
+- Bandwidth enrichment relies on `conntrack -L -p tcp -o extended` counters (TCP flows).
 - Mitigation path relies on `iptables`/`ip6tables`, `conntrack`, `ss`.
 - `sudo` recommended for full live-mode visibility/mitigation.
 

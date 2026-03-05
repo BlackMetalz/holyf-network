@@ -16,9 +16,11 @@ type ThresholdBand struct {
 
 // HealthThresholds controls the health strip severity coloring.
 type HealthThresholds struct {
-	RetransPercent   ThresholdBand
-	DropsPerSec      ThresholdBand
-	ConntrackPercent ThresholdBand
+	RetransPercent       ThresholdBand
+	DropsPerSec          ThresholdBand
+	ConntrackPercent     ThresholdBand
+	BandwidthPerSec      ThresholdBand
+	BandwidthPerSnapshot ThresholdBand
 	// Retrans sample gates: retrans health is only evaluated when both are met.
 	RetransMinEstablished   int
 	RetransMinOutSegsPerSec float64
@@ -39,6 +41,14 @@ func DefaultHealthThresholds() HealthThresholds {
 			Warn: 70.0,
 			Crit: 85.0,
 		},
+		BandwidthPerSec: ThresholdBand{
+			Warn: 50.0 * 1024 * 1024,  // 50 MiB/s
+			Crit: 150.0 * 1024 * 1024, // 150 MiB/s
+		},
+		BandwidthPerSnapshot: ThresholdBand{
+			Warn: 500.0 * 1024 * 1024,      // 500 MiB/snapshot
+			Crit: 2.0 * 1024 * 1024 * 1024, // 2 GiB/snapshot
+		},
 		RetransMinEstablished:   20,
 		RetransMinOutSegsPerSec: 60.0,
 	}
@@ -49,6 +59,8 @@ func (h *HealthThresholds) Normalize() {
 	normalizeBand(&h.RetransPercent)
 	normalizeBand(&h.DropsPerSec)
 	normalizeBand(&h.ConntrackPercent)
+	normalizeBand(&h.BandwidthPerSec)
+	normalizeBand(&h.BandwidthPerSnapshot)
 	if h.RetransMinEstablished < 0 {
 		h.RetransMinEstablished = 0
 	}
@@ -79,10 +91,12 @@ func normalizeBand(b *ThresholdBand) {
 //	[retrans_percent]
 //	[drops_per_sec]
 //	[conntrack_percent]
+//	[bandwidth_per_sec]
+//	[bandwidth_per_snapshot]
 //	[retrans_sample]
 //
 // Supported keys:
-//   - [retrans_percent], [drops_per_sec], [conntrack_percent]: warn, crit
+//   - [retrans_percent], [drops_per_sec], [conntrack_percent], [bandwidth_per_sec], [bandwidth_per_snapshot]: warn, crit
 //   - [retrans_sample]: min_established, min_out_segs_per_sec
 func LoadHealthThresholds(path string) (HealthThresholds, error) {
 	thresholds := DefaultHealthThresholds()
@@ -164,6 +178,10 @@ func thresholdBandBySection(thresholds *HealthThresholds, section string) *Thres
 		return &thresholds.DropsPerSec
 	case "conntrack_percent":
 		return &thresholds.ConntrackPercent
+	case "bandwidth_per_sec":
+		return &thresholds.BandwidthPerSec
+	case "bandwidth_per_snapshot":
+		return &thresholds.BandwidthPerSnapshot
 	default:
 		return nil
 	}

@@ -282,14 +282,14 @@ func TestHistoryAggregateSortModes(t *testing.T) {
 	h.refs = []history.SnapshotRef{{}}
 	h.currentIndex = 0
 	h.currentRecord = history.SnapshotRecord{Groups: []history.SnapshotGroup{
-		{PeerIP: "198.51.100.20", LocalPort: 443, ProcName: "sshd", ConnCount: 5, TotalQueue: 10, States: map[string]int{"ESTABLISHED": 5}},
-		{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "nginx", ConnCount: 2, TotalQueue: 50, States: map[string]int{"CLOSE_WAIT": 2}},
+		{PeerIP: "198.51.100.20", LocalPort: 443, ProcName: "sshd", ConnCount: 5, TotalQueue: 10, TotalBytesDelta: 200, States: map[string]int{"ESTABLISHED": 5}},
+		{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "nginx", ConnCount: 2, TotalQueue: 50, TotalBytesDelta: 500, States: map[string]int{"CLOSE_WAIT": 2}},
 	}}
 
-	h.sortMode = SortByQueue
+	h.sortMode = SortByBandwidth
 	rows := h.visibleRows()
 	if len(rows) != 2 || rows[0].PeerIP != "198.51.100.10" {
-		t.Fatalf("queue sort should prioritize higher queue, got=%+v", rows)
+		t.Fatalf("bandwidth sort should prioritize higher delta bytes, got=%+v", rows)
 	}
 
 	h.sortMode = SortByConns

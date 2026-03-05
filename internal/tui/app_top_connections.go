@@ -105,6 +105,8 @@ func (a *App) renderTopConnectionsPanel() {
 			a.topConnectionsDisplayLimit(),
 			a.sensitiveIP,
 			a.selectedTalkerIndex,
+			a.healthThresholds,
+			a.topBandwidthAvailable,
 		))
 		return
 	}
@@ -117,6 +119,8 @@ func (a *App) renderTopConnectionsPanel() {
 		a.selectedTalkerIndex,
 		a.sortMode,
 		a.sortDesc,
+		a.healthThresholds,
+		a.topBandwidthAvailable,
 	))
 }
 

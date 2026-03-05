@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
+	"github.com/BlackMetalz/holyf-network/internal/config"
 )
 
 // panel_top_connections.go — Renders the Top Connections panel content.
@@ -15,14 +16,14 @@ import (
 type SortMode int
 
 const (
-	SortByQueue SortMode = iota // tx_queue + rx_queue descending
-	SortByConns                 // peer connection count descending
-	SortByPort                  // local port ascending
+	SortByBandwidth SortMode = iota // total bytes delta descending
+	SortByConns                     // peer connection count descending
+	SortByPort                      // local port ascending
 )
 
 const (
-	defaultTalkersHintLine  = "  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC), i=explain qcols[white]"
-	readOnlyTalkersHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC), i=explain qcols, g=group, L=follow[white]"
+	defaultTalkersHintLine  = "  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i=explain qcols[white]"
+	readOnlyTalkersHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, /=search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i=explain qcols, g=group, L=follow[white]"
 	defaultGroupHintLine    = "  [dim]Use ↑/↓ select, g=connections view, /=search, f=port/clear, i=explain qcols[white]"
 	readOnlyGroupHintLine   = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, g=connections view, /=search, f=port/clear, i=explain qcols, L=follow[white]"
 )
@@ -30,14 +31,14 @@ const (
 // Label returns a short display name for the status bar chip.
 func (m SortMode) Label() string {
 	switch m {
-	case SortByQueue:
-		return "QUEUE"
+	case SortByBandwidth:
+		return "BW"
 	case SortByConns:
 		return "CONNS"
 	case SortByPort:
 		return "PORT"
 	default:
-		return "QUEUE"
+		return "BW"
 	}
 }
 
@@ -66,8 +67,17 @@ func compareInt64(a, b int64, desc bool) bool {
 // sortConnections sorts a slice in-place according to the given mode.
 func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
 	switch mode {
-	case SortByQueue:
+	case SortByBandwidth:
 		sort.SliceStable(conns, func(i, j int) bool {
+			if conns[i].TotalBytesDelta != conns[j].TotalBytesDelta {
+				return compareInt64(conns[i].TotalBytesDelta, conns[j].TotalBytesDelta, desc)
+			}
+			if conns[i].TotalBytesPerSec != conns[j].TotalBytesPerSec {
+				if desc {
+					return conns[i].TotalBytesPerSec > conns[j].TotalBytesPerSec
+				}
+				return conns[i].TotalBytesPerSec < conns[j].TotalBytesPerSec
+			}
 			if conns[i].Activity != conns[j].Activity {
 				return compareInt64(conns[i].Activity, conns[j].Activity, desc)
 			}
@@ -88,8 +98,8 @@ func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
 			if ci != cj {
 				return compareInt(ci, cj, desc)
 			}
-			if conns[i].Activity != conns[j].Activity {
-				return compareInt64(conns[i].Activity, conns[j].Activity, desc)
+			if conns[i].TotalBytesDelta != conns[j].TotalBytesDelta {
+				return compareInt64(conns[i].TotalBytesDelta, conns[j].TotalBytesDelta, desc)
 			}
 			if conns[i].LocalPort != conns[j].LocalPort {
 				return compareInt(conns[i].LocalPort, conns[j].LocalPort, desc)
@@ -101,8 +111,8 @@ func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
 			if conns[i].LocalPort != conns[j].LocalPort {
 				return compareInt(conns[i].LocalPort, conns[j].LocalPort, desc)
 			}
-			if conns[i].Activity != conns[j].Activity {
-				return compareInt64(conns[i].Activity, conns[j].Activity, desc)
+			if conns[i].TotalBytesDelta != conns[j].TotalBytesDelta {
+				return compareInt64(conns[i].TotalBytesDelta, conns[j].TotalBytesDelta, desc)
 			}
 			return normalizeIP(conns[i].RemoteIP) < normalizeIP(conns[j].RemoteIP)
 		})
@@ -112,15 +122,15 @@ func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
 // renderTalkersPanel formats the top connections for the TUI panel.
 // If portFilter is set, only connections matching that port are shown.
 // maxRows controls how many connections to display (use more when zoomed).
-func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool) string {
-	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, defaultTalkersHintLine)
+func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
+	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthAvailable, defaultTalkersHintLine)
 }
 
-func renderTalkersPanelReadOnly(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool) string {
-	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, readOnlyTalkersHintLine)
+func renderTalkersPanelReadOnly(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
+	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthAvailable, readOnlyTalkersHintLine)
 }
 
-func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, hintLine string) string {
+func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthAvailable bool, hintLine string) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -144,6 +154,9 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 		sortLabelWithDirection(sortMode, sortDesc),
 	))
 	sb.WriteString(hintLine)
+	if !bandwidthAvailable {
+		sb.WriteString("\n  [yellow]Bandwidth counters unavailable for this sample (need conntrack baseline + privileges)[white]")
+	}
 	sb.WriteString("\n\n")
 
 	if len(conns) == 0 {
@@ -175,19 +188,23 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 	}
 
 	const (
-		processColWidth  = 18
-		endpointColWidth = 24
+		processColWidth  = 16
+		endpointColWidth = 22
 		stateColWidth    = 11
-		queueColWidth    = 8
+		queueColWidth    = 7
+		bwColWidth       = 9
 	)
 	// Header row
-	sb.WriteString(fmt.Sprintf("  [dim]%-*s %-*s %-*s %-*s %*s %*s[white]\n",
+	sb.WriteString(fmt.Sprintf("  [dim]%-*s %-*s %-*s %-*s %*s %*s %*s %*s %*s[white]\n",
 		processColWidth, "PROCESS",
 		endpointColWidth, "SRC",
 		endpointColWidth, "PEER",
 		stateColWidth, "STATE",
 		queueColWidth, "SEND-Q",
 		queueColWidth, "RECV-Q",
+		bwColWidth, "TX/s",
+		bwColWidth, "RX/s",
+		bwColWidth, "TOTALΔ",
 	))
 
 	// Render each connection
@@ -232,13 +249,19 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 		}
 		sendQField := fmt.Sprintf("[%s]%*s[white]", sendQColor, queueColWidth, formatBytes(conn.TxQueue))
 		recvQField := fmt.Sprintf("[%s]%*s[white]", recvQColor, queueColWidth, formatBytes(conn.RxQueue))
+		txRateColor := bandwidthColor(conn.TxBytesPerSec, thresholds.BandwidthPerSec)
+		rxRateColor := bandwidthColor(conn.RxBytesPerSec, thresholds.BandwidthPerSec)
+		totalDeltaColor := bandwidthColor(float64(conn.TotalBytesDelta), thresholds.BandwidthPerSnapshot)
+		txRateField := fmt.Sprintf("[%s]%*s[white]", txRateColor, bwColWidth, formatBytesRateCompact(conn.TxBytesPerSec))
+		rxRateField := fmt.Sprintf("[%s]%*s[white]", rxRateColor, bwColWidth, formatBytesRateCompact(conn.RxBytesPerSec))
+		totalDeltaField := fmt.Sprintf("[%s]%*s[white]", totalDeltaColor, bwColWidth, formatBytes(conn.TotalBytesDelta))
 
 		prefix := "  "
 		if i == selectedIndex {
 			prefix = " [yellow]>[white]"
 		}
 
-		sb.WriteString(fmt.Sprintf("%s[aqua]%-*s[white] %-*s %-*s [%s]%-*s[white] %s %s\n",
+		sb.WriteString(fmt.Sprintf("%s[aqua]%-*s[white] %-*s %-*s [%s]%-*s[white] %s %s %s %s %s\n",
 			prefix,
 			processColWidth, procInfo,
 			endpointColWidth, src,
@@ -246,6 +269,9 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 			stateColor, stateColWidth, conn.State,
 			sendQField,
 			recvQField,
+			txRateField,
+			rxRateField,
+			totalDeltaField,
 		))
 	}
 
@@ -330,6 +356,14 @@ func filterByText(conns []collector.Connection, query string) []collector.Connec
 			fmt.Sprintf("%s:%d", normalizeIP(conn.RemoteIP), conn.RemotePort),
 			conn.State,
 			formatBytes(conn.Activity),
+			formatBytes(conn.TxQueue),
+			formatBytes(conn.RxQueue),
+			formatBytes(conn.TxBytesDelta),
+			formatBytes(conn.RxBytesDelta),
+			formatBytes(conn.TotalBytesDelta),
+			formatBytesRateCompact(conn.TxBytesPerSec),
+			formatBytesRateCompact(conn.RxBytesPerSec),
+			formatBytesRateCompact(conn.TotalBytesPerSec),
 		}, " "))
 
 		if strings.Contains(haystack, needle) {
@@ -348,6 +382,26 @@ func formatBytes(bytes int64) string {
 		return fmt.Sprintf("%.1fKB", float64(bytes)/1024)
 	}
 	return fmt.Sprintf("%dB", bytes)
+}
+
+func formatBytesRateCompact(rate float64) string {
+	if rate < 0 {
+		rate = 0
+	}
+	return formatBytes(int64(rate)) + "/s"
+}
+
+func bandwidthColor(value float64, band config.ThresholdBand) string {
+	if band.Crit > 0 && value >= band.Crit {
+		return "red"
+	}
+	if band.Warn > 0 && value >= band.Warn {
+		return "yellow"
+	}
+	if value > 0 {
+		return "green"
+	}
+	return "dim"
 }
 
 // formatEndpoint normalizes, masks (optional), and truncates endpoint text.
@@ -430,14 +484,20 @@ func truncateRight(s string, width int) string {
 
 // PeerGroup represents aggregated connections for a single remote IP.
 type PeerGroup struct {
-	PeerIP     string
-	Count      int
-	TxQueue    int64
-	RxQueue    int64
-	TotalQueue int64
-	LocalPorts map[int]struct{}
-	States     map[string]int
-	TopProc    string // most common process name
+	PeerIP           string
+	Count            int
+	TxQueue          int64
+	RxQueue          int64
+	TotalQueue       int64
+	TxBytesDelta     int64
+	RxBytesDelta     int64
+	TotalBytesDelta  int64
+	TxBytesPerSec    float64
+	RxBytesPerSec    float64
+	TotalBytesPerSec float64
+	LocalPorts       map[int]struct{}
+	States           map[string]int
+	TopProc          string // most common process name
 }
 
 // buildPeerGroups aggregates connections by remote IP.
@@ -461,6 +521,12 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 		g.TxQueue += conn.TxQueue
 		g.RxQueue += conn.RxQueue
 		g.TotalQueue += conn.Activity
+		g.TxBytesDelta += conn.TxBytesDelta
+		g.RxBytesDelta += conn.RxBytesDelta
+		g.TotalBytesDelta += conn.TotalBytesDelta
+		g.TxBytesPerSec += conn.TxBytesPerSec
+		g.RxBytesPerSec += conn.RxBytesPerSec
+		g.TotalBytesPerSec += conn.TotalBytesPerSec
 		g.LocalPorts[conn.LocalPort] = struct{}{}
 		g.States[conn.State]++
 		if conn.ProcName != "" {
@@ -482,6 +548,9 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 	}
 
 	sort.SliceStable(groups, func(i, j int) bool {
+		if groups[i].TotalBytesDelta != groups[j].TotalBytesDelta {
+			return groups[i].TotalBytesDelta > groups[j].TotalBytesDelta
+		}
 		if groups[i].Count != groups[j].Count {
 			return groups[i].Count > groups[j].Count
 		}
@@ -492,15 +561,15 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 }
 
 // renderPeerGroupPanel renders the per-peer aggregate view.
-func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int) string {
-	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, defaultGroupHintLine)
+func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
+	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, thresholds, bandwidthAvailable, defaultGroupHintLine)
 }
 
-func renderPeerGroupPanelReadOnly(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int) string {
-	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, readOnlyGroupHintLine)
+func renderPeerGroupPanelReadOnly(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
+	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, thresholds, bandwidthAvailable, readOnlyGroupHintLine)
 }
 
-func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, hintLine string) string {
+func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, thresholds config.HealthThresholds, bandwidthAvailable bool, hintLine string) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -518,6 +587,9 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 		searchChip,
 	))
 	sb.WriteString(hintLine)
+	if !bandwidthAvailable {
+		sb.WriteString("\n  [yellow]Bandwidth counters unavailable for this sample (need conntrack baseline + privileges)[white]")
+	}
 	sb.WriteString("\n\n")
 
 	if len(conns) == 0 {
@@ -542,17 +614,21 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 
 	const (
 		peerColWidth    = 24
-		countColWidth   = 7
-		queueColWidth   = 8
-		processColWidth = 14
-		portsColWidth   = 16
+		countColWidth   = 6
+		queueColWidth   = 7
+		bwColWidth      = 9
+		processColWidth = 12
+		portsColWidth   = 14
 	)
 
-	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %*s %-*s %-*s[white]\n",
+	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %*s %*s %*s %*s %-*s %-*s[white]\n",
 		peerColWidth, "PEER",
 		countColWidth, "CONNS",
 		queueColWidth, "SEND-Q",
 		queueColWidth, "RECV-Q",
+		bwColWidth, "TX/s",
+		bwColWidth, "RX/s",
+		bwColWidth, "TOTALΔ",
 		processColWidth, "PROCESS",
 		portsColWidth, "PORTS",
 	))
@@ -579,6 +655,12 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 		}
 		sendQField := fmt.Sprintf("[%s]%*s[white]", sendQColor, queueColWidth, formatBytes(g.TxQueue))
 		recvQField := fmt.Sprintf("[%s]%*s[white]", recvQColor, queueColWidth, formatBytes(g.RxQueue))
+		txRateColor := bandwidthColor(g.TxBytesPerSec, thresholds.BandwidthPerSec)
+		rxRateColor := bandwidthColor(g.RxBytesPerSec, thresholds.BandwidthPerSec)
+		totalDeltaColor := bandwidthColor(float64(g.TotalBytesDelta), thresholds.BandwidthPerSnapshot)
+		txRateField := fmt.Sprintf("[%s]%*s[white]", txRateColor, bwColWidth, formatBytesRateCompact(g.TxBytesPerSec))
+		rxRateField := fmt.Sprintf("[%s]%*s[white]", rxRateColor, bwColWidth, formatBytesRateCompact(g.RxBytesPerSec))
+		totalDeltaField := fmt.Sprintf("[%s]%*s[white]", totalDeltaColor, bwColWidth, formatBytes(g.TotalBytesDelta))
 
 		procText := "-"
 		procColor := "dim"
@@ -617,12 +699,15 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 			prefix = " [yellow]>[white]"
 		}
 
-		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %s %s %s %-*s\n",
+		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %s %s %s %s %s %s %-*s\n",
 			prefix,
 			peerColWidth, peer,
 			countColor, countColWidth, g.Count,
 			sendQField,
 			recvQField,
+			txRateField,
+			rxRateField,
+			totalDeltaField,
 			procField,
 			portsColWidth, portsDisplay,
 		))

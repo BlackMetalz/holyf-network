@@ -35,6 +35,7 @@ type App struct {
 	prevIfaceStats *collector.InterfaceStats
 	prevConntrack  *collector.ConntrackData
 	prevRetransmit *collector.RetransmitData
+	bwTracker      *collector.BandwidthTracker
 
 	// Port filter for Top Connections panel. Empty = show all.
 	portFilter string
@@ -44,9 +45,12 @@ type App struct {
 	sensitiveIP bool
 	// Latest top connections snapshot used by actions (kill peer, etc.).
 	latestTalkers []collector.Connection
+	// Current top-connection bandwidth sample metadata.
+	topSampleSeconds      float64
+	topBandwidthAvailable bool
 	// Selected row in Top Connections (within currently visible rows).
 	selectedTalkerIndex int
-	// Sort mode for Top Connections. Default: SortByQueue.
+	// Sort mode for Top Connections. Default: SortByBandwidth.
 	sortMode SortMode
 	// Sort direction for Top Connections. true=DESC, false=ASC.
 	sortDesc bool
@@ -117,6 +121,7 @@ func NewApp(
 		actionLogs:        make([]string, 0, 32),
 		actionHistoryPath: defaultActionHistoryPath(),
 		sortDesc:          true,
+		bwTracker:         collector.NewBandwidthTracker(),
 	}
 }
 
@@ -252,9 +257,20 @@ func (a *App) refreshData() {
 	talkers, err := collector.CollectTopTalkers(100)
 	if err != nil {
 		a.latestTalkers = nil
+		a.topSampleSeconds = 0
+		a.topBandwidthAvailable = false
 		a.selectedTalkerIndex = 0
 		a.panels[2].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
+		bwSample := collector.BandwidthSnapshot{}
+		flows, flowErr := collector.CollectConntrackFlowsTCP()
+		if flowErr == nil && a.bwTracker != nil {
+			bwSample = a.bwTracker.BuildSnapshot(flows, time.Now())
+			talkers = collector.EnrichConnectionsWithBandwidth(talkers, bwSample)
+		}
+		a.topSampleSeconds = bwSample.SampleSeconds
+		a.topBandwidthAvailable = bwSample.Available
+
 		a.latestTalkers = talkers
 		a.renderTopConnectionsPanel()
 	}
@@ -359,7 +375,7 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'i':
 			a.promptSocketQueueExplain()
 			return nil
-		case 'Q', 'C', 'P':
+		case 'B', 'C', 'P':
 			mode, ok := directSortModeForRune(event.Rune())
 			if !ok {
 				return event
@@ -395,14 +411,14 @@ func (a *App) focusPrev() {
 
 func directSortModeForRune(r rune) (SortMode, bool) {
 	switch r {
-	case 'Q':
-		return SortByQueue, true
+	case 'B':
+		return SortByBandwidth, true
 	case 'C':
 		return SortByConns, true
 	case 'P':
 		return SortByPort, true
 	default:
-		return SortByQueue, false
+		return SortByBandwidth, false
 	}
 }
 
@@ -564,7 +580,7 @@ func statusHotkeysForPage(page string) (styled string, plain string) {
 	case "blocked-peers-remove-result", "block-summary":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim]r p f k Shift+Q/C/P g b h i z ? q[white]", "r p f k Shift+Q/C/P g b h i z ? q"
+		return "[dim]r p f k Shift+B/C/P g b h i z ? q[white]", "r p f k Shift+B/C/P g b h i z ? q"
 	}
 }
 

@@ -10,6 +10,14 @@ crit = 50
 warn = 70
 crit = 85
 
+[bandwidth_per_sec]
+warn = 52428800
+crit = 157286400
+
+[bandwidth_per_snapshot]
+warn = 524288000
+crit = 2147483648
+
 [retrans_sample]
 min_established = 20
 min_out_segs_per_sec = 60

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -40,13 +41,13 @@ func TestDirectSortModeForRune(t *testing.T) {
 		want SortMode
 		ok   bool
 	}{
-		{name: "queue", key: 'Q', want: SortByQueue, ok: true},
+		{name: "bandwidth", key: 'B', want: SortByBandwidth, ok: true},
 		{name: "conns", key: 'C', want: SortByConns, ok: true},
 		{name: "port", key: 'P', want: SortByPort, ok: true},
-		{name: "state removed", key: 'S', want: SortByQueue, ok: false},
-		{name: "process removed", key: 'R', want: SortByQueue, ok: false},
-		{name: "lowercase ignored", key: 'q', want: SortByQueue, ok: false},
-		{name: "non sort key", key: 'x', want: SortByQueue, ok: false},
+		{name: "state removed", key: 'S', want: SortByBandwidth, ok: false},
+		{name: "process removed", key: 'R', want: SortByBandwidth, ok: false},
+		{name: "lowercase ignored", key: 'q', want: SortByBandwidth, ok: false},
+		{name: "non sort key", key: 'x', want: SortByBandwidth, ok: false},
 	}
 
 	for _, tc := range tests {
@@ -76,12 +77,12 @@ func TestHandleKeyEventSortKeysResetSelectionAndRender(t *testing.T) {
 		wantDesc  bool
 		handled   bool
 	}{
-		{name: "queue first press keeps desc", key: 'Q', startMode: SortByConns, startDesc: false, wantMode: SortByQueue, wantDesc: true, handled: true},
-		{name: "same mode toggles to asc", key: 'Q', startMode: SortByQueue, startDesc: true, wantMode: SortByQueue, wantDesc: false, handled: true},
-		{name: "same mode toggles back to desc", key: 'Q', startMode: SortByQueue, startDesc: false, wantMode: SortByQueue, wantDesc: true, handled: true},
-		{name: "conns mode first press desc", key: 'C', startMode: SortByQueue, startDesc: true, wantMode: SortByConns, wantDesc: true, handled: true},
-		{name: "port mode first press desc", key: 'P', startMode: SortByQueue, startDesc: true, wantMode: SortByPort, wantDesc: true, handled: true},
-		{name: "o removed", key: 'o', startMode: SortByQueue, startDesc: true, wantMode: SortByQueue, wantDesc: true, handled: false},
+		{name: "bandwidth first press keeps desc", key: 'B', startMode: SortByConns, startDesc: false, wantMode: SortByBandwidth, wantDesc: true, handled: true},
+		{name: "same mode toggles to asc", key: 'B', startMode: SortByBandwidth, startDesc: true, wantMode: SortByBandwidth, wantDesc: false, handled: true},
+		{name: "same mode toggles back to desc", key: 'B', startMode: SortByBandwidth, startDesc: false, wantMode: SortByBandwidth, wantDesc: true, handled: true},
+		{name: "conns mode first press desc", key: 'C', startMode: SortByBandwidth, startDesc: true, wantMode: SortByConns, wantDesc: true, handled: true},
+		{name: "port mode first press desc", key: 'P', startMode: SortByBandwidth, startDesc: true, wantMode: SortByPort, wantDesc: true, handled: true},
+		{name: "o removed", key: 'o', startMode: SortByBandwidth, startDesc: true, wantMode: SortByBandwidth, wantDesc: true, handled: false},
 	}
 
 	for _, tc := range tests {
@@ -119,11 +120,11 @@ func TestHandleKeyEventSortKeysResetSelectionAndRender(t *testing.T) {
 func TestTopConnectionsSortHintsIncludeDirectOnly(t *testing.T) {
 	t.Parallel()
 
-	panel := renderTalkersPanel(nil, "", "", 20, false, 0, SortByQueue, true)
+	panel := renderTalkersPanel(nil, "", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), false)
 	if strings.Contains(panel, "o=cycle sort") {
 		t.Fatalf("hint line should not mention cycle sort key")
 	}
-	if !strings.Contains(panel, "Shift+Q/C/P sort") {
+	if !strings.Contains(panel, "Shift+B/C/P sort") {
 		t.Fatalf("hint line should mention direct sort keys")
 	}
 }
@@ -135,7 +136,7 @@ func TestStatusHotkeysIncludeDirectSortKeys(t *testing.T) {
 	if strings.Contains(plain, " o ") {
 		t.Fatalf("main hotkeys should not mention o, got: %q", plain)
 	}
-	if !strings.Contains(plain, "Shift+Q/C/P") {
+	if !strings.Contains(plain, "Shift+B/C/P") {
 		t.Fatalf("main hotkeys should mention direct sort keys, got: %q", plain)
 	}
 }
