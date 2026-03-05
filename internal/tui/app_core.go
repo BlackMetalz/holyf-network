@@ -36,6 +36,7 @@ type App struct {
 	prevConntrack  *collector.ConntrackData
 	prevRetransmit *collector.RetransmitData
 	bwTracker      *collector.BandwidthTracker
+	ssBWTracker    *collector.SocketBandwidthTracker
 
 	// Port filter for Top Connections panel. Empty = show all.
 	portFilter string
@@ -122,6 +123,7 @@ func NewApp(
 		actionHistoryPath: defaultActionHistoryPath(),
 		sortDesc:          true,
 		bwTracker:         collector.NewBandwidthTracker(),
+		ssBWTracker:       collector.NewSocketBandwidthTracker(),
 	}
 }
 
@@ -273,6 +275,17 @@ func (a *App) refreshData() {
 			}
 		} else if flowErr != nil {
 			a.topBandwidthNote = "Bandwidth unavailable: " + shortStatus(flowErr.Error(), 140)
+		}
+
+		// Fallback path: socket tcp_info counters from ss (helps when conntrack mapping is incomplete).
+		ssCounters, ssErr := collector.CollectSocketTCPCounters()
+		if ssErr == nil && a.ssBWTracker != nil {
+			ssSample := a.ssBWTracker.BuildSnapshot(ssCounters, time.Now())
+			if ssSample.Available {
+				talkers = collector.OverlayMissingBandwidth(talkers, ssSample)
+			}
+		} else if a.topBandwidthNote == "" && ssErr != nil {
+			a.topBandwidthNote = "Bandwidth unavailable: " + shortStatus(ssErr.Error(), 140)
 		}
 		a.topSampleSeconds = bwSample.SampleSeconds
 

@@ -305,6 +305,7 @@ func newDaemonRunCmd() *cobra.Command {
 			}
 			defer writer.Close()
 			bwTracker := collector.NewBandwidthTracker()
+			ssBWTracker := collector.NewSocketBandwidthTracker()
 
 			version := resolveBuildVersion(Version)
 			fmt.Printf("holyf-network daemon started | iface=%s interval=%ds top-limit=%d data-dir=%s retention=%dh\n",
@@ -330,6 +331,17 @@ func newDaemonRunCmd() *cobra.Command {
 				if flowErr == nil {
 					bwSample = bwTracker.BuildSnapshot(flows, ts)
 					conns = collector.EnrichConnectionsWithBandwidth(conns, bwSample)
+				}
+				ssCounters, ssErr := collector.CollectSocketTCPCounters()
+				if ssErr == nil {
+					ssSample := ssBWTracker.BuildSnapshot(ssCounters, ts)
+					if ssSample.Available {
+						conns = collector.OverlayMissingBandwidth(conns, ssSample)
+						if !bwSample.Available {
+							bwSample.Available = true
+							bwSample.SampleSeconds = ssSample.SampleSeconds
+						}
+					}
 				}
 
 				groups := history.AggregateConnections(conns, opts.topLimit)
@@ -362,6 +374,9 @@ func newDaemonRunCmd() *cobra.Command {
 				)
 				if flowErr != nil {
 					fmt.Printf("[%s] bandwidth capture unavailable: %v\n", ts.Format(time.RFC3339), flowErr)
+				}
+				if ssErr != nil {
+					fmt.Printf("[%s] socket bandwidth fallback unavailable: %v\n", ts.Format(time.RFC3339), ssErr)
 				}
 				if result.Prune.RemovedByAge > 0 {
 					fmt.Printf("[%s] pruned files: age=%d\n",

@@ -176,6 +176,67 @@ func EnrichConnectionsWithBandwidth(conns []Connection, snapshot BandwidthSnapsh
 	return conns
 }
 
+// OverlayMissingBandwidth fills only rows that are still zero with another source.
+func OverlayMissingBandwidth(conns []Connection, snapshot BandwidthSnapshot) []Connection {
+	if len(conns) == 0 || len(snapshot.ByTuple) == 0 {
+		return conns
+	}
+
+	type fallbackKey struct {
+		peerIP     string
+		localPort  int
+		remotePort int
+	}
+	fallback := make(map[fallbackKey]TupleBandwidth, len(snapshot.ByTuple))
+	for tuple, bw := range snapshot.ByTuple {
+		key := fallbackKey{
+			peerIP:     normalizeFlowIP(tuple.DstIP),
+			localPort:  tuple.SrcPort,
+			remotePort: tuple.DstPort,
+		}
+		current := fallback[key]
+		current.TxBytesDelta += bw.TxBytesDelta
+		current.RxBytesDelta += bw.RxBytesDelta
+		current.TotalBytesDelta += bw.TotalBytesDelta
+		current.TxBytesPerSec += bw.TxBytesPerSec
+		current.RxBytesPerSec += bw.RxBytesPerSec
+		current.TotalBytesPerSec += bw.TotalBytesPerSec
+		fallback[key] = current
+	}
+
+	for i := range conns {
+		if conns[i].TotalBytesDelta > 0 || conns[i].TotalBytesPerSec > 0 {
+			continue
+		}
+		key := normalizeFlowTuple(FlowTuple{
+			SrcIP:   conns[i].LocalIP,
+			SrcPort: conns[i].LocalPort,
+			DstIP:   conns[i].RemoteIP,
+			DstPort: conns[i].RemotePort,
+		})
+
+		bw, ok := snapshot.ByTuple[key]
+		if !ok {
+			fb, exists := fallback[fallbackKey{
+				peerIP:     normalizeFlowIP(conns[i].RemoteIP),
+				localPort:  conns[i].LocalPort,
+				remotePort: conns[i].RemotePort,
+			}]
+			if !exists {
+				continue
+			}
+			bw = fb
+		}
+		conns[i].TxBytesDelta = bw.TxBytesDelta
+		conns[i].RxBytesDelta = bw.RxBytesDelta
+		conns[i].TotalBytesDelta = bw.TotalBytesDelta
+		conns[i].TxBytesPerSec = bw.TxBytesPerSec
+		conns[i].RxBytesPerSec = bw.RxBytesPerSec
+		conns[i].TotalBytesPerSec = bw.TotalBytesPerSec
+	}
+	return conns
+}
+
 func addTupleBandwidth(rows map[FlowTuple]TupleBandwidth, tuple FlowTuple, txDelta, rxDelta int64, sampleSec float64) {
 	if tuple.SrcPort == 0 || tuple.DstPort == 0 {
 		return
