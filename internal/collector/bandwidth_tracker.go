@@ -106,6 +106,39 @@ func EnrichConnectionsWithBandwidth(conns []Connection, snapshot BandwidthSnapsh
 	if len(conns) == 0 {
 		return conns
 	}
+	if len(snapshot.ByTuple) == 0 {
+		for i := range conns {
+			conns[i].TxBytesDelta = 0
+			conns[i].RxBytesDelta = 0
+			conns[i].TotalBytesDelta = 0
+			conns[i].TxBytesPerSec = 0
+			conns[i].RxBytesPerSec = 0
+			conns[i].TotalBytesPerSec = 0
+		}
+		return conns
+	}
+
+	type fallbackKey struct {
+		peerIP     string
+		localPort  int
+		remotePort int
+	}
+	fallback := make(map[fallbackKey]TupleBandwidth, len(snapshot.ByTuple))
+	for tuple, bw := range snapshot.ByTuple {
+		key := fallbackKey{
+			peerIP:     normalizeFlowIP(tuple.DstIP),
+			localPort:  tuple.SrcPort,
+			remotePort: tuple.DstPort,
+		}
+		current := fallback[key]
+		current.TxBytesDelta += bw.TxBytesDelta
+		current.RxBytesDelta += bw.RxBytesDelta
+		current.TotalBytesDelta += bw.TotalBytesDelta
+		current.TxBytesPerSec += bw.TxBytesPerSec
+		current.RxBytesPerSec += bw.RxBytesPerSec
+		current.TotalBytesPerSec += bw.TotalBytesPerSec
+		fallback[key] = current
+	}
 
 	for i := range conns {
 		conns[i].TxBytesDelta = 0
@@ -115,9 +148,6 @@ func EnrichConnectionsWithBandwidth(conns []Connection, snapshot BandwidthSnapsh
 		conns[i].RxBytesPerSec = 0
 		conns[i].TotalBytesPerSec = 0
 
-		if len(snapshot.ByTuple) == 0 {
-			continue
-		}
 		key := normalizeFlowTuple(FlowTuple{
 			SrcIP:   conns[i].LocalIP,
 			SrcPort: conns[i].LocalPort,
@@ -126,7 +156,15 @@ func EnrichConnectionsWithBandwidth(conns []Connection, snapshot BandwidthSnapsh
 		})
 		bw, ok := snapshot.ByTuple[key]
 		if !ok {
-			continue
+			fb, exists := fallback[fallbackKey{
+				peerIP:     normalizeFlowIP(conns[i].RemoteIP),
+				localPort:  conns[i].LocalPort,
+				remotePort: conns[i].RemotePort,
+			}]
+			if !exists {
+				continue
+			}
+			bw = fb
 		}
 		conns[i].TxBytesDelta = bw.TxBytesDelta
 		conns[i].RxBytesDelta = bw.RxBytesDelta

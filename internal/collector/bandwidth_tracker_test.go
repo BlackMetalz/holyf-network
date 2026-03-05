@@ -175,3 +175,41 @@ func TestEnrichConnectionsWithBandwidth(t *testing.T) {
 		t.Fatalf("enrich mismatch: %+v", got[0])
 	}
 }
+
+func TestEnrichConnectionsWithBandwidthFallbackIgnoresLocalIP(t *testing.T) {
+	t.Parallel()
+
+	conns := []Connection{
+		{
+			LocalIP:    "172.25.110.116",
+			LocalPort:  59856,
+			RemoteIP:   "90.130.70.73",
+			RemotePort: 80,
+		},
+	}
+	// Snapshot tuple has different local IP (NAT/translation scenario),
+	// but same peer + ports.
+	snapshot := BandwidthSnapshot{
+		ByTuple: map[FlowTuple]TupleBandwidth{
+			{
+				SrcIP:   "10.1.2.3",
+				SrcPort: 59856,
+				DstIP:   "90.130.70.73",
+				DstPort: 80,
+			}: {
+				TxBytesDelta:     120,
+				RxBytesDelta:     4096,
+				TotalBytesDelta:  4216,
+				TxBytesPerSec:    12,
+				RxBytesPerSec:    409.6,
+				TotalBytesPerSec: 421.6,
+			},
+		},
+		Available: true,
+	}
+
+	got := EnrichConnectionsWithBandwidth(conns, snapshot)
+	if got[0].TotalBytesDelta != 4216 || got[0].RxBytesDelta != 4096 {
+		t.Fatalf("fallback enrich mismatch: %+v", got[0])
+	}
+}
