@@ -74,13 +74,11 @@ func createHelpModal() *tview.Flex {
 	//   [spacer] [spacer] [spacer]
 	//
 	inner := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(nil, 0, 1, false).      // Top spacer
-		AddItem(helpView, 20, 0, true). // Help content (fixed height)
-		AddItem(nil, 0, 1, false)       // Bottom spacer
+		AddItem(helpView, 0, 1, true)
 
 	modal := tview.NewFlex().
 		AddItem(nil, 0, 1, false).   // Left spacer
-		AddItem(inner, 40, 0, true). // Center column (fixed width)
+		AddItem(inner, 72, 0, true). // Center column (fixed width)
 		AddItem(nil, 0, 1, false)    // Right spacer
 
 	return modal
@@ -96,13 +94,11 @@ func createHistoryHelpModal() *tview.Flex {
 	helpView.SetTitleAlign(tview.AlignCenter)
 
 	inner := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(nil, 0, 1, false).
-		AddItem(helpView, 22, 0, true).
-		AddItem(nil, 0, 1, false)
+		AddItem(helpView, 0, 1, true)
 
 	modal := tview.NewFlex().
 		AddItem(nil, 0, 1, false).
-		AddItem(inner, 54, 0, true).
+		AddItem(inner, 78, 0, true).
 		AddItem(nil, 0, 1, false)
 
 	return modal
