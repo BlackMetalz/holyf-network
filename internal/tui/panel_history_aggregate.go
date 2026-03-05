@@ -9,7 +9,7 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/history"
 )
 
-const historyAggregateHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, t=jump-time, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC), x=skip-empty, L=follow[white]"
+const historyAggregateHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, t=jump-time, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC), i=explain qcols, x=skip-empty, L=follow[white]"
 
 func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, skipEmpty bool) string {
 	var sb strings.Builder
@@ -74,15 +74,16 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		portColWidth  = 6
 		procColWidth  = 14
 		connsColWidth = 7
-		queueColWidth = 10
+		queueColWidth = 8
 	)
 	sb.WriteString(fmt.Sprintf(
-		"  [dim]%-*s %*s %-*s %*s %*s %s[white]\n",
+		"  [dim]%-*s %*s %-*s %*s %*s %*s %s[white]\n",
 		peerColWidth, "PEER",
 		portColWidth, "PORT",
 		procColWidth, "PROC",
 		connsColWidth, "CONNS",
-		queueColWidth, "QUEUE",
+		queueColWidth, "SEND-Q",
+		queueColWidth, "RECV-Q",
 		"STATES",
 	))
 
@@ -100,8 +101,19 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		port := strconv.Itoa(row.LocalPort)
 		proc := truncateRight(row.ProcName, procColWidth)
 		conns := strconv.Itoa(row.ConnCount)
-		queue := formatBytes(row.TotalQueue)
+		sendQ := formatBytes(row.TxQueue)
+		recvQ := formatBytes(row.RxQueue)
 		states := truncateRight(formatStateSummary(row.States), 34)
+		sendQColor := "dim"
+		if row.TxQueue > 0 {
+			sendQColor = "yellow"
+		}
+		recvQColor := "dim"
+		if row.RxQueue > 0 {
+			recvQColor = "yellow"
+		}
+		sendQField := fmt.Sprintf("[%s]%*s[white]", sendQColor, queueColWidth, sendQ)
+		recvQField := fmt.Sprintf("[%s]%*s[white]", recvQColor, queueColWidth, recvQ)
 
 		prefix := "  "
 		if i == selectedIndex {
@@ -109,13 +121,14 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		}
 
 		sb.WriteString(fmt.Sprintf(
-			"%s[aqua]%-*s[white] %*s %-*s %*s %*s [green]%s[white]\n",
+			"%s[aqua]%-*s[white] %*s %-*s %*s %s %s [green]%s[white]\n",
 			prefix,
 			peerColWidth, peer,
 			portColWidth, port,
 			procColWidth, proc,
 			connsColWidth, conns,
-			queueColWidth, queue,
+			sendQField,
+			recvQField,
 			states,
 		))
 	}

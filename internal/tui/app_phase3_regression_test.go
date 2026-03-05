@@ -134,6 +134,7 @@ func TestStatusHotkeysForModalPages(t *testing.T) {
 		{page: "kill-peer", wantPlain: "<-/->=choose Enter=confirm Esc=cancel"},
 		{page: "blocked-peers", wantPlain: "Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"},
 		{page: "action-log", wantPlain: "Enter=close Esc=close"},
+		{page: "socket-queue-explain", wantPlain: "Enter=close Esc=close"},
 		{page: "blocked-peers-remove-result", wantPlain: "Enter=close Esc=close"},
 		{page: "block-summary", wantPlain: "Enter=close Esc=close"},
 	}
@@ -182,6 +183,20 @@ func TestSelectedPeerKillTargetGroupViewUsesSelectedPeerContext(t *testing.T) {
 	}
 	if target.LocalPort != 80 {
 		t.Fatalf("selected local port mismatch: got=%d want=%d", target.LocalPort, 80)
+	}
+}
+
+func TestHandleKeyEventIShowsSocketQueueExplain(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'i', 0))
+	if ret != nil {
+		t.Fatalf("i should be handled")
+	}
+	name, _ := a.pages.GetFrontPage()
+	if name != "socket-queue-explain" {
+		t.Fatalf("expected socket-queue-explain page, got %q", name)
 	}
 }
 

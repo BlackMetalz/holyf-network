@@ -21,10 +21,10 @@ const (
 )
 
 const (
-	defaultTalkersHintLine  = "  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC)[white]"
-	readOnlyTalkersHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC), g=group, L=follow[white]"
-	defaultGroupHintLine    = "  [dim]Use ↑/↓ select, g=connections view, /=search, f=port/clear[white]"
-	readOnlyGroupHintLine   = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, g=connections view, /=search, f=port/clear, L=follow[white]"
+	defaultTalkersHintLine  = "  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC), i=explain qcols[white]"
+	readOnlyTalkersHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC), i=explain qcols, g=group, L=follow[white]"
+	defaultGroupHintLine    = "  [dim]Use ↑/↓ select, g=connections view, /=search, f=port/clear, i=explain qcols[white]"
+	readOnlyGroupHintLine   = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, g=connections view, /=search, f=port/clear, i=explain qcols, L=follow[white]"
 )
 
 // Label returns a short display name for the status bar chip.
@@ -178,14 +178,16 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 		processColWidth  = 18
 		endpointColWidth = 24
 		stateColWidth    = 11
+		queueColWidth    = 8
 	)
 	// Header row
-	sb.WriteString(fmt.Sprintf("  [dim]%-*s %-*s %-*s %-*s %s[white]\n",
+	sb.WriteString(fmt.Sprintf("  [dim]%-*s %-*s %-*s %-*s %*s %*s[white]\n",
 		processColWidth, "PROCESS",
 		endpointColWidth, "SRC",
 		endpointColWidth, "PEER",
 		stateColWidth, "STATE",
-		"QUEUE",
+		queueColWidth, "SEND-Q",
+		queueColWidth, "RECV-Q",
 	))
 
 	// Render each connection
@@ -220,23 +222,30 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 		src := formatEndpoint(conn.LocalIP, conn.LocalPort, endpointColWidth, sensitiveIP)
 		peer := formatEndpoint(conn.RemoteIP, conn.RemotePort, endpointColWidth, sensitiveIP)
 
-		queueStr := " [dim]0B[white]"
-		if conn.Activity > 0 {
-			queueStr = fmt.Sprintf(" [yellow]%s[white]", formatBytes(conn.Activity))
+		sendQColor := "dim"
+		if conn.TxQueue > 0 {
+			sendQColor = "yellow"
 		}
+		recvQColor := "dim"
+		if conn.RxQueue > 0 {
+			recvQColor = "yellow"
+		}
+		sendQField := fmt.Sprintf("[%s]%*s[white]", sendQColor, queueColWidth, formatBytes(conn.TxQueue))
+		recvQField := fmt.Sprintf("[%s]%*s[white]", recvQColor, queueColWidth, formatBytes(conn.RxQueue))
 
 		prefix := "  "
 		if i == selectedIndex {
 			prefix = " [yellow]>[white]"
 		}
 
-		sb.WriteString(fmt.Sprintf("%s[aqua]%-*s[white] %-*s %-*s [%s]%-*s[white]%s\n",
+		sb.WriteString(fmt.Sprintf("%s[aqua]%-*s[white] %-*s %-*s [%s]%-*s[white] %s %s\n",
 			prefix,
 			processColWidth, procInfo,
 			endpointColWidth, src,
 			endpointColWidth, peer,
 			stateColor, stateColWidth, conn.State,
-			queueStr,
+			sendQField,
+			recvQField,
 		))
 	}
 
@@ -423,6 +432,8 @@ func truncateRight(s string, width int) string {
 type PeerGroup struct {
 	PeerIP     string
 	Count      int
+	TxQueue    int64
+	RxQueue    int64
 	TotalQueue int64
 	LocalPorts map[int]struct{}
 	States     map[string]int
@@ -447,6 +458,8 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 			procCount[peer] = make(map[string]int)
 		}
 		g.Count++
+		g.TxQueue += conn.TxQueue
+		g.RxQueue += conn.RxQueue
 		g.TotalQueue += conn.Activity
 		g.LocalPorts[conn.LocalPort] = struct{}{}
 		g.States[conn.State]++
@@ -530,15 +543,16 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 	const (
 		peerColWidth    = 24
 		countColWidth   = 7
-		queueColWidth   = 10
+		queueColWidth   = 8
 		processColWidth = 14
 		portsColWidth   = 16
 	)
 
-	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %-*s %-*s[white]\n",
+	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %*s %-*s %-*s[white]\n",
 		peerColWidth, "PEER",
 		countColWidth, "CONNS",
-		queueColWidth, "QUEUE",
+		queueColWidth, "SEND-Q",
+		queueColWidth, "RECV-Q",
 		processColWidth, "PROCESS",
 		portsColWidth, "PORTS",
 	))
@@ -555,13 +569,16 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 		}
 		peer = truncateRight(peer, peerColWidth)
 
-		queueText := "0B"
-		queueColor := "dim"
-		if g.TotalQueue > 0 {
-			queueText = formatBytes(g.TotalQueue)
-			queueColor = "yellow"
+		sendQColor := "dim"
+		if g.TxQueue > 0 {
+			sendQColor = "yellow"
 		}
-		queueField := fmt.Sprintf("[%s]%*s[white]", queueColor, queueColWidth, queueText)
+		recvQColor := "dim"
+		if g.RxQueue > 0 {
+			recvQColor = "yellow"
+		}
+		sendQField := fmt.Sprintf("[%s]%*s[white]", sendQColor, queueColWidth, formatBytes(g.TxQueue))
+		recvQField := fmt.Sprintf("[%s]%*s[white]", recvQColor, queueColWidth, formatBytes(g.RxQueue))
 
 		procText := "-"
 		procColor := "dim"
@@ -600,11 +617,12 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 			prefix = " [yellow]>[white]"
 		}
 
-		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %s %s %-*s\n",
+		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %s %s %s %-*s\n",
 			prefix,
 			peerColWidth, peer,
 			countColor, countColWidth, g.Count,
-			queueField,
+			sendQField,
+			recvQField,
 			procField,
 			portsColWidth, portsDisplay,
 		))

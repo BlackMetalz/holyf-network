@@ -137,6 +137,24 @@ func TestHistoryHandleKeyEventJumpTimeModal(t *testing.T) {
 	}
 }
 
+func TestHistoryHandleKeyEventIShowsSocketQueueExplain(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h.refs = []history.SnapshotRef{{CapturedAt: time.Now().UTC()}}
+	h.currentIndex = 0
+
+	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'i', 0))
+	if ret != nil {
+		t.Fatalf("i should be handled in replay mode")
+	}
+
+	name, _ := h.pages.GetFrontPage()
+	if name != "history-socket-queue-explain" {
+		t.Fatalf("expected socket queue explain modal, got front page=%q", name)
+	}
+}
+
 func TestHistoryFilterAppliesToCurrentSnapshotOnly(t *testing.T) {
 	t.Parallel()
 

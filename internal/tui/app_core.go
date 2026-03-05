@@ -356,6 +356,9 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'h':
 			a.promptActionLog()
 			return nil
+		case 'i':
+			a.promptSocketQueueExplain()
+			return nil
 		case 'Q', 'C', 'P':
 			mode, ok := directSortModeForRune(event.Rune())
 			if !ok {
@@ -556,10 +559,12 @@ func statusHotkeysForPage(page string) (styled string, plain string) {
 			"Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"
 	case "action-log":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
+	case "socket-queue-explain":
+		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "blocked-peers-remove-result", "block-summary":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim]r p f k Shift+Q/C/P g b h z ? q[white]", "r p f k Shift+Q/C/P g b h z ? q"
+		return "[dim]r p f k Shift+Q/C/P g b h i z ? q[white]", "r p f k Shift+Q/C/P g b h i z ? q"
 	}
 }
 

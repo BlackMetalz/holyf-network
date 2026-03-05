@@ -77,6 +77,9 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			h.renderPanel()
 			h.updateStatusBar()
 			return nil
+		case 'i', 'I':
+			h.promptSocketQueueExplain()
+			return nil
 		case 'x', 'X':
 			h.skipEmpty = !h.skipEmpty
 			if h.skipEmpty {
@@ -392,8 +395,10 @@ func historyStatusHotkeysForPage(page string) (styled string, plain string) {
 		return "[dim]any key[white]=close", "any key=close"
 	case "history-filter", "history-search", "history-jump-time":
 		return "[dim]Enter[white]=apply [dim]Esc[white]=cancel", "Enter=apply Esc=cancel"
+	case "history-socket-queue-explain":
+		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim][[=prev ]=next a e t f / Shift+Q/C/P s x z L ? q[white]", "[=prev ]=next a e t f / Shift+Q/C/P s x z L ? q"
+		return "[dim][[=prev ]=next a e t f / Shift+Q/C/P s i x z L ? q[white]", "[=prev ]=next a e t f / Shift+Q/C/P s i x z L ? q"
 	}
 }
 
