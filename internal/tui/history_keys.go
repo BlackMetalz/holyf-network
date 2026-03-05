@@ -398,7 +398,7 @@ func historyStatusHotkeysForPage(page string) (styled string, plain string) {
 	case "history-socket-queue-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim][[=prev ]=next a e t f / Shift+B/C/P s i x z L ? q[white]", "[=prev ]=next a e t f / Shift+B/C/P s i x z L ? q"
+		return "[dim][[=prev ]=next a e t f / Shift+B/C/P s i Shift+I x z L ? q[white]", "[=prev ]=next a e t f / Shift+B/C/P s i Shift+I x z L ? q"
 	}
 }
 

@@ -603,7 +603,7 @@ func statusHotkeysForPage(page string) (styled string, plain string) {
 	case "blocked-peers-remove-result", "block-summary":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim]r p f k Shift+B/C/P g b h i I z ? q[white]", "r p f k Shift+B/C/P g b h i I z ? q"
+		return "[dim]r p f k Shift+B/C/P g b h i Shift+I z ? q[white]", "r p f k Shift+B/C/P g b h i Shift+I z ? q"
 	}
 }
 
