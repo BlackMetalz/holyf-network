@@ -61,6 +61,7 @@ sudo holyf-network -r 5
 # Shift+C: sort by Conns (press again toggles DESC/ASC)
 # Shift+P: sort by Port (press again toggles DESC/ASC)
 # i: explain Send-Q / Recv-Q / TX/s / RX/s
+# Shift+I: explain Interface Stats (RX/TX, Packets, Errors, Drops)
 # g: toggle group-by-peer view
 # /: search Top Connections by text (contains match)
 # f: port filter (press f again to clear all filters)
@@ -127,6 +128,7 @@ Replay hotkeys:
 - `/`: grep-like contains filter for current snapshot
 - `Shift+B/C/P`: sort mode (press same key to toggle DESC/ASC)
 - `i`: explain Send-Q / Recv-Q / TX/s / RX/s
+- `Shift+I`: alias of `i` (explain queue/bandwidth columns)
 - `s`: mask IP display
 - `x`: toggle skip-empty snapshot navigation
 - `?`: help

@@ -27,10 +27,102 @@ flowchart TD
 4. Collect interface stats and rates.
 5. Collect top talkers (`/proc/net/tcp*`, PID mapping from `/proc/<pid>/fd`).
 6. Collect conntrack TCP flow byte counters and compute interval deltas.
-7. Enrich top talkers with throughput metrics (`TX/s`, `RX/s`) and internal total-delta fields for ranking.
-8. Render panels and status bar.
+7. Fallback collect socket counters from `ss` and overlay missing bandwidth.
+8. Enrich top talkers with throughput metrics (`TX/s`, `RX/s`) and internal total-delta fields for ranking/sort.
+9. Render panels and status bar.
 
 Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).
+
+### 2.1) Metric sources, formulas, and equivalent shell commands
+
+All per-second metrics in app use the same pattern:
+
+`rate = (current_counter - previous_counter) / elapsed_seconds`
+
+If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows baseline/first-reading semantics.
+
+1. Conntrack usage + churn (`internal/collector/conntrack.go`)
+   - Source:
+     - `/proc/sys/net/netfilter/nf_conntrack_count`
+     - `/proc/sys/net/netfilter/nf_conntrack_max`
+     - `conntrack -S` (fields `insert`, `drop`)
+   - Formulas:
+     - `usage_percent = current / max * 100`
+     - `inserts_per_sec = (curr_insert - prev_insert) / elapsed`
+     - `drops_per_sec = (curr_drop - prev_drop) / elapsed`
+   - Commands:
+     - `cat /proc/sys/net/netfilter/nf_conntrack_count`
+     - `cat /proc/sys/net/netfilter/nf_conntrack_max`
+     - `conntrack -S`
+
+2. TCP retransmission (`internal/collector/tcp_retransmits.go`)
+   - Source: `/proc/net/snmp` (`Tcp:` row, fields `OutSegs`, `RetransSegs`)
+   - Formulas:
+     - `retrans_per_sec = (curr_retrans - prev_retrans) / elapsed`
+     - `out_segs_per_sec = (curr_out - prev_out) / elapsed`
+     - `retrans_percent = delta_retrans / delta_out * 100` (only when `delta_out > 0`)
+   - Health gate (LOW SAMPLE in UI):
+     - evaluate retrans health only when:
+       - `ESTABLISHED >= retrans_sample.min_established`
+       - `OutSegsPerSec >= retrans_sample.min_out_segs_per_sec`
+   - Commands:
+     - `awk '/^Tcp:/{if(!h){h=$0;next} v=$0; print h; print v; exit}' /proc/net/snmp`
+
+3. Connection states (`internal/collector/connections.go`)
+   - Source:
+     - `/proc/net/tcp`
+     - `/proc/net/tcp6`
+   - Logic:
+     - count `st` (hex state) across both files using fixed map (`01=ESTABLISHED`, `06=TIME_WAIT`, `0A=LISTEN`, ...)
+   - Commands:
+     - raw hex states: `cat /proc/net/tcp /proc/net/tcp6 | awk 'NR>1{print $4}' | sort | uniq -c`
+     - readable cross-check: `ss -tanH | awk '{print $1}' | sort | uniq -c | sort -nr`
+
+4. Interface throughput/packets (`internal/collector/interface_stats.go`)
+   - Source: `/sys/class/net/<iface>/statistics/*`
+     - `rx_bytes`, `tx_bytes`, `rx_packets`, `tx_packets`, `rx_errors`, `tx_errors`, `rx_dropped`, `tx_dropped`
+   - Formulas:
+     - `rx_bytes_per_sec = delta(rx_bytes) / elapsed`
+     - `tx_bytes_per_sec = delta(tx_bytes) / elapsed`
+     - `rx_pkts_per_sec = delta(rx_packets) / elapsed`
+     - `tx_pkts_per_sec = delta(tx_packets) / elapsed`
+     - errors/drops shown as cumulative counters (not per-sec)
+   - Commands:
+     - `cat /sys/class/net/<iface>/statistics/rx_bytes`
+     - `cat /sys/class/net/<iface>/statistics/tx_bytes`
+     - `ip -s link show dev <iface>`
+
+5. Top Connections queue columns (`internal/collector/top_connections.go`)
+   - Source:
+     - `/proc/net/tcp`, `/proc/net/tcp6` field `tx_queue:rx_queue`
+   - Formulas:
+     - `Send-Q = tx_queue`
+     - `Recv-Q = rx_queue`
+     - internal activity score `Activity = tx_queue + rx_queue`
+   - Extra enrichment:
+     - PID/Proc mapping via `/proc/<pid>/fd/* -> socket:[inode]` and `/proc/<pid>/comm`
+   - Commands:
+     - `ss -tnap` (human-readable queue + process cross-check)
+
+6. Per-connection bandwidth (`internal/collector/conntrack_flows.go`, `bandwidth_tracker.go`, `socket_counters.go`, `socket_bandwidth_tracker.go`)
+   - Primary source:
+     - `conntrack -L -p tcp -o extended -n`
+     - parse both directional `bytes=` counters per flow (orig/reply)
+   - Primary formulas:
+     - `tx_delta = clamp(curr_orig_bytes - prev_orig_bytes)`
+     - `rx_delta = clamp(curr_reply_bytes - prev_reply_bytes)`
+     - `tx_per_sec = tx_delta / elapsed`
+     - `rx_per_sec = rx_delta / elapsed`
+     - `clamp(x) = max(x, 0)` (handles counter reset/wrap)
+   - Behavior:
+     - first sample is baseline (no rates)
+     - first-seen flow after baseline counts current bytes as delta (to capture short-lived flows)
+   - Fallback source (only overlay rows still 0):
+     - `ss -tinHn` metrics `bytes_acked` / `bytes_received`
+   - Commands:
+     - `conntrack -L -p tcp -o extended -n`
+     - `cat /proc/sys/net/netfilter/nf_conntrack_acct` (should be `1` for byte accounting)
+     - `ss -tinHn`
 
 ## 3) Daemon Snapshot Pipeline
 
@@ -42,7 +134,16 @@ Package: `internal/history` + `cmd/daemon.go`
    - call `collector.CollectTopTalkers(0)` to sample current connections
    - call `collector.CollectConntrackFlowsTCP()` and compute byte deltas from previous sample
    - enrich connections with bandwidth fields
-   - aggregate by `peer_ip + local_port + proc_name`
+   - aggregate by `peer_ip + local_port + proc_name` with sums:
+     - `conn_count = count(rows)`
+     - `tx_queue = sum(TxQueue)`, `rx_queue = sum(RxQueue)`, `total_queue = sum(Activity)`
+     - `tx_bytes_delta = sum(TxBytesDelta)`, `rx_bytes_delta = sum(RxBytesDelta)`, `total_bytes_delta = sum(TotalBytesDelta)`
+     - `tx_bytes_per_sec = sum(TxBytesPerSec)`, `rx_bytes_per_sec = sum(RxBytesPerSec)`
+   - sort + cap (`--top-limit`) by:
+     - `total_bytes_delta DESC`
+     - `conn_count DESC`
+     - `total_queue DESC`
+     - then deterministic tie-break: `peer_ip`, `local_port`, `proc_name`
    - write one aggregate `SnapshotRecord` as NDJSON line
 4. Segment file naming by server local day: `connections-YYYYMMDD.jsonl`.
 5. Retention:
