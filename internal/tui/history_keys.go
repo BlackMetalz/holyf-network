@@ -315,8 +315,9 @@ func (h *HistoryApp) promptJumpToTime() {
 				}
 				h.followLatest = false
 				h.loadSnapshotAt(index)
-				actual := h.refs[index].CapturedAt.Local().Format("2006-01-02 15:04:05")
-				h.setStatusNote(fmt.Sprintf("Jumped to %s (snapshot %d/%d)", actual, index+1, len(h.refs)), 6*time.Second)
+				summary := h.buildJumpSummary(target, index)
+				h.setSnapshotMessage(summary)
+				h.setStatusNote(summary, 10*time.Second)
 			}
 			h.renderPanel()
 		}

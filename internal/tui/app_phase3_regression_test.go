@@ -2,7 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/gdamore/tcell/v2"
@@ -145,6 +147,20 @@ func TestStatusHotkeysForModalPages(t *testing.T) {
 				t.Fatalf("plain hotkeys mismatch for page=%q: got=%q want=%q", tc.page, plain, tc.wantPlain)
 			}
 		})
+	}
+}
+
+func TestLiveStatusBarKeepsLastMessageAfterTTL(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.setStatusNote("live test message", 100*time.Millisecond)
+	time.Sleep(150 * time.Millisecond)
+	a.updateStatusBar()
+
+	text := a.statusBar.GetText(true)
+	if !strings.Contains(text, "Last:live test message") {
+		t.Fatalf("status bar should keep last message after ttl, got=%q", text)
 	}
 }
 

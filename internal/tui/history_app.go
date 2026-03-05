@@ -49,6 +49,8 @@ type HistoryApp struct {
 
 	statusNote      string
 	statusNoteUntil time.Time
+	lastStatusNote  string
+	snapshotMessage string
 
 	stopChan chan struct{}
 }
@@ -341,6 +343,9 @@ func (h *HistoryApp) renderPanel() {
 		len(rec.Groups),
 		h.replayScopeLabel(),
 	)
+	if strings.TrimSpace(h.snapshotMessage) != "" {
+		header += fmt.Sprintf("  [yellow]%s[white]\n", shortStatus(h.snapshotMessage, 160))
+	}
 
 	if len(rec.Groups) == 0 {
 		start, end, count, approx := h.idleStreak()
@@ -416,6 +421,8 @@ func (h *HistoryApp) updateStatusBar() {
 	}
 	if time.Now().Before(h.statusNoteUntil) && h.statusNote != "" {
 		stateText += fmt.Sprintf(" [yellow]%s[white] |", h.statusNote)
+	} else if strings.TrimSpace(h.lastStatusNote) != "" {
+		stateText += fmt.Sprintf(" [dim]Last:%s[white] |", shortStatus(h.lastStatusNote, 72))
 	}
 
 	leftStyled := fmt.Sprintf(
@@ -465,8 +472,42 @@ func (h *HistoryApp) frontPageName() string {
 
 func (h *HistoryApp) setStatusNote(note string, ttl time.Duration) {
 	h.statusNote = strings.TrimSpace(note)
+	if h.statusNote != "" {
+		h.lastStatusNote = h.statusNote
+	}
 	h.statusNoteUntil = time.Now().Add(ttl)
 	h.updateStatusBar()
+}
+
+func (h *HistoryApp) setSnapshotMessage(msg string) {
+	h.snapshotMessage = strings.TrimSpace(msg)
+}
+
+func (h *HistoryApp) hasSnapshotsOnLocalDate(target time.Time) bool {
+	y, m, d := target.Local().Date()
+	for _, ref := range h.refs {
+		ry, rm, rd := ref.CapturedAt.Local().Date()
+		if y == ry && m == rm && d == rd {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *HistoryApp) buildJumpSummary(requested time.Time, index int) string {
+	if index < 0 || index >= len(h.refs) {
+		return ""
+	}
+	actual := h.refs[index].CapturedAt.Local().Format("2006-01-02 15:04:05")
+	base := fmt.Sprintf("Jumped to %s (snapshot %d/%d).", actual, index+1, len(h.refs))
+	if h.hasSnapshotsOnLocalDate(requested) {
+		return base
+	}
+	return fmt.Sprintf(
+		"No snapshots for %s; %s",
+		requested.Local().Format("2006-01-02"),
+		base,
+	)
 }
 
 func (h *HistoryApp) adjustStartIndexForSkipEmpty(target int) int {

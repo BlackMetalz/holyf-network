@@ -56,6 +56,7 @@ type App struct {
 	// Short-lived status note shown in status bar.
 	statusNote      string
 	statusNoteUntil time.Time
+	lastStatusNote  string
 
 	// Recent action history (for modal "h").
 	actionLogMu sync.Mutex
@@ -489,6 +490,8 @@ func (a *App) updateStatusBar() {
 	}
 	if time.Now().Before(a.statusNoteUntil) && a.statusNote != "" {
 		stateText += fmt.Sprintf(" [yellow]%s[white] |", a.statusNote)
+	} else if strings.TrimSpace(a.lastStatusNote) != "" {
+		stateText += fmt.Sprintf(" [dim]Last:%s[white] |", shortStatus(a.lastStatusNote, 72))
 	}
 
 	page := a.frontPageName()
@@ -574,6 +577,9 @@ func stripStatusColors(s string) string {
 
 func (a *App) setStatusNote(note string, ttl time.Duration) {
 	a.statusNote = strings.TrimSpace(note)
+	if a.statusNote != "" {
+		a.lastStatusNote = a.statusNote
+	}
 	a.statusNoteUntil = time.Now().Add(ttl)
 	a.updateStatusBar()
 }

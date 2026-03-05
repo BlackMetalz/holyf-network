@@ -224,6 +224,39 @@ func TestHistoryToggleSkipEmptyWithX(t *testing.T) {
 	}
 }
 
+func TestHistoryBuildJumpSummaryMentionsMissingDate(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.Local)
+	h.refs = []history.SnapshotRef{
+		{CapturedAt: base},
+		{CapturedAt: base.Add(10 * time.Minute)},
+	}
+
+	msg := h.buildJumpSummary(time.Date(2026, 3, 1, 20, 0, 0, 0, time.Local), 0)
+	if !strings.Contains(msg, "No snapshots for 2026-03-01") {
+		t.Fatalf("jump summary should mention missing date, got=%q", msg)
+	}
+	if !strings.Contains(msg, "Jumped to") {
+		t.Fatalf("jump summary should include jump target, got=%q", msg)
+	}
+}
+
+func TestHistoryStatusBarKeepsLastMessageAfterTTL(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h.statusBar = tview.NewTextView().SetDynamicColors(true)
+	h.setStatusNote("test message", 100*time.Millisecond)
+	time.Sleep(150 * time.Millisecond)
+	h.updateStatusBar()
+	text := h.statusBar.GetText(true)
+	if !strings.Contains(text, "Last:test message") {
+		t.Fatalf("status bar should keep last message after ttl, got=%q", text)
+	}
+}
+
 func TestHistoryAggregateSortModes(t *testing.T) {
 	t.Parallel()
 
