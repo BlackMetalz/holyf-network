@@ -77,6 +77,17 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			h.renderPanel()
 			h.updateStatusBar()
 			return nil
+		case 'x', 'X':
+			h.skipEmpty = !h.skipEmpty
+			if h.skipEmpty {
+				h.setStatusNote("Skip-empty enabled", 4*time.Second)
+				h.currentIndex = h.adjustGenericIndexForSkipEmpty(h.currentIndex)
+			} else {
+				h.setStatusNote("Skip-empty disabled", 4*time.Second)
+			}
+			h.renderPanel()
+			h.updateStatusBar()
+			return nil
 		case 'L':
 			h.followLatest = !h.followLatest
 			if h.followLatest {
@@ -106,7 +117,21 @@ func (h *HistoryApp) navigatePrev() {
 		return
 	}
 	h.followLatest = false
-	h.loadSnapshotAt(h.currentIndex - 1)
+	target := h.currentIndex - 1
+	if h.skipEmpty {
+		if idx, skipped, ok := h.findPrevNonEmptyIndex(target); ok {
+			target = idx
+			if skipped > 0 {
+				h.setStatusNote(fmt.Sprintf("Skipped %d empty snapshots", skipped), 4*time.Second)
+			}
+		} else {
+			h.setStatusNote("No previous active snapshot", 4*time.Second)
+			h.renderPanel()
+			h.updateStatusBar()
+			return
+		}
+	}
+	h.loadSnapshotAt(target)
 	h.renderPanel()
 	h.updateStatusBar()
 }
@@ -116,7 +141,21 @@ func (h *HistoryApp) navigateNext() {
 		return
 	}
 	h.followLatest = false
-	h.loadSnapshotAt(h.currentIndex + 1)
+	target := h.currentIndex + 1
+	if h.skipEmpty {
+		if idx, skipped, ok := h.findNextNonEmptyIndex(target); ok {
+			target = idx
+			if skipped > 0 {
+				h.setStatusNote(fmt.Sprintf("Skipped %d empty snapshots", skipped), 4*time.Second)
+			}
+		} else {
+			h.setStatusNote("No next active snapshot", 4*time.Second)
+			h.renderPanel()
+			h.updateStatusBar()
+			return
+		}
+	}
+	h.loadSnapshotAt(target)
 	h.renderPanel()
 	h.updateStatusBar()
 }
@@ -126,7 +165,16 @@ func (h *HistoryApp) navigateOldest() {
 		return
 	}
 	h.followLatest = false
-	h.loadSnapshotAt(0)
+	target := 0
+	if h.skipEmpty {
+		if idx, skipped, ok := h.findNextNonEmptyIndex(target); ok {
+			target = idx
+			if skipped > 0 {
+				h.setStatusNote(fmt.Sprintf("Oldest is empty, jumped forward %d snapshots", skipped), 4*time.Second)
+			}
+		}
+	}
+	h.loadSnapshotAt(target)
 	h.renderPanel()
 	h.updateStatusBar()
 }
@@ -135,7 +183,16 @@ func (h *HistoryApp) navigateLatest() {
 	if len(h.refs) == 0 {
 		return
 	}
-	h.loadSnapshotAt(len(h.refs) - 1)
+	target := len(h.refs) - 1
+	if h.skipEmpty {
+		if idx, skipped, ok := h.findPrevNonEmptyIndex(target); ok {
+			target = idx
+			if skipped > 0 {
+				h.setStatusNote(fmt.Sprintf("Latest is empty, jumped back %d snapshots", skipped), 4*time.Second)
+			}
+		}
+	}
+	h.loadSnapshotAt(target)
 	h.renderPanel()
 	h.updateStatusBar()
 }
@@ -251,6 +308,11 @@ func (h *HistoryApp) promptJumpToTime() {
 
 			index := h.closestSnapshotIndex(target)
 			if index >= 0 {
+				if h.skipEmpty {
+					if idx, ok := h.findNearestNonEmptyIndex(index); ok {
+						index = idx
+					}
+				}
 				h.followLatest = false
 				h.loadSnapshotAt(index)
 				actual := h.refs[index].CapturedAt.Local().Format("2006-01-02 15:04:05")
@@ -330,7 +392,7 @@ func historyStatusHotkeysForPage(page string) (styled string, plain string) {
 	case "history-filter", "history-search", "history-jump-time":
 		return "[dim]Enter[white]=apply [dim]Esc[white]=cancel", "Enter=apply Esc=cancel"
 	default:
-		return "[dim][[=prev ]=next a e t f / Shift+Q/C/P s z L ? q[white]", "[=prev ]=next a e t f / Shift+Q/C/P s z L ? q"
+		return "[dim][[=prev ]=next a e t f / Shift+Q/C/P s x z L ? q[white]", "[=prev ]=next a e t f / Shift+Q/C/P s x z L ? q"
 	}
 }
 

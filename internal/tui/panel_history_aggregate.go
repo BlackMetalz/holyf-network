@@ -9,9 +9,9 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/history"
 )
 
-const historyAggregateHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, t=jump-time, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC), L=follow[white]"
+const historyAggregateHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, t=jump-time, /=search, f=port/clear, Shift+Q/C/P sort (toggle DESC/ASC), x=skip-empty, L=follow[white]"
 
-func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool) string {
+func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, skipEmpty bool) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -26,13 +26,18 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 	if strings.TrimSpace(textFilter) != "" {
 		searchChip = truncateRight(strings.TrimSpace(textFilter), 20)
 	}
+	skipChip := "OFF"
+	if skipEmpty {
+		skipChip = "ON"
+	}
 
 	sb.WriteString(fmt.Sprintf(
-		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white] | [aqua]View=AGG[white]\n",
+		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white] | [yellow]SkipEmpty=%s[white] | [aqua]View=AGG[white]\n",
 		portChip,
 		maskChip,
 		searchChip,
 		sortLabelWithDirection(sortMode, sortDesc),
+		skipChip,
 	))
 	sb.WriteString(historyAggregateHintLine)
 	sb.WriteString("\n\n")

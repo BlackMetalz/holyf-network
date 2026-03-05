@@ -43,6 +43,7 @@ type HistoryApp struct {
 	textFilter    string
 	sortMode      SortMode
 	sortDesc      bool
+	skipEmpty     bool
 	selectedIndex int
 	followLatest  bool
 
@@ -71,6 +72,7 @@ func NewHistoryApp(dataDir, startAt, segmentFile string, sensitiveIP bool, appVe
 		appVersion:   version,
 		sortMode:     SortByQueue,
 		sortDesc:     true,
+		skipEmpty:    true,
 		currentIndex: -1,
 		stopChan:     make(chan struct{}),
 	}
@@ -163,8 +165,9 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 	target := h.currentIndex
 	if selectStart {
 		target = h.startIndex()
+		target = h.adjustStartIndexForSkipEmpty(target)
 	} else if h.followLatest {
-		target = len(h.refs) - 1
+		target = h.adjustLatestIndexForSkipEmpty(len(h.refs) - 1)
 	} else if prevFile != "" {
 		idx := -1
 		for i, ref := range h.refs {
@@ -181,6 +184,7 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 	if target < 0 || target >= len(h.refs) {
 		target = len(h.refs) - 1
 	}
+	target = h.adjustGenericIndexForSkipEmpty(target)
 
 	h.loadSnapshotAt(target)
 }
@@ -338,6 +342,29 @@ func (h *HistoryApp) renderPanel() {
 		h.replayScopeLabel(),
 	)
 
+	if len(rec.Groups) == 0 {
+		start, end, count, approx := h.idleStreak()
+		idleLine := fmt.Sprintf("  [dim]Idle streak: %d snapshots[white]", count)
+		if approx > 0 {
+			idleLine = fmt.Sprintf("  [dim]Idle streak: %d snapshots (~%s)[white]", count, formatApproxDuration(approx))
+		}
+		rangeLine := ""
+		if count > 0 && start >= 0 && end >= 0 && start < len(h.refs) && end < len(h.refs) {
+			rangeLine = fmt.Sprintf(
+				"\n  [dim]Range: %s -> %s[white]",
+				h.refs[start].CapturedAt.Local().Format("15:04:05"),
+				h.refs[end].CapturedAt.Local().Format("15:04:05"),
+			)
+		}
+		emptyBody := fmt.Sprintf(
+			"  [yellow]No active connections at this snapshot[white]\n\n%s%s\n\n  [dim]Use left/right bracket to move active snapshots | x=toggle skip-empty[white]",
+			idleLine,
+			rangeLine,
+		)
+		h.panel.SetText(header + "\n" + emptyBody)
+		return
+	}
+
 	body := renderHistoryAggregatePanel(
 		rec.Groups,
 		h.portFilter,
@@ -347,6 +374,7 @@ func (h *HistoryApp) renderPanel() {
 		h.selectedIndex,
 		h.sortMode,
 		h.sortDesc,
+		h.skipEmpty,
 	)
 
 	h.panel.SetText(header + "\n" + body)
@@ -382,6 +410,9 @@ func (h *HistoryApp) updateStatusBar() {
 	stateText := ""
 	if h.sensitiveIP {
 		stateText += " [yellow]IP MASK[white] |"
+	}
+	if h.skipEmpty {
+		stateText += " [aqua]SKIP-EMPTY[white] |"
 	}
 	if time.Now().Before(h.statusNoteUntil) && h.statusNote != "" {
 		stateText += fmt.Sprintf(" [yellow]%s[white] |", h.statusNote)
@@ -436,4 +467,179 @@ func (h *HistoryApp) setStatusNote(note string, ttl time.Duration) {
 	h.statusNote = strings.TrimSpace(note)
 	h.statusNoteUntil = time.Now().Add(ttl)
 	h.updateStatusBar()
+}
+
+func (h *HistoryApp) adjustStartIndexForSkipEmpty(target int) int {
+	if !h.skipEmpty || len(h.refs) == 0 {
+		return target
+	}
+	if target < 0 || target >= len(h.refs) {
+		return target
+	}
+	if h.refs[target].ConnCount > 0 {
+		return target
+	}
+
+	if h.startAt == HistoryStartOldest {
+		if idx, skipped, ok := h.findNextNonEmptyIndex(target); ok {
+			if skipped > 0 {
+				h.setStatusNote(fmt.Sprintf("Oldest is empty, jumped forward %d snapshots", skipped), 5*time.Second)
+			}
+			return idx
+		}
+		return target
+	}
+
+	if idx, skipped, ok := h.findPrevNonEmptyIndex(target); ok {
+		if skipped > 0 {
+			h.setStatusNote(fmt.Sprintf("Latest is empty, jumped back %d snapshots", skipped), 5*time.Second)
+		}
+		return idx
+	}
+	return target
+}
+
+func (h *HistoryApp) adjustLatestIndexForSkipEmpty(target int) int {
+	if !h.skipEmpty || len(h.refs) == 0 {
+		return target
+	}
+	if target < 0 || target >= len(h.refs) {
+		return target
+	}
+	if h.refs[target].ConnCount > 0 {
+		return target
+	}
+	if idx, _, ok := h.findPrevNonEmptyIndex(target); ok {
+		return idx
+	}
+	return target
+}
+
+func (h *HistoryApp) adjustGenericIndexForSkipEmpty(target int) int {
+	if !h.skipEmpty || len(h.refs) == 0 {
+		return target
+	}
+	if target < 0 || target >= len(h.refs) {
+		return target
+	}
+	if h.refs[target].ConnCount > 0 {
+		return target
+	}
+	if idx, ok := h.findNearestNonEmptyIndex(target); ok {
+		return idx
+	}
+	return target
+}
+
+func (h *HistoryApp) findPrevNonEmptyIndex(from int) (int, int, bool) {
+	if len(h.refs) == 0 {
+		return -1, 0, false
+	}
+	if from >= len(h.refs) {
+		from = len(h.refs) - 1
+	}
+	skipped := 0
+	for i := from; i >= 0; i-- {
+		if h.refs[i].ConnCount > 0 {
+			return i, skipped, true
+		}
+		skipped++
+	}
+	return -1, skipped, false
+}
+
+func (h *HistoryApp) findNextNonEmptyIndex(from int) (int, int, bool) {
+	if len(h.refs) == 0 {
+		return -1, 0, false
+	}
+	if from < 0 {
+		from = 0
+	}
+	skipped := 0
+	for i := from; i < len(h.refs); i++ {
+		if h.refs[i].ConnCount > 0 {
+			return i, skipped, true
+		}
+		skipped++
+	}
+	return -1, skipped, false
+}
+
+func (h *HistoryApp) findNearestNonEmptyIndex(target int) (int, bool) {
+	if len(h.refs) == 0 {
+		return -1, false
+	}
+	if target < 0 || target >= len(h.refs) {
+		return -1, false
+	}
+	if h.refs[target].ConnCount > 0 {
+		return target, true
+	}
+
+	left, right := target-1, target+1
+	for left >= 0 || right < len(h.refs) {
+		if left >= 0 && h.refs[left].ConnCount > 0 {
+			return left, true
+		}
+		if right < len(h.refs) && h.refs[right].ConnCount > 0 {
+			return right, true
+		}
+		left--
+		right++
+	}
+	return -1, false
+}
+
+func (h *HistoryApp) idleStreak() (start, end, count int, approx time.Duration) {
+	if len(h.refs) == 0 || h.currentIndex < 0 || h.currentIndex >= len(h.refs) {
+		return -1, -1, 0, 0
+	}
+	if h.refs[h.currentIndex].ConnCount > 0 {
+		return h.currentIndex, h.currentIndex, 0, 0
+	}
+
+	start, end = h.currentIndex, h.currentIndex
+	for start > 0 && h.refs[start-1].ConnCount == 0 {
+		start--
+	}
+	for end+1 < len(h.refs) && h.refs[end+1].ConnCount == 0 {
+		end++
+	}
+
+	count = end - start + 1
+	if count <= 1 {
+		prevGap := time.Duration(0)
+		nextGap := time.Duration(0)
+		if h.currentIndex > 0 {
+			prevGap = h.refs[h.currentIndex].CapturedAt.Sub(h.refs[h.currentIndex-1].CapturedAt)
+		}
+		if h.currentIndex+1 < len(h.refs) {
+			nextGap = h.refs[h.currentIndex+1].CapturedAt.Sub(h.refs[h.currentIndex].CapturedAt)
+		}
+		if prevGap > 0 && (nextGap <= 0 || prevGap <= nextGap) {
+			approx = prevGap
+		} else if nextGap > 0 {
+			approx = nextGap
+		}
+		return start, end, count, approx
+	}
+
+	approx = h.refs[end].CapturedAt.Sub(h.refs[start].CapturedAt)
+	if approx < 0 {
+		approx = 0
+	}
+	return start, end, count, approx
+}
+
+func formatApproxDuration(d time.Duration) string {
+	if d <= 0 {
+		return "0s"
+	}
+	if d >= time.Hour {
+		return d.Round(time.Minute).String()
+	}
+	if d >= time.Minute {
+		return d.Round(time.Second).String()
+	}
+	return d.Round(100 * time.Millisecond).String()
 }

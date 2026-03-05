@@ -125,6 +125,7 @@ Replay hotkeys:
 - `/`: grep-like contains filter for current snapshot
 - `Shift+Q/C/P`: sort mode (press same key to toggle DESC/ASC)
 - `s`: mask IP display
+- `x`: toggle skip-empty snapshot navigation
 - `?`: help
 - `q`: quit
 

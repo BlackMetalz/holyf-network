@@ -67,6 +67,28 @@ func TestHistoryHandleKeyEventBracketNavigation(t *testing.T) {
 	}
 }
 
+func TestHistoryStartAtLatestSkipsTrailingEmptySnapshots(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
+	if err != nil {
+		t.Fatalf("new snapshot writer: %v", err)
+	}
+	defer writer.Close()
+
+	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
+	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), nil) // empty latest
+
+	h := newHistoryTestApp(dir, HistoryStartLatest)
+	h.reloadIndex(true)
+
+	if h.currentIndex != 0 {
+		t.Fatalf("expected replay start to jump to latest non-empty index=0, got=%d", h.currentIndex)
+	}
+}
+
 func TestHistoryHandleKeyEventReadOnlyActions(t *testing.T) {
 	t.Parallel()
 
@@ -140,6 +162,65 @@ func TestHistoryFilterAppliesToCurrentSnapshotOnly(t *testing.T) {
 	h.navigatePrev()
 	if got := len(h.visibleRows()); got != 1 {
 		t.Fatalf("previous snapshot should match filter once, got=%d", got)
+	}
+}
+
+func TestHistoryNavigationSkipsEmptyByDefault(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
+	if err != nil {
+		t.Fatalf("new snapshot writer: %v", err)
+	}
+	defer writer.Close()
+
+	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
+	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), nil)
+	appendSnapshotFixture(t, writer, base.Add(2*time.Minute), nil)
+	appendSnapshotFixture(t, writer, base.Add(3*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+
+	h := newHistoryTestApp(dir, HistoryStartOldest)
+	h.reloadIndex(true)
+	if h.currentIndex != 0 {
+		t.Fatalf("expected start at oldest non-empty index=0, got=%d", h.currentIndex)
+	}
+
+	h.navigateNext()
+	if h.currentIndex != 3 {
+		t.Fatalf("expected next to skip empties and jump to index=3, got=%d", h.currentIndex)
+	}
+
+	h.navigatePrev()
+	if h.currentIndex != 0 {
+		t.Fatalf("expected prev to skip empties and jump back to index=0, got=%d", h.currentIndex)
+	}
+}
+
+func TestHistoryToggleSkipEmptyWithX(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h.refs = []history.SnapshotRef{{ConnCount: 1}}
+	h.currentIndex = 0
+	h.currentRecord = history.SnapshotRecord{Groups: []history.SnapshotGroup{{PeerIP: "198.51.100.10"}}}
+	h.skipEmpty = true
+
+	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'x', 0))
+	if ret != nil {
+		t.Fatalf("x should be handled in replay mode")
+	}
+	if h.skipEmpty {
+		t.Fatalf("expected skip-empty to be disabled after x")
+	}
+
+	ret = h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'x', 0))
+	if ret != nil {
+		t.Fatalf("x should be handled in replay mode")
+	}
+	if !h.skipEmpty {
+		t.Fatalf("expected skip-empty to be enabled after second x")
 	}
 }
 

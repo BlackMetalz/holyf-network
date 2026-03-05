@@ -43,6 +43,7 @@ const historyHelpText = `[yellow]Replay Shortcuts[white]
 [yellow]Shift+C[white]     Sort by Conns (press again: DESC/ASC)
 [yellow]Shift+P[white]     Sort by Port (press again: DESC/ASC)
 [yellow]s[white]           Toggle sensitive IP mask
+[yellow]x[white]           Toggle skip-empty snapshots
 [yellow]?[white]           Toggle this help
 [yellow]q[white]           Quit
 
