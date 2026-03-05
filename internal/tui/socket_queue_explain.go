@@ -12,7 +12,6 @@ func buildSocketQueueExplainText(aggregate bool) string {
 		"  [yellow]Send-Q[white]: bytes queued in kernel send buffer (waiting to be sent/acked).",
 		"  [yellow]Recv-Q[white]: bytes received by kernel but not yet read by application.",
 		"  [yellow]TX/s, RX/s[white]: throughput rate from conntrack byte delta over sample interval.",
-		"  [yellow]TOTALΔ[white]: total bytes (TX+RX) observed in the current sample interval.",
 		"",
 		"  These are [yellow]backlog snapshot[white] values at one moment in time.",
 		"  They are [yellow]NOT[white] throughput counters (not B/s, not total bytes sent/recv).",

@@ -82,7 +82,7 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		bwColWidth    = 9
 	)
 	sb.WriteString(fmt.Sprintf(
-		"  [dim]%-*s %*s %-*s %*s %*s %*s %*s %*s %*s %s[white]\n",
+		"  [dim]%-*s %*s %-*s %*s %*s %*s %*s %*s %s[white]\n",
 		peerColWidth, "PEER",
 		portColWidth, "PORT",
 		procColWidth, "PROC",
@@ -91,7 +91,6 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		queueColWidth, "RECV-Q",
 		bwColWidth, "TX/s",
 		bwColWidth, "RX/s",
-		bwColWidth, "TOTALΔ",
 		"STATES",
 	))
 
@@ -113,7 +112,6 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		recvQ := formatBytes(row.RxQueue)
 		txRate := formatBytesRateCompact(row.TxBytesPerSec)
 		rxRate := formatBytesRateCompact(row.RxBytesPerSec)
-		totalDelta := formatBytes(row.TotalBytesDelta)
 		states := truncateRight(formatStateSummary(row.States), 34)
 		sendQColor := "dim"
 		if row.TxQueue > 0 {
@@ -127,7 +125,6 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		recvQField := fmt.Sprintf("[%s]%*s[white]", recvQColor, queueColWidth, recvQ)
 		txRateField := fmt.Sprintf("[%s]%*s[white]", bandwidthColor(row.TxBytesPerSec, thresholds.BandwidthPerSec), bwColWidth, txRate)
 		rxRateField := fmt.Sprintf("[%s]%*s[white]", bandwidthColor(row.RxBytesPerSec, thresholds.BandwidthPerSec), bwColWidth, rxRate)
-		totalDeltaField := fmt.Sprintf("[%s]%*s[white]", bandwidthColor(float64(row.TotalBytesDelta), thresholds.BandwidthPerSnapshot), bwColWidth, totalDelta)
 
 		prefix := "  "
 		if i == selectedIndex {
@@ -135,7 +132,7 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		}
 
 		sb.WriteString(fmt.Sprintf(
-			"%s[aqua]%-*s[white] %*s %-*s %*s %s %s %s %s %s [green]%s[white]\n",
+			"%s[aqua]%-*s[white] %*s %-*s %*s %s %s %s %s [green]%s[white]\n",
 			prefix,
 			peerColWidth, peer,
 			portColWidth, port,
@@ -145,7 +142,6 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 			recvQField,
 			txRateField,
 			rxRateField,
-			totalDeltaField,
 			states,
 		))
 	}

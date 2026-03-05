@@ -197,7 +197,7 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 		bwColWidth       = 9
 	)
 	// Header row
-	sb.WriteString(fmt.Sprintf("  [dim]%-*s %-*s %-*s %-*s %*s %*s %*s %*s %*s[white]\n",
+	sb.WriteString(fmt.Sprintf("  [dim]%-*s %-*s %-*s %-*s %*s %*s %*s %*s[white]\n",
 		processColWidth, "PROCESS",
 		endpointColWidth, "SRC",
 		endpointColWidth, "PEER",
@@ -206,7 +206,6 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 		queueColWidth, "RECV-Q",
 		bwColWidth, "TX/s",
 		bwColWidth, "RX/s",
-		bwColWidth, "TOTALΔ",
 	))
 
 	// Render each connection
@@ -253,17 +252,15 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 		recvQField := fmt.Sprintf("[%s]%*s[white]", recvQColor, queueColWidth, formatBytes(conn.RxQueue))
 		txRateColor := bandwidthColor(conn.TxBytesPerSec, thresholds.BandwidthPerSec)
 		rxRateColor := bandwidthColor(conn.RxBytesPerSec, thresholds.BandwidthPerSec)
-		totalDeltaColor := bandwidthColor(float64(conn.TotalBytesDelta), thresholds.BandwidthPerSnapshot)
 		txRateField := fmt.Sprintf("[%s]%*s[white]", txRateColor, bwColWidth, formatBytesRateCompact(conn.TxBytesPerSec))
 		rxRateField := fmt.Sprintf("[%s]%*s[white]", rxRateColor, bwColWidth, formatBytesRateCompact(conn.RxBytesPerSec))
-		totalDeltaField := fmt.Sprintf("[%s]%*s[white]", totalDeltaColor, bwColWidth, formatBytes(conn.TotalBytesDelta))
 
 		prefix := "  "
 		if i == selectedIndex {
 			prefix = " [yellow]>[white]"
 		}
 
-		sb.WriteString(fmt.Sprintf("%s[aqua]%-*s[white] %-*s %-*s [%s]%-*s[white] %s %s %s %s %s\n",
+		sb.WriteString(fmt.Sprintf("%s[aqua]%-*s[white] %-*s %-*s [%s]%-*s[white] %s %s %s %s\n",
 			prefix,
 			processColWidth, procInfo,
 			endpointColWidth, src,
@@ -273,7 +270,6 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 			recvQField,
 			txRateField,
 			rxRateField,
-			totalDeltaField,
 		))
 	}
 
@@ -625,14 +621,13 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 		portsColWidth   = 14
 	)
 
-	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %*s %*s %*s %*s %-*s %-*s[white]\n",
+	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %*s %*s %*s %-*s %-*s[white]\n",
 		peerColWidth, "PEER",
 		countColWidth, "CONNS",
 		queueColWidth, "SEND-Q",
 		queueColWidth, "RECV-Q",
 		bwColWidth, "TX/s",
 		bwColWidth, "RX/s",
-		bwColWidth, "TOTALΔ",
 		processColWidth, "PROCESS",
 		portsColWidth, "PORTS",
 	))
@@ -661,10 +656,8 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 		recvQField := fmt.Sprintf("[%s]%*s[white]", recvQColor, queueColWidth, formatBytes(g.RxQueue))
 		txRateColor := bandwidthColor(g.TxBytesPerSec, thresholds.BandwidthPerSec)
 		rxRateColor := bandwidthColor(g.RxBytesPerSec, thresholds.BandwidthPerSec)
-		totalDeltaColor := bandwidthColor(float64(g.TotalBytesDelta), thresholds.BandwidthPerSnapshot)
 		txRateField := fmt.Sprintf("[%s]%*s[white]", txRateColor, bwColWidth, formatBytesRateCompact(g.TxBytesPerSec))
 		rxRateField := fmt.Sprintf("[%s]%*s[white]", rxRateColor, bwColWidth, formatBytesRateCompact(g.RxBytesPerSec))
-		totalDeltaField := fmt.Sprintf("[%s]%*s[white]", totalDeltaColor, bwColWidth, formatBytes(g.TotalBytesDelta))
 
 		procText := "-"
 		procColor := "dim"
@@ -703,7 +696,7 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 			prefix = " [yellow]>[white]"
 		}
 
-		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %s %s %s %s %s %s %-*s\n",
+		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %s %s %s %s %s %-*s\n",
 			prefix,
 			peerColWidth, peer,
 			countColor, countColWidth, g.Count,
@@ -711,7 +704,6 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 			recvQField,
 			txRateField,
 			rxRateField,
-			totalDeltaField,
 			procField,
 			portsColWidth, portsDisplay,
 		))

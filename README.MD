@@ -11,9 +11,7 @@ Yes, fucking yes.
   - `PROJECT_STRUCTURE.md`
   - `HIGH_LEVEL_DESIGN.md`
 
-# Download
-
-### Requirements
+# Requirements
 
 Runtime requirements:
 
@@ -38,6 +36,7 @@ Privilege notes:
 - Run with `sudo` (or root) for full functionality.
 - `sudo` is required for: block/unblock peer, kill active flows, accurate conntrack stats on hardened hosts, and full process mapping from `/proc/[pid]/fd`.
 
+# Install
 ### Ubuntu/Linux (amd64)
 ```bash
 curl -sL https://github.com/BlackMetalz/holyf-network/releases/latest/download/holyf-network-linux-amd64 -o /tmp/holyf-network
@@ -61,7 +60,7 @@ sudo holyf-network -r 5
 # Shift+B: sort by Bandwidth (press again toggles DESC/ASC)
 # Shift+C: sort by Conns (press again toggles DESC/ASC)
 # Shift+P: sort by Port (press again toggles DESC/ASC)
-# i: explain Send-Q / Recv-Q / TX/s / RX/s / TOTALΔ
+# i: explain Send-Q / Recv-Q / TX/s / RX/s
 # g: toggle group-by-peer view
 # /: search Top Connections by text (contains match)
 # f: port filter (press f again to clear all filters)
@@ -127,7 +126,7 @@ Replay hotkeys:
 - `f`: port filter (press again to clear filters)
 - `/`: grep-like contains filter for current snapshot
 - `Shift+B/C/P`: sort mode (press same key to toggle DESC/ASC)
-- `i`: explain Send-Q / Recv-Q / TX/s / RX/s / TOTALΔ
+- `i`: explain Send-Q / Recv-Q / TX/s / RX/s
 - `s`: mask IP display
 - `x`: toggle skip-empty snapshot navigation
 - `?`: help
@@ -140,7 +139,6 @@ Replay view is aggregate-only: rows are grouped by `peer_ip + local_port + proc_
 History reader accepts only this aggregate snapshot format.
 Bandwidth columns:
 - `TX/s`, `RX/s`: conntrack byte-delta throughput rate for current sample interval.
-- `TOTALΔ`: total bytes transferred during current sample interval.
 - `Send-Q/Recv-Q`: kernel queue backlog snapshot (not throughput counters).
 
 Default threshold file:
@@ -181,4 +179,5 @@ holyf-network --health-config /etc/holyf-network/health_thresholds.toml
 
 Notes:
 - If retrans sample is below thresholds, UI shows `LOW SAMPLE` and does not trigger retrans WARN/CRIT.
-- `bandwidth_per_sec` and `bandwidth_per_snapshot` control BW column warn/crit coloring (`TX/s`, `RX/s`, `TOTALΔ`).
+- `bandwidth_per_sec` controls BW column warn/crit coloring (`TX/s`, `RX/s`).
+- `bandwidth_per_snapshot` remains used for internal total-delta evaluation/sorting.

@@ -27,7 +27,7 @@ flowchart TD
 4. Collect interface stats and rates.
 5. Collect top talkers (`/proc/net/tcp*`, PID mapping from `/proc/<pid>/fd`).
 6. Collect conntrack TCP flow byte counters and compute interval deltas.
-7. Enrich top talkers with throughput metrics (`TX/s`, `RX/s`, `TOTALΔ`).
+7. Enrich top talkers with throughput metrics (`TX/s`, `RX/s`) and internal total-delta fields for ranking.
 8. Render panels and status bar.
 
 Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).

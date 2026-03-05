@@ -135,6 +135,7 @@ func TestStatusHotkeysForModalPages(t *testing.T) {
 		{page: "blocked-peers", wantPlain: "Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"},
 		{page: "action-log", wantPlain: "Enter=close Esc=close"},
 		{page: "socket-queue-explain", wantPlain: "Enter=close Esc=close"},
+		{page: "interface-stats-explain", wantPlain: "Enter=close Esc=close"},
 		{page: "blocked-peers-remove-result", wantPlain: "Enter=close Esc=close"},
 		{page: "block-summary", wantPlain: "Enter=close Esc=close"},
 	}
@@ -197,6 +198,20 @@ func TestHandleKeyEventIShowsSocketQueueExplain(t *testing.T) {
 	name, _ := a.pages.GetFrontPage()
 	if name != "socket-queue-explain" {
 		t.Fatalf("expected socket-queue-explain page, got %q", name)
+	}
+}
+
+func TestHandleKeyEventShiftIShowsInterfaceStatsExplain(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'I', 0))
+	if ret != nil {
+		t.Fatalf("I should be handled")
+	}
+	name, _ := a.pages.GetFrontPage()
+	if name != "interface-stats-explain" {
+		t.Fatalf("expected interface-stats-explain page, got %q", name)
 	}
 }
 

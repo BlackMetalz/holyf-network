@@ -20,7 +20,8 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]Shift+B[white]     Sort by Bandwidth (press again: DESC/ASC)
 [yellow]Shift+C[white]     Sort by Conns (press again: DESC/ASC)
 [yellow]Shift+P[white]     Sort by Port (press again: DESC/ASC)
-[yellow]i[white]           Explain Send-Q / Recv-Q / TX/s / RX/s / TOTALΔ
+[yellow]i[white]           Explain Send-Q / Recv-Q / TX/s / RX/s
+[yellow]I[white]           Explain Interface Stats (RX/TX, Packets, Errors, Drops)
 [yellow]g[white]           Toggle group-by-peer view
 [yellow]b[white]           Show blocked peers
 [yellow]h[white]           Show action log (latest 20)
@@ -43,7 +44,7 @@ const historyHelpText = `[yellow]Replay Shortcuts[white]
 [yellow]Shift+B[white]     Sort by Bandwidth (press again: DESC/ASC)
 [yellow]Shift+C[white]     Sort by Conns (press again: DESC/ASC)
 [yellow]Shift+P[white]     Sort by Port (press again: DESC/ASC)
-[yellow]i[white]           Explain Send-Q / Recv-Q / TX/s / RX/s / TOTALΔ
+[yellow]i[white]           Explain Send-Q / Recv-Q / TX/s / RX/s
 [yellow]s[white]           Toggle sensitive IP mask
 [yellow]x[white]           Toggle skip-empty snapshots
 [yellow]?[white]           Toggle this help
