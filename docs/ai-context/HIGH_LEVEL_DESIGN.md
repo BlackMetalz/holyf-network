@@ -202,6 +202,7 @@ State includes:
 - snapshot refs + current index
 - current snapshot record
 - optional single-file scope (`replay --file <segment>`)
+- optional inclusive time window scope (`replay -b/--begin`, `-e/--end`)
 - filter/search/sort/mask/selection
 - follow-latest toggle (`L`)
 
@@ -215,6 +216,13 @@ Navigation keys:
 
 Behavior constraints:
 
+- replay index is filtered by `file scope ∩ time window` before UI state/navigation
+- `-b/-e` parse with replay jump-time semantics; clock-only inputs use:
+  - selected segment date when `--file` is provided
+  - current local date when `--file` is not provided
+- when only one bound is provided:
+  - `-b` only => end bound auto-completes to end-of-day
+  - `-e` only => begin bound auto-completes to start-of-day
 - replay renders aggregate rows only
 - kill/block hotkeys (`Enter`, `k`, `b`) are explicitly blocked with status note
 - search/filter apply only to current snapshot

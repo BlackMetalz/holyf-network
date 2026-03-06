@@ -29,6 +29,8 @@ type HistoryApp struct {
 	dataDir     string
 	startAt     string
 	segmentFile string
+	rangeBegin  *time.Time
+	rangeEnd    *time.Time
 	sensitiveIP bool
 	appVersion  string
 
@@ -48,6 +50,11 @@ type HistoryApp struct {
 	selectedIndex int
 	followLatest  bool
 
+	timelineSearchQuery    string
+	timelineSearchResults  []timelineSearchResult
+	timelineSearchSelected int
+	timelineSearchRunning  bool
+
 	statusNote       string
 	statusNoteUntil  time.Time
 	lastStatusNote   string
@@ -57,7 +64,7 @@ type HistoryApp struct {
 	stopChan chan struct{}
 }
 
-func NewHistoryApp(dataDir, startAt, segmentFile string, sensitiveIP bool, appVersion string) *HistoryApp {
+func NewHistoryApp(dataDir, startAt, segmentFile string, sensitiveIP bool, appVersion string, rangeBegin, rangeEnd *time.Time) *HistoryApp {
 	startAt = strings.TrimSpace(strings.ToLower(startAt))
 	if startAt != HistoryStartOldest {
 		startAt = HistoryStartLatest
@@ -72,6 +79,8 @@ func NewHistoryApp(dataDir, startAt, segmentFile string, sensitiveIP bool, appVe
 		dataDir:          history.ExpandPath(dataDir),
 		startAt:          startAt,
 		segmentFile:      strings.TrimSpace(segmentFile),
+		rangeBegin:       cloneOptionalTime(rangeBegin),
+		rangeEnd:         cloneOptionalTime(rangeEnd),
 		sensitiveIP:      sensitiveIP,
 		appVersion:       version,
 		sortMode:         SortByBandwidth,
@@ -142,6 +151,7 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 		h.setStatusNote("Load snapshots failed: "+shortStatus(err.Error(), 72), 8*time.Second)
 		return
 	}
+	refs = h.filterRefsByReplayRange(refs)
 
 	prevFile := ""
 	prevOffset := int64(-1)
@@ -319,6 +329,15 @@ func (h *HistoryApp) renderPanel() {
 	}
 
 	if len(h.refs) == 0 || h.currentIndex < 0 || h.currentIndex >= len(h.refs) {
+		if h.hasReplayRange() {
+			h.panel.SetText(
+				"  [yellow]No snapshots in selected time range[white]\n\n" +
+					fmt.Sprintf("  Scope: [aqua]%s[white]\n", h.replayScopeLabel()) +
+					fmt.Sprintf("  Range: [aqua]%s[white]\n\n", h.replayRangeLabel()) +
+					fmt.Sprintf("  Data dir: [dim]%s[white]", h.dataDir),
+			)
+			return
+		}
 		h.panel.SetText(
 			"  [yellow]No snapshots found[white]\n\n" +
 				"  Run daemon first:\n" +
@@ -338,13 +357,14 @@ func (h *HistoryApp) renderPanel() {
 	}
 
 	header := fmt.Sprintf(
-		"  [dim]Snapshot %d/%d | %s | %s | rows=%d | scope=%s[white]\n",
+		"  [dim]Snapshot %d/%d | %s | %s | rows=%d | scope=%s | range=%s[white]\n",
 		h.currentIndex+1,
 		len(h.refs),
 		captured,
 		iface,
 		len(rec.Groups),
 		h.replayScopeLabel(),
+		h.replayRangeLabel(),
 	)
 	if rec.BandwidthAvailable && rec.SampleSeconds > 0 {
 		header += fmt.Sprintf("  [dim]BW sample: %.1fs (conntrack delta)[white]\n", rec.SampleSeconds)
@@ -401,6 +421,58 @@ func (h *HistoryApp) replayScopeLabel() string {
 		return "ALL"
 	}
 	return filepath.Base(file)
+}
+
+func (h *HistoryApp) replayRangeLabel() string {
+	begin := "ALL"
+	if h.rangeBegin != nil {
+		begin = h.rangeBegin.Local().Format("2006-01-02 15:04:05")
+	}
+	end := "ALL"
+	if h.rangeEnd != nil {
+		end = h.rangeEnd.Local().Format("2006-01-02 15:04:05")
+	}
+
+	if h.rangeBegin != nil && h.rangeEnd != nil {
+		return begin + ".." + end
+	}
+	if h.rangeBegin != nil {
+		return ">=" + begin
+	}
+	if h.rangeEnd != nil {
+		return "<=" + end
+	}
+	return "ALL"
+}
+
+func (h *HistoryApp) hasReplayRange() bool {
+	return h.rangeBegin != nil || h.rangeEnd != nil
+}
+
+func (h *HistoryApp) filterRefsByReplayRange(refs []history.SnapshotRef) []history.SnapshotRef {
+	if !h.hasReplayRange() || len(refs) == 0 {
+		return refs
+	}
+
+	filtered := make([]history.SnapshotRef, 0, len(refs))
+	for _, ref := range refs {
+		if h.rangeBegin != nil && ref.CapturedAt.Before(*h.rangeBegin) {
+			continue
+		}
+		if h.rangeEnd != nil && ref.CapturedAt.After(*h.rangeEnd) {
+			continue
+		}
+		filtered = append(filtered, ref)
+	}
+	return filtered
+}
+
+func cloneOptionalTime(t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	tt := *t
+	return &tt
 }
 
 func (h *HistoryApp) updateStatusBar() {

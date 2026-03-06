@@ -33,6 +33,13 @@ func parseSegmentTime(name string) (time.Time, bool) {
 	return ts, ok
 }
 
+// ParseSegmentDate parses a segment filename/path and returns local-day timestamp.
+// Accepted format: connections-YYYYMMDD.jsonl
+func ParseSegmentDate(nameOrPath string) (time.Time, bool) {
+	name := filepath.Base(strings.TrimSpace(nameOrPath))
+	return parseSegmentTime(name)
+}
+
 func parseSegmentWindow(name string) (time.Time, time.Duration, bool) {
 	if !strings.HasPrefix(name, segmentPrefix) || !strings.HasSuffix(name, segmentSuffix) {
 		return time.Time{}, 0, false

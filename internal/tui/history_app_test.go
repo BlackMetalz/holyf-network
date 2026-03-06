@@ -11,7 +11,17 @@ import (
 )
 
 func newHistoryTestApp(dataDir string, startAt string) *HistoryApp {
-	h := NewHistoryApp(dataDir, startAt, "", false, "test")
+	h := NewHistoryApp(dataDir, startAt, "", false, "test", nil, nil)
+	h.panel = tview.NewTextView().SetDynamicColors(true)
+	h.statusBar = tview.NewTextView().SetDynamicColors(true)
+	h.pages = tview.NewPages()
+	h.pages.AddPage("main", tview.NewBox(), true, true)
+	h.pages.AddPage("history-help", tview.NewBox(), true, false)
+	return h
+}
+
+func newHistoryTestAppWithRange(dataDir string, startAt string, begin, end *time.Time) *HistoryApp {
+	h := NewHistoryApp(dataDir, startAt, "", false, "test", begin, end)
 	h.panel = tview.NewTextView().SetDynamicColors(true)
 	h.statusBar = tview.NewTextView().SetDynamicColors(true)
 	h.pages = tview.NewPages()
@@ -155,6 +165,24 @@ func TestHistoryHandleKeyEventIShowsSocketQueueExplain(t *testing.T) {
 	}
 }
 
+func TestHistoryHandleKeyEventShiftSShowsTimelineSearchModal(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h.refs = []history.SnapshotRef{{CapturedAt: time.Now().UTC()}}
+	h.currentIndex = 0
+
+	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'S', 0))
+	if ret != nil {
+		t.Fatalf("Shift+S should be handled in replay mode")
+	}
+
+	name, _ := h.pages.GetFrontPage()
+	if name != "history-timeline-search" {
+		t.Fatalf("expected timeline-search modal, got front page=%q", name)
+	}
+}
+
 func TestHistoryFilterAppliesToCurrentSnapshotOnly(t *testing.T) {
 	t.Parallel()
 
@@ -180,6 +208,235 @@ func TestHistoryFilterAppliesToCurrentSnapshotOnly(t *testing.T) {
 	h.navigatePrev()
 	if got := len(h.visibleRows()); got != 1 {
 		t.Fatalf("previous snapshot should match filter once, got=%d", got)
+	}
+}
+
+func TestHistoryReloadIndexAppliesBeginRangeFilter(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
+	if err != nil {
+		t.Fatalf("new snapshot writer: %v", err)
+	}
+	defer writer.Close()
+
+	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
+	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+	appendSnapshotFixture(t, writer, base.Add(2*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.30", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+
+	begin := base.Add(1 * time.Minute)
+	h := newHistoryTestAppWithRange(dir, HistoryStartOldest, &begin, nil)
+	h.reloadIndex(true)
+
+	if len(h.refs) != 2 {
+		t.Fatalf("expected 2 refs with begin filter, got=%d", len(h.refs))
+	}
+	if h.currentIndex != 0 {
+		t.Fatalf("start-at oldest should target first filtered snapshot, got index=%d", h.currentIndex)
+	}
+	if got := h.refs[0].CapturedAt; !got.Equal(begin) {
+		t.Fatalf("expected first ref at begin boundary, got=%s want=%s", got, begin)
+	}
+}
+
+func TestHistoryReloadIndexAppliesEndRangeFilter(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
+	if err != nil {
+		t.Fatalf("new snapshot writer: %v", err)
+	}
+	defer writer.Close()
+
+	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
+	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+	appendSnapshotFixture(t, writer, base.Add(2*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.30", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+
+	end := base.Add(1 * time.Minute)
+	h := newHistoryTestAppWithRange(dir, HistoryStartLatest, nil, &end)
+	h.reloadIndex(true)
+
+	if len(h.refs) != 2 {
+		t.Fatalf("expected 2 refs with end filter, got=%d", len(h.refs))
+	}
+	if h.currentIndex != 1 {
+		t.Fatalf("start-at latest should target last filtered snapshot, got index=%d", h.currentIndex)
+	}
+	if got := h.refs[len(h.refs)-1].CapturedAt; !got.Equal(end) {
+		t.Fatalf("expected last ref at end boundary, got=%s want=%s", got, end)
+	}
+}
+
+func TestHistoryReloadIndexBeginEndInclusiveAndNoMatch(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
+	if err != nil {
+		t.Fatalf("new snapshot writer: %v", err)
+	}
+	defer writer.Close()
+
+	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
+	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+	appendSnapshotFixture(t, writer, base.Add(2*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.30", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+
+	begin := base.Add(1 * time.Minute)
+	end := base.Add(1 * time.Minute)
+	h := newHistoryTestAppWithRange(dir, HistoryStartLatest, &begin, &end)
+	h.reloadIndex(true)
+	if len(h.refs) != 1 {
+		t.Fatalf("expected exactly 1 ref for inclusive equal begin/end, got=%d", len(h.refs))
+	}
+	if !h.refs[0].CapturedAt.Equal(begin) {
+		t.Fatalf("expected boundary snapshot, got=%s want=%s", h.refs[0].CapturedAt, begin)
+	}
+
+	noneBegin := base.Add(3 * time.Minute)
+	noneEnd := base.Add(4 * time.Minute)
+	hNone := newHistoryTestAppWithRange(dir, HistoryStartLatest, &noneBegin, &noneEnd)
+	hNone.reloadIndex(true)
+	if len(hNone.refs) != 0 {
+		t.Fatalf("expected no refs in unmatched range, got=%d", len(hNone.refs))
+	}
+	hNone.renderPanel()
+	if !strings.Contains(hNone.panel.GetText(true), "No snapshots in selected time range") {
+		t.Fatalf("expected empty range message, got=%q", hNone.panel.GetText(true))
+	}
+}
+
+func TestHistoryReloadIndexAppliesFileScopeIntersectRange(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
+	if err != nil {
+		t.Fatalf("new snapshot writer: %v", err)
+	}
+	defer writer.Close()
+
+	day1 := time.Date(2026, 3, 4, 10, 0, 0, 0, time.Local)
+	day2 := day1.Add(36 * time.Hour) // force another daily segment
+	appendSnapshotFixture(t, writer, day1, []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+	appendSnapshotFixture(t, writer, day2, []history.SnapshotGroup{{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+
+	refs, _, err := history.LoadIndex(dir)
+	if err != nil {
+		t.Fatalf("load index: %v", err)
+	}
+	if len(refs) != 2 {
+		t.Fatalf("expected 2 refs from fixtures, got=%d", len(refs))
+	}
+	fileName := refs[0].FilePath
+	if refs[1].CapturedAt.Before(refs[0].CapturedAt) {
+		fileName = refs[1].FilePath
+	}
+
+	begin := day2
+	end := day2.Add(1 * time.Hour)
+	h := NewHistoryApp(dir, HistoryStartLatest, fileName, false, "test", &begin, &end)
+	h.panel = tview.NewTextView().SetDynamicColors(true)
+	h.statusBar = tview.NewTextView().SetDynamicColors(true)
+	h.pages = tview.NewPages()
+	h.pages.AddPage("main", tview.NewBox(), true, true)
+	h.pages.AddPage("history-help", tview.NewBox(), true, false)
+
+	h.reloadIndex(true)
+	if len(h.refs) != 0 {
+		t.Fatalf("expected file-scope intersect range to be empty, got=%d", len(h.refs))
+	}
+}
+
+func TestHistoryTimelineSearchMatchesAcrossLoadedSnapshots(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
+	if err != nil {
+		t.Fatalf("new snapshot writer: %v", err)
+	}
+	defer writer.Close()
+
+	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
+	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{
+		{PeerIP: "198.51.100.10", LocalPort: 443, ProcName: "curl", ConnCount: 1},
+		{PeerIP: "198.51.100.11", LocalPort: 443, ProcName: "curl", ConnCount: 1},
+	})
+	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), []history.SnapshotGroup{
+		{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 1},
+	})
+	appendSnapshotFixture(t, writer, base.Add(2*time.Minute), []history.SnapshotGroup{
+		{PeerIP: "198.51.100.30", LocalPort: 8080, ProcName: "curl", ConnCount: 1},
+	})
+
+	h := newHistoryTestApp(dir, HistoryStartLatest)
+	h.reloadIndex(true)
+
+	results := h.scanTimelineMatches("curl", h.refs)
+	if len(results) != 2 {
+		t.Fatalf("expected 2 matching snapshots, got=%d", len(results))
+	}
+	if results[0].SnapshotIndex != 0 || results[0].MatchCount != 2 {
+		t.Fatalf("unexpected first result: %+v", results[0])
+	}
+	if results[1].SnapshotIndex != 2 || results[1].MatchCount != 1 {
+		t.Fatalf("unexpected second result: %+v", results[1])
+	}
+
+	noMatch := h.scanTimelineMatches("definitely-not-found", h.refs)
+	if len(noMatch) != 0 {
+		t.Fatalf("expected no-match result to be empty, got=%d", len(noMatch))
+	}
+}
+
+func TestHistoryTimelineSearchJumpKeepsCurrentTextFilter(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
+	if err != nil {
+		t.Fatalf("new snapshot writer: %v", err)
+	}
+	defer writer.Close()
+
+	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
+	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{
+		{PeerIP: "198.51.100.10", LocalPort: 443, ProcName: "curl", ConnCount: 1},
+	})
+	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), []history.SnapshotGroup{
+		{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 1},
+	})
+
+	h := newHistoryTestApp(dir, HistoryStartLatest)
+	h.reloadIndex(true)
+	if h.currentIndex != 1 {
+		t.Fatalf("expected to start at latest index=1, got=%d", h.currentIndex)
+	}
+
+	h.textFilter = "198.51.100.20"
+	h.timelineSearchQuery = "curl"
+	h.timelineSearchResults = []timelineSearchResult{
+		{
+			SnapshotIndex: 0,
+			CapturedAt:    base,
+			MatchCount:    1,
+		},
+	}
+
+	h.jumpToTimelineSearchResult(0)
+	if h.currentIndex != 0 {
+		t.Fatalf("expected jump to snapshot index=0, got=%d", h.currentIndex)
+	}
+	if h.textFilter != "198.51.100.20" {
+		t.Fatalf("text filter should remain unchanged after jump, got=%q", h.textFilter)
+	}
+	if !strings.Contains(h.snapshotMessage, "Timeline match") {
+		t.Fatalf("expected timeline jump snapshot message, got=%q", h.snapshotMessage)
 	}
 }
 

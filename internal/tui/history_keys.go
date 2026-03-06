@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BlackMetalz/holyf-network/internal/history"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -67,6 +68,9 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case 't', 'T':
 			h.promptJumpToTime()
+			return nil
+		case 'S':
+			h.promptTimelineSearch()
 			return nil
 		case 'B', 'C', 'P':
 			mode, _ := directSortModeForRune(event.Rune())
@@ -395,10 +399,14 @@ func historyStatusHotkeysForPage(page string) (styled string, plain string) {
 		return "[dim]any key[white]=close", "any key=close"
 	case "history-filter", "history-search", "history-jump-time":
 		return "[dim]Enter[white]=apply [dim]Esc[white]=cancel", "Enter=apply Esc=cancel"
+	case "history-timeline-search":
+		return "[dim]Enter[white]=search [dim]Esc[white]=cancel", "Enter=search Esc=cancel"
+	case "history-timeline-results":
+		return "[dim]Up/Down[white]=select [dim]Enter[white]=jump [dim]Esc[white]=close", "Up/Down=select Enter=jump Esc=close"
 	case "history-socket-queue-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim][[=prev ]=next a e t f / Shift+B/C/P s i Shift+I x z L ? q[white]", "[=prev ]=next a e t f / Shift+B/C/P s i Shift+I x z L ? q"
+		return "[dim][=prev ]=next a e t f / Shift+S Shift+B/C/P s i Shift+I x z L ? q[white]", "[=prev ]=next a e t f / Shift+S Shift+B/C/P s i Shift+I x z L ? q"
 	}
 }
 
@@ -436,62 +444,5 @@ func parseHistoryPortFilter(raw string) (string, error) {
 }
 
 func parseHistoryJumpTime(raw string, now time.Time) (time.Time, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return time.Time{}, fmt.Errorf("empty time")
-	}
-
-	loc := now.Location()
-	for _, layout := range []string{
-		time.RFC3339,
-		"2006-01-02 15:04:05",
-		"2006-01-02 15:04",
-		"2006-01-02T15:04:05",
-		"2006-01-02T15:04",
-		"2006/01/02 15:04:05",
-		"2006/01/02 15:04",
-	} {
-		if ts, err := time.ParseInLocation(layout, trimmed, loc); err == nil {
-			return ts, nil
-		}
-	}
-
-	lower := strings.ToLower(trimmed)
-	if strings.HasPrefix(lower, "yesterday ") {
-		clock := strings.TrimSpace(trimmed[len("yesterday "):])
-		if ts, err := parseClockOnly(clock, now.AddDate(0, 0, -1)); err == nil {
-			return ts, nil
-		}
-	}
-
-	if ts, err := parseClockOnly(trimmed, now); err == nil {
-		return ts, nil
-	}
-
-	return time.Time{}, fmt.Errorf("unsupported time format")
-}
-
-func parseClockOnly(raw string, base time.Time) (time.Time, error) {
-	loc := base.Location()
-	clock := strings.TrimSpace(raw)
-	if clock == "" {
-		return time.Time{}, fmt.Errorf("empty clock")
-	}
-
-	for _, layout := range []string{"15:04:05", "15:04"} {
-		if parsed, err := time.ParseInLocation(layout, clock, loc); err == nil {
-			return time.Date(
-				base.Year(),
-				base.Month(),
-				base.Day(),
-				parsed.Hour(),
-				parsed.Minute(),
-				parsed.Second(),
-				0,
-				loc,
-			), nil
-		}
-	}
-
-	return time.Time{}, fmt.Errorf("invalid clock")
+	return history.ParseReplayTime(raw, now)
 }

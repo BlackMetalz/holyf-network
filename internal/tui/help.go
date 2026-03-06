@@ -37,7 +37,8 @@ const historyHelpText = `[yellow]Replay Shortcuts[white]
 [yellow][[white]             Previous snapshot
 [yellow]a / e[white]         Jump to oldest / latest snapshot
 [yellow]t[white]             Jump to specific time
-[yellow]L[white]           Follow latest snapshots
+[yellow]Shift+S[white]       Search timeline (all loaded snapshots)
+[yellow]L[white]             Follow latest snapshots
 [yellow]Up/Down[white]     Select row
 [yellow]f[white]           Port filter / clear all filters
 [yellow]/[white]           Search (contains text in current snapshot)

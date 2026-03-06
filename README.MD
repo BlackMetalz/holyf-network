@@ -116,6 +116,16 @@ holyf-network replay --start-at oldest --sensitive-ip
 
 # Open one specific daily snapshot segment file
 holyf-network replay --file connections-20260304.jsonl
+# shorthand:
+holyf-network replay -f connections-20260304.jsonl
+
+# Replay only snapshots inside a time window (inclusive)
+holyf-network replay -b 20:00 -e 23:59
+
+# With --file, clock-only time binds to that file's date
+holyf-network replay --file connections-20260304.jsonl -b 20:00 -e 23:59
+# shorthand:
+holyf-network replay -f connections-20260304.jsonl -b 20:00 -e 23:59
 ```
 
 Replay hotkeys:
@@ -134,7 +144,12 @@ Replay hotkeys:
 - `?`: help
 - `q`: quit
 
-`t` accepts: `YYYY-MM-DD HH:MM[:SS]`, `HH:MM[:SS]` (today), or `yesterday HH:MM`.
+`t` accepts: `YYYY-MM-DD HH:MM[:SS]`, `HH:MM[:SS]` (today), `yesterday HH:MM`, or RFC3339.
+`--begin/-b` and `--end/-e` use the same time parsing semantics as `t`.
+When `--file` is set and `-b/-e` are clock-only (`HH:MM[:SS]`), replay uses that segment's date.
+If only `-b` is provided, replay auto-sets `-e` to end-of-day of `-b`.
+If only `-e` is provided, replay auto-sets `-b` to start-of-day of `-e`.
+Time-window filtering is inclusive (`captured_at >= begin` and `captured_at <= end`).
 
 Replay mode is read-only: no block/kill actions are executed.
 Replay view is aggregate-only: rows are grouped by `peer_ip + local_port + proc_name`.
