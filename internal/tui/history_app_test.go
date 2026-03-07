@@ -184,6 +184,38 @@ func TestHistoryHandleKeyEventShiftSShowsTimelineSearchModal(t *testing.T) {
 	}
 }
 
+func TestHistoryHandleKeyEventHorizontalArrowsAreDisabled(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir())
+	h.refs = []history.SnapshotRef{
+		{CapturedAt: time.Now(), ConnCount: 1},
+		{CapturedAt: time.Now().Add(1 * time.Minute), ConnCount: 1},
+	}
+	h.currentIndex = 0
+	h.currentRecord = history.SnapshotRecord{
+		CapturedAt: time.Now(),
+		Interface:  "eth0",
+		Groups:     []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}},
+	}
+
+	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRight, 0, 0))
+	if ret != nil {
+		t.Fatalf("Right arrow should be consumed in replay")
+	}
+	if h.currentIndex != 0 {
+		t.Fatalf("current index should not change on Right arrow, got=%d", h.currentIndex)
+	}
+
+	ret = h.handleKeyEvent(tcell.NewEventKey(tcell.KeyLeft, 0, 0))
+	if ret != nil {
+		t.Fatalf("Left arrow should be consumed in replay")
+	}
+	if h.currentIndex != 0 {
+		t.Fatalf("current index should not change on Left arrow, got=%d", h.currentIndex)
+	}
+}
+
 func TestHistoryFilterAppliesToCurrentSnapshotOnly(t *testing.T) {
 	t.Parallel()
 

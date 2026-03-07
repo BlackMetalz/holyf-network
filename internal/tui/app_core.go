@@ -324,6 +324,10 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return event
 
+	case tcell.KeyLeft, tcell.KeyRight:
+		// Disable horizontal panning in panel text views to keep layout stable.
+		return nil
+
 	case tcell.KeyEnter:
 		if a.focusIndex == 2 {
 			a.promptKillPeer()

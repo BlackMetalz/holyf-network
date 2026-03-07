@@ -215,6 +215,29 @@ func TestHandleKeyEventShiftIShowsInterfaceStatsExplain(t *testing.T) {
 	}
 }
 
+func TestHandleKeyEventHorizontalArrowsAreDisabled(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	startFocus := a.focusIndex
+
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRight, 0, 0))
+	if ret != nil {
+		t.Fatalf("Right arrow should be consumed")
+	}
+	if a.focusIndex != startFocus {
+		t.Fatalf("focus index should not change on Right arrow: got=%d want=%d", a.focusIndex, startFocus)
+	}
+
+	ret = a.handleKeyEvent(tcell.NewEventKey(tcell.KeyLeft, 0, 0))
+	if ret != nil {
+		t.Fatalf("Left arrow should be consumed")
+	}
+	if a.focusIndex != startFocus {
+		t.Fatalf("focus index should not change on Left arrow: got=%d want=%d", a.focusIndex, startFocus)
+	}
+}
+
 func TestSelectedPeerKillTargetGroupViewRespectsLocalPortFilter(t *testing.T) {
 	t.Parallel()
 

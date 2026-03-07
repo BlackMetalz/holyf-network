@@ -32,6 +32,9 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		}
 		return event
+	case tcell.KeyLeft, tcell.KeyRight:
+		// Disable horizontal panning in replay text panel.
+		return nil
 	case tcell.KeyEnter:
 		h.setStatusNote("Read-only replay mode", 4*time.Second)
 		return nil
