@@ -23,6 +23,9 @@ func TestParseConntrackFlowLineIPv4(t *testing.T) {
 	if flow.OrigBytes != 4096 || flow.ReplyBytes != 8192 {
 		t.Fatalf("bytes mismatch: orig=%d reply=%d", flow.OrigBytes, flow.ReplyBytes)
 	}
+	if flow.State != "ESTABLISHED" {
+		t.Fatalf("state mismatch: got=%q want=%q", flow.State, "ESTABLISHED")
+	}
 }
 
 func TestParseConntrackFlowLineIPv4MappedIPv6(t *testing.T) {

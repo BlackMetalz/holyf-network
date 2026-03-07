@@ -268,6 +268,7 @@ func (a *App) refreshData() {
 		a.topBandwidthNote = ""
 		flows, flowErr := collector.CollectConntrackFlowsTCP()
 		if flowErr == nil && a.bwTracker != nil {
+			talkers = collector.MergeConntrackHostFlows(talkers, flows)
 			bwSample = a.bwTracker.BuildSnapshot(flows, time.Now())
 			talkers = collector.EnrichConnectionsWithBandwidth(talkers, bwSample)
 			if !bwSample.Available {

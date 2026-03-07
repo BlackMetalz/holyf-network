@@ -18,6 +18,7 @@ type FlowTuple struct {
 
 // ConntrackFlow represents one bidirectional conntrack TCP flow with counters.
 type ConntrackFlow struct {
+	State      string
 	Orig       FlowTuple
 	Reply      FlowTuple
 	OrigBytes  int64
@@ -153,7 +154,13 @@ func parseConntrackFlowLine(line string) (ConntrackFlow, bool) {
 		return ConntrackFlow{}, false
 	}
 
+	state := "UNKNOWN"
+	if len(fields) > 3 && !strings.Contains(fields[3], "=") {
+		state = strings.TrimSpace(fields[3])
+	}
+
 	return ConntrackFlow{
+		State: state,
 		Orig: FlowTuple{
 			SrcIP:   srcVals[0],
 			SrcPort: sportVals[0],

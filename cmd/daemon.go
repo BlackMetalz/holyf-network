@@ -404,6 +404,7 @@ func newDaemonRunCmd() *cobra.Command {
 				bwSample := collector.BandwidthSnapshot{}
 				flows, flowErr := collector.CollectConntrackFlowsTCP()
 				if flowErr == nil {
+					conns = collector.MergeConntrackHostFlows(conns, flows)
 					bwSample = bwTracker.BuildSnapshot(flows, ts)
 					conns = collector.EnrichConnectionsWithBandwidth(conns, bwSample)
 				}
