@@ -153,7 +153,7 @@ func TestRenderTalkersPanelShowsSyntheticProcessWhenNoPID(t *testing.T) {
 	}
 }
 
-func TestRenderPeerGroupPanelShowsMultiProcessSummary(t *testing.T) {
+func TestRenderPeerGroupPanelSplitsSamePeerByProcess(t *testing.T) {
 	t.Parallel()
 
 	conns := []collector.Connection{
@@ -184,7 +184,10 @@ func TestRenderPeerGroupPanelShowsMultiProcessSummary(t *testing.T) {
 	}
 
 	text := renderPeerGroupPanel(conns, "", "", 20, false, 0, config.DefaultHealthThresholds(), "")
-	if !strings.Contains(text, "sshd,ct/nat") {
-		t.Fatalf("expected group process summary to include sshd and ct/nat, got: %q", text)
+	if !strings.Contains(text, "sshd") || !strings.Contains(text, "ct/nat") {
+		t.Fatalf("expected both sshd and ct/nat groups, got: %q", text)
+	}
+	if !strings.Contains(text, "2 groups, 1 peers, 3 total connections") {
+		t.Fatalf("expected grouped footer for split-process view, got: %q", text)
 	}
 }

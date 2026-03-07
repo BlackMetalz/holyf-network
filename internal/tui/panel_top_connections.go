@@ -479,9 +479,10 @@ func truncateRight(s string, width int) string {
 	return s[:width-3] + "..."
 }
 
-// PeerGroup represents aggregated connections for a single remote IP.
+// PeerGroup represents aggregated connections for a remote peer + process.
 type PeerGroup struct {
 	PeerIP           string
+	ProcName         string
 	Count            int
 	TxQueue          int64
 	RxQueue          int64
@@ -494,25 +495,29 @@ type PeerGroup struct {
 	TotalBytesPerSec float64
 	LocalPorts       map[int]struct{}
 	States           map[string]int
-	TopProc          string // process summary, e.g. "sshd,ct/nat" or "sshd,+2"
 }
 
-// buildPeerGroups aggregates connections by remote IP.
+// buildPeerGroups aggregates connections by remote IP + process.
 func buildPeerGroups(conns []collector.Connection) []PeerGroup {
-	byPeer := make(map[string]*PeerGroup)
-	procCount := make(map[string]map[string]int) // peerIP -> procName -> count
+	byKey := make(map[string]*PeerGroup)
 
 	for _, conn := range conns {
 		peer := normalizeIP(conn.RemoteIP)
-		g, exists := byPeer[peer]
+		proc := strings.TrimSpace(conn.ProcName)
+		if proc == "" {
+			proc = "-"
+		}
+		key := peer + "|" + proc
+
+		g, exists := byKey[key]
 		if !exists {
 			g = &PeerGroup{
 				PeerIP:     peer,
+				ProcName:   proc,
 				LocalPorts: make(map[int]struct{}),
 				States:     make(map[string]int),
 			}
-			byPeer[peer] = g
-			procCount[peer] = make(map[string]int)
+			byKey[key] = g
 		}
 		g.Count++
 		g.TxQueue += conn.TxQueue
@@ -526,14 +531,10 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 		g.TotalBytesPerSec += conn.TotalBytesPerSec
 		g.LocalPorts[conn.LocalPort] = struct{}{}
 		g.States[conn.State]++
-		if conn.ProcName != "" {
-			procCount[peer][conn.ProcName]++
-		}
 	}
 
-	groups := make([]PeerGroup, 0, len(byPeer))
-	for _, g := range byPeer {
-		g.TopProc = summarizePeerProcesses(procCount[g.PeerIP], 2)
+	groups := make([]PeerGroup, 0, len(byKey))
+	for _, g := range byKey {
 		groups = append(groups, *g)
 	}
 
@@ -544,57 +545,16 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 		if groups[i].Count != groups[j].Count {
 			return groups[i].Count > groups[j].Count
 		}
-		return groups[i].TotalQueue > groups[j].TotalQueue
+		if groups[i].TotalQueue != groups[j].TotalQueue {
+			return groups[i].TotalQueue > groups[j].TotalQueue
+		}
+		if groups[i].PeerIP != groups[j].PeerIP {
+			return groups[i].PeerIP < groups[j].PeerIP
+		}
+		return groups[i].ProcName < groups[j].ProcName
 	})
 
 	return groups
-}
-
-type processCount struct {
-	name  string
-	count int
-}
-
-func summarizePeerProcesses(counts map[string]int, maxNames int) string {
-	if len(counts) == 0 {
-		return ""
-	}
-	if maxNames < 1 {
-		maxNames = 1
-	}
-
-	rows := make([]processCount, 0, len(counts))
-	for name, count := range counts {
-		if strings.TrimSpace(name) == "" || count <= 0 {
-			continue
-		}
-		rows = append(rows, processCount{name: name, count: count})
-	}
-	if len(rows) == 0 {
-		return ""
-	}
-
-	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].count != rows[j].count {
-			return rows[i].count > rows[j].count
-		}
-		return rows[i].name < rows[j].name
-	})
-
-	limit := maxNames
-	if limit > len(rows) {
-		limit = len(rows)
-	}
-
-	parts := make([]string, 0, limit+1)
-	for i := 0; i < limit; i++ {
-		parts = append(parts, rows[i].name)
-	}
-	if len(rows) > limit {
-		parts = append(parts, fmt.Sprintf("+%d", len(rows)-limit))
-	}
-
-	return strings.Join(parts, ",")
 }
 
 // renderPeerGroupPanel renders the per-peer aggregate view.
@@ -698,11 +658,10 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 		txRateField := fmt.Sprintf("[%s]%*s[white]", txRateColor, bwColWidth, formatBytesRateCompact(g.TxBytesPerSec))
 		rxRateField := fmt.Sprintf("[%s]%*s[white]", rxRateColor, bwColWidth, formatBytesRateCompact(g.RxBytesPerSec))
 
-		procText := "-"
-		procColor := "dim"
-		if g.TopProc != "" {
-			procText = truncateRight(g.TopProc, processColWidth)
-			procColor = "white"
+		procText := truncateRight(g.ProcName, processColWidth)
+		procColor := "white"
+		if g.ProcName == "-" {
+			procColor = "dim"
 		}
 		procField := fmt.Sprintf("[%s]%-*s[white]", procColor, processColWidth, procText)
 
@@ -748,7 +707,18 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 		))
 	}
 
-	sb.WriteString(fmt.Sprintf("\n  [dim]%d peers, %d total connections[white]", len(groups), len(filtered)))
+	sb.WriteString(fmt.Sprintf("\n  [dim]%d groups, %d peers, %d total connections[white]", len(groups), uniquePeerCount(groups), len(filtered)))
 
 	return sb.String()
+}
+
+func uniquePeerCount(groups []PeerGroup) int {
+	if len(groups) == 0 {
+		return 0
+	}
+	seen := make(map[string]struct{}, len(groups))
+	for _, g := range groups {
+		seen[g.PeerIP] = struct{}{}
+	}
+	return len(seen)
 }
