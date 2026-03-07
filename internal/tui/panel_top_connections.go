@@ -494,7 +494,7 @@ type PeerGroup struct {
 	TotalBytesPerSec float64
 	LocalPorts       map[int]struct{}
 	States           map[string]int
-	TopProc          string // most common process name
+	TopProc          string // process summary, e.g. "sshd,ct/nat" or "sshd,+2"
 }
 
 // buildPeerGroups aggregates connections by remote IP.
@@ -533,14 +533,7 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 
 	groups := make([]PeerGroup, 0, len(byPeer))
 	for _, g := range byPeer {
-		// Find most common process.
-		bestCount := 0
-		for proc, cnt := range procCount[g.PeerIP] {
-			if cnt > bestCount {
-				bestCount = cnt
-				g.TopProc = proc
-			}
-		}
+		g.TopProc = summarizePeerProcesses(procCount[g.PeerIP], 2)
 		groups = append(groups, *g)
 	}
 
@@ -555,6 +548,53 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 	})
 
 	return groups
+}
+
+type processCount struct {
+	name  string
+	count int
+}
+
+func summarizePeerProcesses(counts map[string]int, maxNames int) string {
+	if len(counts) == 0 {
+		return ""
+	}
+	if maxNames < 1 {
+		maxNames = 1
+	}
+
+	rows := make([]processCount, 0, len(counts))
+	for name, count := range counts {
+		if strings.TrimSpace(name) == "" || count <= 0 {
+			continue
+		}
+		rows = append(rows, processCount{name: name, count: count})
+	}
+	if len(rows) == 0 {
+		return ""
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].count != rows[j].count {
+			return rows[i].count > rows[j].count
+		}
+		return rows[i].name < rows[j].name
+	})
+
+	limit := maxNames
+	if limit > len(rows) {
+		limit = len(rows)
+	}
+
+	parts := make([]string, 0, limit+1)
+	for i := 0; i < limit; i++ {
+		parts = append(parts, rows[i].name)
+	}
+	if len(rows) > limit {
+		parts = append(parts, fmt.Sprintf("+%d", len(rows)-limit))
+	}
+
+	return strings.Join(parts, ",")
 }
 
 // renderPeerGroupPanel renders the per-peer aggregate view.

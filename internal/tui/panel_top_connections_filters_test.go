@@ -152,3 +152,39 @@ func TestRenderTalkersPanelShowsSyntheticProcessWhenNoPID(t *testing.T) {
 		t.Fatalf("expected synthetic process label to render, got: %q", text)
 	}
 }
+
+func TestRenderPeerGroupPanelShowsMultiProcessSummary(t *testing.T) {
+	t.Parallel()
+
+	conns := []collector.Connection{
+		{
+			LocalIP:    "172.25.110.76",
+			LocalPort:  22,
+			RemoteIP:   "172.25.110.116",
+			RemotePort: 52754,
+			State:      "ESTABLISHED",
+			ProcName:   "sshd",
+		},
+		{
+			LocalIP:    "172.25.110.76",
+			LocalPort:  22,
+			RemoteIP:   "172.25.110.116",
+			RemotePort: 33974,
+			State:      "ESTABLISHED",
+			ProcName:   "sshd",
+		},
+		{
+			LocalIP:    "172.25.110.76",
+			LocalPort:  3306,
+			RemoteIP:   "172.25.110.116",
+			RemotePort: 48062,
+			State:      "ESTABLISHED",
+			ProcName:   "ct/nat",
+		},
+	}
+
+	text := renderPeerGroupPanel(conns, "", "", 20, false, 0, config.DefaultHealthThresholds(), "")
+	if !strings.Contains(text, "sshd,ct/nat") {
+		t.Fatalf("expected group process summary to include sshd and ct/nat, got: %q", text)
+	}
+}
