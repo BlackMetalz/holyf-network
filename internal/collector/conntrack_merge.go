@@ -11,6 +11,7 @@ import (
 // Existing connections are kept unchanged.
 func MergeConntrackHostFlows(conns []Connection, flows []ConntrackFlow) []Connection {
 	localIPs := localHostIPSet()
+	extendLocalSetFromConnections(localIPs, conns)
 	return mergeConntrackHostFlowsWithLocalSet(conns, flows, localIPs)
 }
 
@@ -104,6 +105,19 @@ func localHostIPSet() map[string]struct{} {
 		}
 	}
 	return set
+}
+
+func extendLocalSetFromConnections(set map[string]struct{}, conns []Connection) {
+	if len(conns) == 0 {
+		return
+	}
+	for _, conn := range conns {
+		ip := normalizeFlowIP(conn.LocalIP)
+		if ip == "" {
+			continue
+		}
+		set[ip] = struct{}{}
+	}
 }
 
 func connectionTupleKey(localIP string, localPort int, remoteIP string, remotePort int) string {

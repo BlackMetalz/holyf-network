@@ -109,3 +109,21 @@ func TestMergeConntrackHostFlowsIgnoresFlowsOutsideLocalHost(t *testing.T) {
 		t.Fatalf("expected 0 synthetic conns for non-local flow, got=%d", len(got))
 	}
 }
+
+func TestExtendLocalSetFromConnectionsAddsLocalIPs(t *testing.T) {
+	t.Parallel()
+
+	set := map[string]struct{}{}
+	conns := []Connection{
+		{LocalIP: "172.25.110.76"},
+		{LocalIP: "::ffff:10.0.0.10"},
+	}
+
+	extendLocalSetFromConnections(set, conns)
+	if _, ok := set["172.25.110.76"]; !ok {
+		t.Fatalf("expected local ip from connections to be added")
+	}
+	if _, ok := set["10.0.0.10"]; !ok {
+		t.Fatalf("expected normalized mapped ipv4 to be added")
+	}
+}
