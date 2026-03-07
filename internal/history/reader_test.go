@@ -124,6 +124,40 @@ func TestLoadIndexFromFileNotFound(t *testing.T) {
 	}
 }
 
+func TestLoadIndexFromFilePrefersCurrentWorkingDir(t *testing.T) {
+	// This test changes working directory, so it cannot run in parallel.
+	dir := t.TempDir()
+	cwdDir := t.TempDir()
+
+	segmentName := "connections-20260307.jsonl"
+	writeSegmentLines(t, cwdDir, segmentName, []string{
+		`{"captured_at":"2026-03-07T10:00:00Z","interface":"eth0","top_limit":100,"groups":[],"version":"test"}`,
+	})
+
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWD) }()
+	if err := os.Chdir(cwdDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	refs, stats, err := LoadIndexFromFile(dir, segmentName)
+	if err != nil {
+		t.Fatalf("load index from cwd segment: %v", err)
+	}
+	if stats.Files != 1 {
+		t.Fatalf("expected one file scanned, got=%d", stats.Files)
+	}
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 ref, got=%d", len(refs))
+	}
+	if got := refs[0].CapturedAt.UTC().Format(time.RFC3339); got != "2026-03-07T10:00:00Z" {
+		t.Fatalf("captured_at mismatch: got=%s", got)
+	}
+}
+
 func TestLoadIndexFromFileRejectsLegacyFormat(t *testing.T) {
 	t.Parallel()
 

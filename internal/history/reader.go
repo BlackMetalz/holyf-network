@@ -35,7 +35,13 @@ func LoadIndexFromFile(dataDir, segmentPathArg string) ([]SnapshotRef, IndexStat
 	}
 	path = ExpandPath(path)
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(dataDir, path)
+		// Prefer current working directory when caller passes a relative path.
+		// Fallback to dataDir for basename-style usage.
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			// keep cwd-resolved path
+		} else {
+			path = filepath.Join(dataDir, path)
+		}
 	}
 	info, err := os.Stat(path)
 	if err != nil {
