@@ -10,8 +10,8 @@ import (
 	"github.com/rivo/tview"
 )
 
-func newHistoryTestApp(dataDir string, startAt string) *HistoryApp {
-	h := NewHistoryApp(dataDir, startAt, "", false, "test", nil, nil)
+func newHistoryTestApp(dataDir string) *HistoryApp {
+	h := NewHistoryApp(dataDir, "", false, "test", nil, nil)
 	h.panel = tview.NewTextView().SetDynamicColors(true)
 	h.statusBar = tview.NewTextView().SetDynamicColors(true)
 	h.pages = tview.NewPages()
@@ -20,8 +20,8 @@ func newHistoryTestApp(dataDir string, startAt string) *HistoryApp {
 	return h
 }
 
-func newHistoryTestAppWithRange(dataDir string, startAt string, begin, end *time.Time) *HistoryApp {
-	h := NewHistoryApp(dataDir, startAt, "", false, "test", begin, end)
+func newHistoryTestAppWithRange(dataDir string, begin, end *time.Time) *HistoryApp {
+	h := NewHistoryApp(dataDir, "", false, "test", begin, end)
 	h.panel = tview.NewTextView().SetDynamicColors(true)
 	h.statusBar = tview.NewTextView().SetDynamicColors(true)
 	h.pages = tview.NewPages()
@@ -58,7 +58,7 @@ func TestHistoryHandleKeyEventBracketNavigation(t *testing.T) {
 	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1, TotalQueue: 100}})
 	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 1, TotalQueue: 200}})
 
-	h := newHistoryTestApp(dir, HistoryStartLatest)
+	h := newHistoryTestApp(dir)
 	h.reloadIndex(true)
 	h.renderPanel()
 
@@ -91,7 +91,7 @@ func TestHistoryStartAtLatestSkipsTrailingEmptySnapshots(t *testing.T) {
 	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
 	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), nil) // empty latest
 
-	h := newHistoryTestApp(dir, HistoryStartLatest)
+	h := newHistoryTestApp(dir)
 	h.reloadIndex(true)
 
 	if h.currentIndex != 0 {
@@ -102,7 +102,7 @@ func TestHistoryStartAtLatestSkipsTrailingEmptySnapshots(t *testing.T) {
 func TestHistoryHandleKeyEventReadOnlyActions(t *testing.T) {
 	t.Parallel()
 
-	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h := newHistoryTestApp(t.TempDir())
 	h.refs = []history.SnapshotRef{{}}
 	h.currentIndex = 0
 	h.currentRecord = history.SnapshotRecord{Groups: []history.SnapshotGroup{{PeerIP: "198.51.100.10"}}}
@@ -132,7 +132,7 @@ func TestHistoryHandleKeyEventReadOnlyActions(t *testing.T) {
 func TestHistoryHandleKeyEventJumpTimeModal(t *testing.T) {
 	t.Parallel()
 
-	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h := newHistoryTestApp(t.TempDir())
 	h.refs = []history.SnapshotRef{{CapturedAt: time.Now().UTC()}}
 	h.currentIndex = 0
 
@@ -150,7 +150,7 @@ func TestHistoryHandleKeyEventJumpTimeModal(t *testing.T) {
 func TestHistoryHandleKeyEventIShowsSocketQueueExplain(t *testing.T) {
 	t.Parallel()
 
-	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h := newHistoryTestApp(t.TempDir())
 	h.refs = []history.SnapshotRef{{CapturedAt: time.Now().UTC()}}
 	h.currentIndex = 0
 
@@ -168,7 +168,7 @@ func TestHistoryHandleKeyEventIShowsSocketQueueExplain(t *testing.T) {
 func TestHistoryHandleKeyEventShiftSShowsTimelineSearchModal(t *testing.T) {
 	t.Parallel()
 
-	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h := newHistoryTestApp(t.TempDir())
 	h.refs = []history.SnapshotRef{{CapturedAt: time.Now().UTC()}}
 	h.currentIndex = 0
 
@@ -197,7 +197,7 @@ func TestHistoryFilterAppliesToCurrentSnapshotOnly(t *testing.T) {
 	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "172.25.110.76", LocalPort: 22, ProcName: "sshd", ConnCount: 3}})
 	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), []history.SnapshotGroup{{PeerIP: "172.25.110.77", LocalPort: 22, ProcName: "sshd", ConnCount: 2}})
 
-	h := newHistoryTestApp(dir, HistoryStartLatest)
+	h := newHistoryTestApp(dir)
 	h.reloadIndex(true)
 	h.textFilter = "172.25.110.76"
 
@@ -227,14 +227,14 @@ func TestHistoryReloadIndexAppliesBeginRangeFilter(t *testing.T) {
 	appendSnapshotFixture(t, writer, base.Add(2*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.30", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
 
 	begin := base.Add(1 * time.Minute)
-	h := newHistoryTestAppWithRange(dir, HistoryStartOldest, &begin, nil)
+	h := newHistoryTestAppWithRange(dir, &begin, nil)
 	h.reloadIndex(true)
 
 	if len(h.refs) != 2 {
 		t.Fatalf("expected 2 refs with begin filter, got=%d", len(h.refs))
 	}
-	if h.currentIndex != 0 {
-		t.Fatalf("start-at oldest should target first filtered snapshot, got index=%d", h.currentIndex)
+	if h.currentIndex != 1 {
+		t.Fatalf("replay should start at latest filtered snapshot, got index=%d", h.currentIndex)
 	}
 	if got := h.refs[0].CapturedAt; !got.Equal(begin) {
 		t.Fatalf("expected first ref at begin boundary, got=%s want=%s", got, begin)
@@ -257,14 +257,14 @@ func TestHistoryReloadIndexAppliesEndRangeFilter(t *testing.T) {
 	appendSnapshotFixture(t, writer, base.Add(2*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.30", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
 
 	end := base.Add(1 * time.Minute)
-	h := newHistoryTestAppWithRange(dir, HistoryStartLatest, nil, &end)
+	h := newHistoryTestAppWithRange(dir, nil, &end)
 	h.reloadIndex(true)
 
 	if len(h.refs) != 2 {
 		t.Fatalf("expected 2 refs with end filter, got=%d", len(h.refs))
 	}
 	if h.currentIndex != 1 {
-		t.Fatalf("start-at latest should target last filtered snapshot, got index=%d", h.currentIndex)
+		t.Fatalf("replay should start at latest filtered snapshot, got index=%d", h.currentIndex)
 	}
 	if got := h.refs[len(h.refs)-1].CapturedAt; !got.Equal(end) {
 		t.Fatalf("expected last ref at end boundary, got=%s want=%s", got, end)
@@ -288,7 +288,7 @@ func TestHistoryReloadIndexBeginEndInclusiveAndNoMatch(t *testing.T) {
 
 	begin := base.Add(1 * time.Minute)
 	end := base.Add(1 * time.Minute)
-	h := newHistoryTestAppWithRange(dir, HistoryStartLatest, &begin, &end)
+	h := newHistoryTestAppWithRange(dir, &begin, &end)
 	h.reloadIndex(true)
 	if len(h.refs) != 1 {
 		t.Fatalf("expected exactly 1 ref for inclusive equal begin/end, got=%d", len(h.refs))
@@ -299,7 +299,7 @@ func TestHistoryReloadIndexBeginEndInclusiveAndNoMatch(t *testing.T) {
 
 	noneBegin := base.Add(3 * time.Minute)
 	noneEnd := base.Add(4 * time.Minute)
-	hNone := newHistoryTestAppWithRange(dir, HistoryStartLatest, &noneBegin, &noneEnd)
+	hNone := newHistoryTestAppWithRange(dir, &noneBegin, &noneEnd)
 	hNone.reloadIndex(true)
 	if len(hNone.refs) != 0 {
 		t.Fatalf("expected no refs in unmatched range, got=%d", len(hNone.refs))
@@ -339,7 +339,7 @@ func TestHistoryReloadIndexAppliesFileScopeIntersectRange(t *testing.T) {
 
 	begin := day2
 	end := day2.Add(1 * time.Hour)
-	h := NewHistoryApp(dir, HistoryStartLatest, fileName, false, "test", &begin, &end)
+	h := NewHistoryApp(dir, fileName, false, "test", &begin, &end)
 	h.panel = tview.NewTextView().SetDynamicColors(true)
 	h.statusBar = tview.NewTextView().SetDynamicColors(true)
 	h.pages = tview.NewPages()
@@ -374,7 +374,7 @@ func TestHistoryTimelineSearchMatchesAcrossLoadedSnapshots(t *testing.T) {
 		{PeerIP: "198.51.100.30", LocalPort: 8080, ProcName: "curl", ConnCount: 1},
 	})
 
-	h := newHistoryTestApp(dir, HistoryStartLatest)
+	h := newHistoryTestApp(dir)
 	h.reloadIndex(true)
 
 	results := h.scanTimelineMatches("curl", h.refs)
@@ -412,7 +412,7 @@ func TestHistoryTimelineSearchJumpKeepsCurrentTextFilter(t *testing.T) {
 		{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 1},
 	})
 
-	h := newHistoryTestApp(dir, HistoryStartLatest)
+	h := newHistoryTestApp(dir)
 	h.reloadIndex(true)
 	if h.currentIndex != 1 {
 		t.Fatalf("expected to start at latest index=1, got=%d", h.currentIndex)
@@ -456,27 +456,27 @@ func TestHistoryNavigationSkipsEmptyByDefault(t *testing.T) {
 	appendSnapshotFixture(t, writer, base.Add(2*time.Minute), nil)
 	appendSnapshotFixture(t, writer, base.Add(3*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.20", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
 
-	h := newHistoryTestApp(dir, HistoryStartOldest)
+	h := newHistoryTestApp(dir)
 	h.reloadIndex(true)
-	if h.currentIndex != 0 {
-		t.Fatalf("expected start at oldest non-empty index=0, got=%d", h.currentIndex)
-	}
-
-	h.navigateNext()
 	if h.currentIndex != 3 {
-		t.Fatalf("expected next to skip empties and jump to index=3, got=%d", h.currentIndex)
+		t.Fatalf("expected start at latest non-empty index=3, got=%d", h.currentIndex)
 	}
 
 	h.navigatePrev()
 	if h.currentIndex != 0 {
-		t.Fatalf("expected prev to skip empties and jump back to index=0, got=%d", h.currentIndex)
+		t.Fatalf("expected prev to skip empties and jump to index=0, got=%d", h.currentIndex)
+	}
+
+	h.navigateNext()
+	if h.currentIndex != 3 {
+		t.Fatalf("expected next to skip empties and jump back to index=3, got=%d", h.currentIndex)
 	}
 }
 
 func TestHistoryToggleSkipEmptyWithX(t *testing.T) {
 	t.Parallel()
 
-	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h := newHistoryTestApp(t.TempDir())
 	h.refs = []history.SnapshotRef{{ConnCount: 1}}
 	h.currentIndex = 0
 	h.currentRecord = history.SnapshotRecord{Groups: []history.SnapshotGroup{{PeerIP: "198.51.100.10"}}}
@@ -502,7 +502,7 @@ func TestHistoryToggleSkipEmptyWithX(t *testing.T) {
 func TestHistoryBuildJumpSummaryMentionsMissingDate(t *testing.T) {
 	t.Parallel()
 
-	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h := newHistoryTestApp(t.TempDir())
 	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.Local)
 	h.refs = []history.SnapshotRef{
 		{CapturedAt: base},
@@ -521,7 +521,7 @@ func TestHistoryBuildJumpSummaryMentionsMissingDate(t *testing.T) {
 func TestHistoryStatusBarKeepsLastMessageAfterTTL(t *testing.T) {
 	t.Parallel()
 
-	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h := newHistoryTestApp(t.TempDir())
 	h.statusBar = tview.NewTextView().SetDynamicColors(true)
 	h.setStatusNote("test message", 100*time.Millisecond)
 	time.Sleep(150 * time.Millisecond)
@@ -535,7 +535,7 @@ func TestHistoryStatusBarKeepsLastMessageAfterTTL(t *testing.T) {
 func TestHistoryAggregateSortModes(t *testing.T) {
 	t.Parallel()
 
-	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h := newHistoryTestApp(t.TempDir())
 	h.refs = []history.SnapshotRef{{}}
 	h.currentIndex = 0
 	h.currentRecord = history.SnapshotRecord{Groups: []history.SnapshotGroup{
@@ -565,7 +565,7 @@ func TestHistoryAggregateSortModes(t *testing.T) {
 func TestHistoryAggregateSortDirectionToggle(t *testing.T) {
 	t.Parallel()
 
-	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h := newHistoryTestApp(t.TempDir())
 	h.refs = []history.SnapshotRef{{}}
 	h.currentIndex = 0
 	h.currentRecord = history.SnapshotRecord{Groups: []history.SnapshotGroup{
@@ -645,7 +645,7 @@ func TestParseHistoryJumpTime(t *testing.T) {
 func TestHistoryClosestSnapshotIndex(t *testing.T) {
 	t.Parallel()
 
-	h := newHistoryTestApp(t.TempDir(), HistoryStartLatest)
+	h := newHistoryTestApp(t.TempDir())
 	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
 	h.refs = []history.SnapshotRef{
 		{CapturedAt: base},

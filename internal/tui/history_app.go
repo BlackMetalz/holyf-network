@@ -13,11 +13,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-const (
-	HistoryStartLatest = "latest"
-	HistoryStartOldest = "oldest"
-)
-
 // HistoryApp is read-only replay UI for persisted connection snapshots.
 type HistoryApp struct {
 	app       *tview.Application
@@ -27,7 +22,6 @@ type HistoryApp struct {
 	layout    *tview.Flex
 
 	dataDir     string
-	startAt     string
 	segmentFile string
 	rangeBegin  *time.Time
 	rangeEnd    *time.Time
@@ -64,11 +58,7 @@ type HistoryApp struct {
 	stopChan chan struct{}
 }
 
-func NewHistoryApp(dataDir, startAt, segmentFile string, sensitiveIP bool, appVersion string, rangeBegin, rangeEnd *time.Time) *HistoryApp {
-	startAt = strings.TrimSpace(strings.ToLower(startAt))
-	if startAt != HistoryStartOldest {
-		startAt = HistoryStartLatest
-	}
+func NewHistoryApp(dataDir, segmentFile string, sensitiveIP bool, appVersion string, rangeBegin, rangeEnd *time.Time) *HistoryApp {
 	version := strings.TrimSpace(appVersion)
 	if version == "" {
 		version = "dev"
@@ -77,7 +67,6 @@ func NewHistoryApp(dataDir, startAt, segmentFile string, sensitiveIP bool, appVe
 	return &HistoryApp{
 		app:              tview.NewApplication(),
 		dataDir:          history.ExpandPath(dataDir),
-		startAt:          startAt,
 		segmentFile:      strings.TrimSpace(segmentFile),
 		rangeBegin:       cloneOptionalTime(rangeBegin),
 		rangeEnd:         cloneOptionalTime(rangeEnd),
@@ -179,7 +168,7 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 
 	target := h.currentIndex
 	if selectStart {
-		target = h.startIndex()
+		target = len(h.refs) - 1
 		target = h.adjustStartIndexForSkipEmpty(target)
 	} else if h.followLatest {
 		target = h.adjustLatestIndexForSkipEmpty(len(h.refs) - 1)
@@ -202,16 +191,6 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 	target = h.adjustGenericIndexForSkipEmpty(target)
 
 	h.loadSnapshotAt(target)
-}
-
-func (h *HistoryApp) startIndex() int {
-	if len(h.refs) == 0 {
-		return -1
-	}
-	if h.startAt == HistoryStartOldest {
-		return 0
-	}
-	return len(h.refs) - 1
 }
 
 func (h *HistoryApp) loadSnapshotAt(index int) {
@@ -600,16 +579,6 @@ func (h *HistoryApp) adjustStartIndexForSkipEmpty(target int) int {
 		return target
 	}
 	if h.refs[target].ConnCount > 0 {
-		return target
-	}
-
-	if h.startAt == HistoryStartOldest {
-		if idx, skipped, ok := h.findNextNonEmptyIndex(target); ok {
-			if skipped > 0 {
-				h.setStatusNote(fmt.Sprintf("Oldest is empty, jumped forward %d snapshots", skipped), 5*time.Second)
-			}
-			return idx
-		}
 		return target
 	}
 

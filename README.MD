@@ -117,8 +117,8 @@ Daemon notes:
 # Open replay UI at latest snapshot
 holyf-network replay
 
-# Start from oldest snapshot and mask IP prefixes in UI
-holyf-network replay --start-at oldest --sensitive-ip
+# Open replay UI with masked IP prefixes
+holyf-network replay --sensitive-ip
 
 # Open one specific daily snapshot segment file
 holyf-network replay --file connections-20260304.jsonl
@@ -133,6 +133,11 @@ holyf-network replay --file connections-20260304.jsonl -b 20:00 -e 23:59
 # shorthand:
 holyf-network replay -f connections-20260304.jsonl -b 20:00 -e 23:59
 ```
+
+Replay path resolution:
+- Default (`holyf-network replay`): uses active daemon `data_dir` from state file.
+- If no active daemon state is found, falls back to system default snapshot path.
+- `--data-dir` still exists as an advanced override (hidden from help output).
 
 Replay hotkeys:
 - left/right bracket (`[` / `]`): previous/next snapshot

@@ -13,7 +13,6 @@ import (
 
 type replayOptions struct {
 	dataDir     string
-	startAt     string
 	segmentFile string
 	sensitiveIP bool
 	begin       string
@@ -27,10 +26,6 @@ func newReplayCmd() *cobra.Command {
 		Use:   "replay",
 		Short: "Open read-only replay UI for connection snapshots",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if opts.startAt != tui.HistoryStartLatest && opts.startAt != tui.HistoryStartOldest {
-				return fmt.Errorf("start-at must be '%s' or '%s'", tui.HistoryStartLatest, tui.HistoryStartOldest)
-			}
-
 			beginAt, err := resolveReplayBoundTime(opts.begin, time.Now(), opts.segmentFile)
 			if err != nil {
 				return fmt.Errorf("invalid --begin: %w (use YYYY-MM-DD HH:MM[:SS], HH:MM[:SS], yesterday HH:MM[:SS], or RFC3339)", err)
@@ -44,12 +39,9 @@ func newReplayCmd() *cobra.Command {
 				return fmt.Errorf("invalid time window: --begin must be <= --end")
 			}
 
-			dataDir := history.ExpandPath(opts.dataDir)
-			if dataDir == "" {
-				dataDir = history.DefaultDataDir()
-			}
-			if dataDir == "" {
-				return fmt.Errorf("cannot determine default data dir")
+			dataDir, err := resolveReplayDataDir(opts.dataDir, cmd.Flags().Changed("data-dir"))
+			if err != nil {
+				return err
 			}
 			if strings.TrimSpace(opts.segmentFile) != "" {
 				if _, _, err := history.LoadIndexFromFile(dataDir, opts.segmentFile); err != nil {
@@ -59,7 +51,6 @@ func newReplayCmd() *cobra.Command {
 
 			app := tui.NewHistoryApp(
 				dataDir,
-				opts.startAt,
 				opts.segmentFile,
 				opts.sensitiveIP,
 				resolveBuildVersion(Version),
@@ -70,14 +61,37 @@ func newReplayCmd() *cobra.Command {
 		},
 	}
 
-	replayCmd.Flags().StringVar(&opts.dataDir, "data-dir", history.DefaultDataDir(), "Snapshot data directory")
-	replayCmd.Flags().StringVar(&opts.startAt, "start-at", tui.HistoryStartLatest, "Starting snapshot position: latest|oldest")
+	replayCmd.Flags().StringVar(&opts.dataDir, "data-dir", "", "Snapshot data directory (advanced override)")
 	replayCmd.Flags().StringVarP(&opts.segmentFile, "file", "f", "", "Read snapshots from one segment file (e.g. connections-20260304.jsonl)")
 	replayCmd.Flags().BoolVar(&opts.sensitiveIP, "sensitive-ip", false, "Hide the first 2 IP octets/groups in replay view")
 	replayCmd.Flags().StringVarP(&opts.begin, "begin", "b", "", "Replay begin time (inclusive): YYYY-MM-DD HH:MM[:SS], HH:MM[:SS], yesterday HH:MM[:SS], or RFC3339")
 	replayCmd.Flags().StringVarP(&opts.end, "end", "e", "", "Replay end time (inclusive): YYYY-MM-DD HH:MM[:SS], HH:MM[:SS], yesterday HH:MM[:SS], or RFC3339")
+	_ = replayCmd.Flags().MarkHidden("data-dir")
 
 	return replayCmd
+}
+
+func resolveReplayDataDir(raw string, explicit bool) (string, error) {
+	if explicit {
+		if dataDir := strings.TrimSpace(history.ExpandPath(raw)); dataDir != "" {
+			return dataDir, nil
+		}
+	}
+
+	stateFile := defaultDaemonStatePath()
+	if strings.TrimSpace(stateFile) != "" {
+		if exists, state, running, err := readActiveStateStatus(stateFile); err == nil && exists && running {
+			if dataDir := strings.TrimSpace(history.ExpandPath(state.DataDir)); dataDir != "" {
+				return dataDir, nil
+			}
+		}
+	}
+
+	dataDir := strings.TrimSpace(history.ExpandPath(history.DefaultDataDir()))
+	if dataDir == "" {
+		return "", fmt.Errorf("cannot determine default data dir")
+	}
+	return dataDir, nil
 }
 
 func resolveReplayBoundTime(raw string, now time.Time, segmentFile string) (*time.Time, error) {

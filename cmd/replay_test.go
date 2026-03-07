@@ -1,9 +1,13 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/BlackMetalz/holyf-network/internal/history"
 )
 
 func TestReplayFileFlagHasShortF(t *testing.T) {
@@ -16,6 +20,84 @@ func TestReplayFileFlagHasShortF(t *testing.T) {
 	}
 	if flag.Shorthand != "f" {
 		t.Fatalf("expected --file shorthand to be -f, got %q", flag.Shorthand)
+	}
+}
+
+func TestReplayDataDirFlagHidden(t *testing.T) {
+	t.Parallel()
+
+	cmd := newReplayCmd()
+	flag := cmd.Flags().Lookup("data-dir")
+	if flag == nil {
+		t.Fatalf("expected replay command to have --data-dir flag")
+	}
+	if !flag.Hidden {
+		t.Fatalf("expected replay --data-dir to be hidden")
+	}
+}
+
+func TestResolveReplayDataDirUsesActiveStateWhenImplicit(t *testing.T) {
+	stateFile := filepath.Join(t.TempDir(), "daemon.state")
+	t.Setenv("HOLYF_NETWORK_DAEMON_STATE_FILE", stateFile)
+
+	stateDir := filepath.Join(t.TempDir(), "state-data")
+	state := daemonActiveState{
+		PID:      os.Getpid(),
+		DataDir:  stateDir,
+		PIDFile:  filepath.Join(stateDir, "daemon.pid"),
+		LogFile:  filepath.Join(stateDir, "daemon.log"),
+		LockFile: filepath.Join(stateDir, ".daemon.lock"),
+	}
+	if err := writeActiveState(stateFile, state); err != nil {
+		t.Fatalf("write active-state: %v", err)
+	}
+
+	got, err := resolveReplayDataDir("", false)
+	if err != nil {
+		t.Fatalf("resolveReplayDataDir: %v", err)
+	}
+	if got != stateDir {
+		t.Fatalf("expected data-dir from active-state, got=%q want=%q", got, stateDir)
+	}
+}
+
+func TestResolveReplayDataDirExplicitOverridesActiveState(t *testing.T) {
+	stateFile := filepath.Join(t.TempDir(), "daemon.state")
+	t.Setenv("HOLYF_NETWORK_DAEMON_STATE_FILE", stateFile)
+
+	stateDir := filepath.Join(t.TempDir(), "state-data")
+	state := daemonActiveState{
+		PID:      os.Getpid(),
+		DataDir:  stateDir,
+		PIDFile:  filepath.Join(stateDir, "daemon.pid"),
+		LogFile:  filepath.Join(stateDir, "daemon.log"),
+		LockFile: filepath.Join(stateDir, ".daemon.lock"),
+	}
+	if err := writeActiveState(stateFile, state); err != nil {
+		t.Fatalf("write active-state: %v", err)
+	}
+
+	explicitDir := filepath.Join(t.TempDir(), "explicit-data")
+	got, err := resolveReplayDataDir(explicitDir, true)
+	if err != nil {
+		t.Fatalf("resolveReplayDataDir: %v", err)
+	}
+	if got != explicitDir {
+		t.Fatalf("expected explicit data-dir to win, got=%q want=%q", got, explicitDir)
+	}
+}
+
+func TestResolveReplayDataDirFallsBackToDefault(t *testing.T) {
+	stateFile := filepath.Join(t.TempDir(), "missing-daemon.state")
+	t.Setenv("HOLYF_NETWORK_DAEMON_STATE_FILE", stateFile)
+
+	got, err := resolveReplayDataDir("", false)
+	if err != nil {
+		t.Fatalf("resolveReplayDataDir: %v", err)
+	}
+	want := history.ExpandPath(history.DefaultDataDir())
+	if got != want {
+		t.Fatalf("expected fallback default data-dir, got=%q want=%q", got, want)
 	}
 }
 
