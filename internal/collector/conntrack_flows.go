@@ -72,7 +72,7 @@ func CollectConntrackFlowsTCP() ([]ConntrackFlow, error) {
 		}
 		if allZero {
 			if enabled, ok := conntrackAccountingEnabled(); ok && !enabled {
-				return nil, fmt.Errorf("conntrack bytes accounting disabled (set net.netfilter.nf_conntrack_acct=1)")
+				return flows, fmt.Errorf("conntrack bytes accounting disabled (set net.netfilter.nf_conntrack_acct=1)")
 			}
 		}
 	}
@@ -150,13 +150,22 @@ func parseConntrackFlowLine(line string) (ConntrackFlow, bool) {
 		}
 	}
 
-	if len(srcVals) < 2 || len(dstVals) < 2 || len(sportVals) < 2 || len(dportVals) < 2 || len(byteVals) < 2 {
+	if len(srcVals) < 2 || len(dstVals) < 2 || len(sportVals) < 2 || len(dportVals) < 2 {
 		return ConntrackFlow{}, false
 	}
 
 	state := "UNKNOWN"
 	if len(fields) > 3 && !strings.Contains(fields[3], "=") {
 		state = strings.TrimSpace(fields[3])
+	}
+
+	origBytes := int64(0)
+	replyBytes := int64(0)
+	if len(byteVals) >= 1 {
+		origBytes = byteVals[0]
+	}
+	if len(byteVals) >= 2 {
+		replyBytes = byteVals[1]
 	}
 
 	return ConntrackFlow{
@@ -173,7 +182,7 @@ func parseConntrackFlowLine(line string) (ConntrackFlow, bool) {
 			DstIP:   dstVals[1],
 			DstPort: dportVals[1],
 		},
-		OrigBytes:  byteVals[0],
-		ReplyBytes: byteVals[1],
+		OrigBytes:  origBytes,
+		ReplyBytes: replyBytes,
 	}, true
 }

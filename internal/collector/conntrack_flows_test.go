@@ -45,12 +45,16 @@ func TestParseConntrackFlowLineIPv4MappedIPv6(t *testing.T) {
 	}
 }
 
-func TestParseConntrackFlowLineInvalid(t *testing.T) {
+func TestParseConntrackFlowLineWithoutBytesStillParses(t *testing.T) {
 	t.Parallel()
 
 	line := "tcp 6 120 ESTABLISHED src=10.0.0.2 dst=10.0.0.1 sport=443 dport=43000 packets=10 src=10.0.0.1 dst=10.0.0.2 sport=43000 dport=443 packets=9"
-	if _, ok := parseConntrackFlowLine(line); ok {
-		t.Fatalf("expected parse to fail for missing bytes fields")
+	flow, ok := parseConntrackFlowLine(line)
+	if !ok {
+		t.Fatalf("expected parse success even when bytes are missing")
+	}
+	if flow.OrigBytes != 0 || flow.ReplyBytes != 0 {
+		t.Fatalf("expected missing bytes to default to 0, got orig=%d reply=%d", flow.OrigBytes, flow.ReplyBytes)
 	}
 }
 
