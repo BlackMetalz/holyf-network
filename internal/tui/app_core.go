@@ -541,7 +541,7 @@ func (a *App) updateStatusBar() {
 	page := a.frontPageName()
 	hotkeysStyled, hotkeysPlain := statusHotkeysForPage(page)
 	leftStyled := fmt.Sprintf(
-		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh: [green]%ds[white] | %s",
+		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh Intervals: [green]%ds[white] | %s",
 		a.ifaceName,
 		stateText,
 		ago,
@@ -549,7 +549,7 @@ func (a *App) updateStatusBar() {
 		hotkeysStyled,
 	)
 	leftPlain := fmt.Sprintf(
-		" %s |%s Updated: %s | Refresh: %ds | %s",
+		" %s |%s Updated: %s | Refresh Intervals: %ds | %s",
 		a.ifaceName,
 		stripStatusColors(stateText),
 		ago,
