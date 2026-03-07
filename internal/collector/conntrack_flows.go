@@ -2,8 +2,10 @@ package collector
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -28,16 +30,150 @@ type ConntrackFlow struct {
 // CollectConntrackFlowsTCP reads TCP flow counters from conntrack.
 // It requires conntrack-tools and typically root/sudo privileges.
 func CollectConntrackFlowsTCP() ([]ConntrackFlow, error) {
-	out, err := exec.Command("conntrack", "-L", "-p", "tcp", "-o", "extended", "-n").CombinedOutput()
-	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if msg == "" {
-			msg = err.Error()
+	var (
+		candidateLines int
+		successfulDump bool
+		lastError      error
+	)
+	merged := make(map[string]ConntrackFlow)
+	dumps := [][]string{
+		{"-L", "-p", "tcp", "-o", "extended", "-n"},
+		{"-L", "-p", "tcp"},
+	}
+	for _, args := range dumps {
+		out, err := exec.Command("conntrack", args...).CombinedOutput()
+		if err != nil {
+			msg := strings.TrimSpace(string(out))
+			if msg == "" {
+				msg = err.Error()
+			}
+			lastError = fmt.Errorf("conntrack flow dump failed: %s", msg)
+			continue
 		}
-		return nil, fmt.Errorf("conntrack flow dump failed: %s", msg)
+
+		successfulDump = true
+		parsed, candidates := parseConntrackFlowsOutput(string(out))
+		candidateLines += candidates
+		if len(parsed) == 0 {
+			if candidates > 0 {
+				// Candidate rows existed but none parsed: keep trying other formats.
+				lastError = fmt.Errorf("conntrack flow parse failed: no valid TCP flow rows decoded")
+			}
+			continue
+		}
+		mergeConntrackFlowSet(merged, parsed)
 	}
 
-	lines := strings.Split(string(out), "\n")
+	flows := conntrackFlowMapToSortedSlice(merged)
+	if len(flows) == 0 {
+		if !successfulDump && lastError != nil {
+			return nil, lastError
+		}
+		if candidateLines > 0 {
+			if enabled, ok := conntrackAccountingEnabled(); ok && !enabled {
+				return nil, fmt.Errorf("conntrack bytes accounting disabled (set net.netfilter.nf_conntrack_acct=1)")
+			}
+			if lastError != nil {
+				return nil, lastError
+			}
+			return nil, fmt.Errorf("conntrack flow parse failed: no valid TCP flow rows decoded")
+		}
+		// Empty result can be legitimate: no current TCP conntrack entries.
+		return nil, nil
+	}
+
+	allZero := true
+	for _, flow := range flows {
+		if flow.OrigBytes > 0 || flow.ReplyBytes > 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		if enabled, ok := conntrackAccountingEnabled(); ok && !enabled {
+			return flows, fmt.Errorf("conntrack bytes accounting disabled (set net.netfilter.nf_conntrack_acct=1)")
+		}
+	}
+
+	return flows, nil
+}
+
+func mergeConntrackFlowSet(dst map[string]ConntrackFlow, flows []ConntrackFlow) {
+	for _, flow := range flows {
+		key := conntrackFlowCanonicalKey(flow)
+		existing, exists := dst[key]
+		if !exists || shouldPreferConntrackFlow(existing, flow) {
+			dst[key] = flow
+		}
+	}
+}
+
+func conntrackFlowMapToSortedSlice(rows map[string]ConntrackFlow) []ConntrackFlow {
+	if len(rows) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(rows))
+	for key := range rows {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	out := make([]ConntrackFlow, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, rows[key])
+	}
+	return out
+}
+
+func conntrackFlowCanonicalKey(flow ConntrackFlow) string {
+	orig := normalizeFlowTuple(flow.Orig)
+	reply := normalizeFlowTuple(flow.Reply)
+	left := conntrackFlowTupleKey(orig)
+	right := conntrackFlowTupleKey(reply)
+	if left <= right {
+		return left + "|" + right
+	}
+	return right + "|" + left
+}
+
+func conntrackFlowTupleKey(t FlowTuple) string {
+	return fmt.Sprintf("%s:%d>%s:%d", normalizeFlowIP(t.SrcIP), t.SrcPort, normalizeFlowIP(t.DstIP), t.DstPort)
+}
+
+func shouldPreferConntrackFlow(current, candidate ConntrackFlow) bool {
+	currentNonZero := countNonZeroByteFields(current)
+	candidateNonZero := countNonZeroByteFields(candidate)
+	if candidateNonZero != currentNonZero {
+		return candidateNonZero > currentNonZero
+	}
+
+	currentTotal := current.OrigBytes + current.ReplyBytes
+	candidateTotal := candidate.OrigBytes + candidate.ReplyBytes
+	if candidateTotal != currentTotal {
+		return candidateTotal > currentTotal
+	}
+
+	currentState := strings.ToUpper(strings.TrimSpace(current.State))
+	candidateState := strings.ToUpper(strings.TrimSpace(candidate.State))
+	if currentState != "ESTABLISHED" && candidateState == "ESTABLISHED" {
+		return true
+	}
+
+	return false
+}
+
+func countNonZeroByteFields(flow ConntrackFlow) int {
+	count := 0
+	if flow.OrigBytes > 0 {
+		count++
+	}
+	if flow.ReplyBytes > 0 {
+		count++
+	}
+	return count
+}
+
+func parseConntrackFlowsOutput(raw string) ([]ConntrackFlow, int) {
+	lines := strings.Split(raw, "\n")
 	flows := make([]ConntrackFlow, 0, len(lines))
 	candidateLines := 0
 	for _, line := range lines {
@@ -56,29 +192,7 @@ func CollectConntrackFlowsTCP() ([]ConntrackFlow, error) {
 		}
 		flows = append(flows, flow)
 	}
-	if candidateLines > 0 && len(flows) == 0 {
-		if enabled, ok := conntrackAccountingEnabled(); ok && !enabled {
-			return nil, fmt.Errorf("conntrack bytes accounting disabled (set net.netfilter.nf_conntrack_acct=1)")
-		}
-		return nil, fmt.Errorf("conntrack flow parse failed: no valid TCP flow rows decoded")
-	}
-	if len(flows) > 0 {
-		allZero := true
-		for _, flow := range flows {
-			if flow.OrigBytes > 0 || flow.ReplyBytes > 0 {
-				allZero = false
-				break
-			}
-		}
-		if allZero {
-			if enabled, ok := conntrackAccountingEnabled(); ok && !enabled {
-				return flows, fmt.Errorf("conntrack bytes accounting disabled (set net.netfilter.nf_conntrack_acct=1)")
-			}
-		}
-	}
-
-	// Empty result can be legitimate: no current TCP conntrack entries.
-	return flows, nil
+	return flows, candidateLines
 }
 
 func looksLikeConntrackFlowLine(line string) bool {
@@ -130,14 +244,14 @@ func parseConntrackFlowLine(line string) (ConntrackFlow, bool) {
 		case "dst":
 			dstVals = append(dstVals, value)
 		case "sport":
-			port, err := strconv.Atoi(value)
-			if err != nil || port < 1 || port > 65535 {
+			port, ok := parseConntrackPort(value)
+			if !ok {
 				return ConntrackFlow{}, false
 			}
 			sportVals = append(sportVals, port)
 		case "dport":
-			port, err := strconv.Atoi(value)
-			if err != nil || port < 1 || port > 65535 {
+			port, ok := parseConntrackPort(value)
+			if !ok {
 				return ConntrackFlow{}, false
 			}
 			dportVals = append(dportVals, port)
@@ -185,4 +299,16 @@ func parseConntrackFlowLine(line string) (ConntrackFlow, bool) {
 		OrigBytes:  origBytes,
 		ReplyBytes: replyBytes,
 	}, true
+}
+
+func parseConntrackPort(raw string) (int, bool) {
+	port, err := strconv.Atoi(raw)
+	if err == nil && port >= 1 && port <= 65535 {
+		return port, true
+	}
+	lookup, err := net.LookupPort("tcp", raw)
+	if err != nil || lookup < 1 || lookup > 65535 {
+		return 0, false
+	}
+	return lookup, true
 }

@@ -226,15 +226,8 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 			stateColor = "red"
 		}
 
-		// Format PID/process info: "1234/nginx" or "-"
-		procInfo := "-"
-		if conn.PID > 0 {
-			if conn.ProcName != "" {
-				procInfo = fmt.Sprintf("%d/%s", conn.PID, conn.ProcName)
-			} else {
-				procInfo = fmt.Sprintf("%d", conn.PID)
-			}
-		}
+		// Format process info: "1234/nginx", "1234", "ct/nat", or "-"
+		procInfo := formatProcessInfo(conn)
 		// Truncate to fit column width
 		procInfo = truncateRight(procInfo, processColWidth)
 		src := formatEndpoint(conn.LocalIP, conn.LocalPort, endpointColWidth, sensitiveIP)
@@ -338,14 +331,7 @@ func filterByText(conns []collector.Connection, query string) []collector.Connec
 
 	result := make([]collector.Connection, 0, len(conns))
 	for _, conn := range conns {
-		procInfo := "-"
-		if conn.PID > 0 {
-			if conn.ProcName != "" {
-				procInfo = fmt.Sprintf("%d/%s", conn.PID, conn.ProcName)
-			} else {
-				procInfo = fmt.Sprintf("%d", conn.PID)
-			}
-		}
+		procInfo := formatProcessInfo(conn)
 		haystack := strings.ToLower(strings.Join([]string{
 			procInfo,
 			normalizeIP(conn.LocalIP),
@@ -369,6 +355,19 @@ func filterByText(conns []collector.Connection, query string) []collector.Connec
 		}
 	}
 	return result
+}
+
+func formatProcessInfo(conn collector.Connection) string {
+	if conn.PID > 0 && conn.ProcName != "" {
+		return fmt.Sprintf("%d/%s", conn.PID, conn.ProcName)
+	}
+	if conn.PID > 0 {
+		return fmt.Sprintf("%d", conn.PID)
+	}
+	if strings.TrimSpace(conn.ProcName) != "" {
+		return strings.TrimSpace(conn.ProcName)
+	}
+	return "-"
 }
 
 // formatBytes converts bytes to human-readable format (no "/s" suffix).

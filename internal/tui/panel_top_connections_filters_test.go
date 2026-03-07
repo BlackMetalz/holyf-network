@@ -121,3 +121,34 @@ func TestVisiblePeerGroupsPortFilterAffectsGroupedResultsAndClearingRestoresAll(
 		t.Fatalf("expected 3 peer groups after clearing filter, got %d", len(restored))
 	}
 }
+
+func TestFormatProcessInfoSupportsConntrackSyntheticRow(t *testing.T) {
+	t.Parallel()
+
+	conn := collector.Connection{
+		PID:      0,
+		ProcName: "ct/nat",
+	}
+	if got := formatProcessInfo(conn); got != "ct/nat" {
+		t.Fatalf("expected synthetic process label ct/nat, got=%q", got)
+	}
+}
+
+func TestRenderTalkersPanelShowsSyntheticProcessWhenNoPID(t *testing.T) {
+	t.Parallel()
+
+	conns := []collector.Connection{
+		{
+			LocalIP:    "172.25.110.76",
+			LocalPort:  3306,
+			RemoteIP:   "172.25.110.116",
+			RemotePort: 43286,
+			State:      "ESTABLISHED",
+			ProcName:   "ct/nat",
+		},
+	}
+	text := renderTalkersPanel(conns, "", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), "")
+	if !strings.Contains(text, "ct/nat") {
+		t.Fatalf("expected synthetic process label to render, got: %q", text)
+	}
+}

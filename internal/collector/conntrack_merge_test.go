@@ -39,6 +39,9 @@ func TestMergeConntrackHostFlowsAddsMissingHostFacingTuple(t *testing.T) {
 	if got[0].State != "ESTABLISHED" {
 		t.Fatalf("expected state ESTABLISHED, got=%q", got[0].State)
 	}
+	if got[0].ProcName != "ct/nat" {
+		t.Fatalf("expected synthetic proc name ct/nat, got=%q", got[0].ProcName)
+	}
 }
 
 func TestMergeConntrackHostFlowsSkipsDuplicateExistingTuple(t *testing.T) {
@@ -107,6 +110,36 @@ func TestMergeConntrackHostFlowsIgnoresFlowsOutsideLocalHost(t *testing.T) {
 	got := mergeConntrackHostFlowsWithLocalSet(nil, flows, localSet)
 	if len(got) != 0 {
 		t.Fatalf("expected 0 synthetic conns for non-local flow, got=%d", len(got))
+	}
+}
+
+func TestMergeConntrackHostFlowsSkipsNonEstablishedState(t *testing.T) {
+	t.Parallel()
+
+	flows := []ConntrackFlow{
+		{
+			State: "TIME_WAIT",
+			Orig: FlowTuple{
+				SrcIP:   "172.25.110.116",
+				SrcPort: 49410,
+				DstIP:   "172.25.110.76",
+				DstPort: 3306,
+			},
+			Reply: FlowTuple{
+				SrcIP:   "172.20.0.2",
+				SrcPort: 3306,
+				DstIP:   "172.25.110.116",
+				DstPort: 49410,
+			},
+		},
+	}
+	localSet := map[string]struct{}{
+		"172.25.110.76": {},
+	}
+
+	got := mergeConntrackHostFlowsWithLocalSet(nil, flows, localSet)
+	if len(got) != 0 {
+		t.Fatalf("expected non-established flow to be skipped, got=%d", len(got))
 	}
 }
 

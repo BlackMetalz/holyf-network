@@ -29,6 +29,10 @@ func mergeConntrackHostFlowsWithLocalSet(conns []Connection, flows []ConntrackFl
 	}
 
 	for _, flow := range flows {
+		state := strings.ToUpper(strings.TrimSpace(flow.State))
+		if state != "ESTABLISHED" {
+			continue
+		}
 		localIP, localPort, remoteIP, remotePort, ok := hostFacingTuple(flow.Orig, localIPs)
 		if !ok {
 			continue
@@ -39,21 +43,17 @@ func mergeConntrackHostFlowsWithLocalSet(conns []Connection, flows []ConntrackFl
 		}
 		seen[key] = struct{}{}
 
-		state := strings.TrimSpace(flow.State)
-		if state == "" {
-			state = "UNKNOWN"
-		}
 		out = append(out, Connection{
 			LocalIP:    localIP,
 			LocalPort:  localPort,
 			RemoteIP:   remoteIP,
 			RemotePort: remotePort,
-			State:      state,
+			State:      "ESTABLISHED",
 			TxQueue:    0,
 			RxQueue:    0,
 			Activity:   0,
 			PID:        0,
-			ProcName:   "",
+			ProcName:   "ct/nat",
 			Inode:      "",
 		})
 	}
