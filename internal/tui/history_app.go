@@ -168,7 +168,7 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 
 	target := h.currentIndex
 	if selectStart {
-		target = len(h.refs) - 1
+		target = 0
 		target = h.adjustStartIndexForSkipEmpty(target)
 	} else if h.followLatest {
 		target = h.adjustLatestIndexForSkipEmpty(len(h.refs) - 1)
@@ -186,7 +186,11 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 	}
 
 	if target < 0 || target >= len(h.refs) {
-		target = len(h.refs) - 1
+		if selectStart {
+			target = 0
+		} else {
+			target = len(h.refs) - 1
+		}
 	}
 	target = h.adjustGenericIndexForSkipEmpty(target)
 
@@ -582,9 +586,9 @@ func (h *HistoryApp) adjustStartIndexForSkipEmpty(target int) int {
 		return target
 	}
 
-	if idx, skipped, ok := h.findPrevNonEmptyIndex(target); ok {
+	if idx, skipped, ok := h.findNextNonEmptyIndex(target); ok {
 		if skipped > 0 {
-			h.setStatusNote(fmt.Sprintf("Latest is empty, jumped back %d snapshots", skipped), 5*time.Second)
+			h.setStatusNote(fmt.Sprintf("Oldest is empty, jumped forward %d snapshots", skipped), 5*time.Second)
 		}
 		return idx
 	}

@@ -62,8 +62,8 @@ func TestHistoryHandleKeyEventBracketNavigation(t *testing.T) {
 	h.reloadIndex(true)
 	h.renderPanel()
 
-	if h.currentIndex != 1 {
-		t.Fatalf("expected start at latest index=1, got=%d", h.currentIndex)
+	if h.currentIndex != 0 {
+		t.Fatalf("expected start at oldest index=0, got=%d", h.currentIndex)
 	}
 
 	h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, '[', 0))
@@ -77,7 +77,7 @@ func TestHistoryHandleKeyEventBracketNavigation(t *testing.T) {
 	}
 }
 
-func TestHistoryStartAtLatestSkipsTrailingEmptySnapshots(t *testing.T) {
+func TestHistoryStartAtOldestSkipsLeadingEmptySnapshots(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -88,14 +88,14 @@ func TestHistoryStartAtLatestSkipsTrailingEmptySnapshots(t *testing.T) {
 	defer writer.Close()
 
 	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
-	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
-	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), nil) // empty latest
+	appendSnapshotFixture(t, writer, base, nil) // empty oldest
+	appendSnapshotFixture(t, writer, base.Add(1*time.Minute), []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
 
 	h := newHistoryTestApp(dir)
 	h.reloadIndex(true)
 
-	if h.currentIndex != 0 {
-		t.Fatalf("expected replay start to jump to latest non-empty index=0, got=%d", h.currentIndex)
+	if h.currentIndex != 1 {
+		t.Fatalf("expected replay start to jump to oldest non-empty index=1, got=%d", h.currentIndex)
 	}
 }
 
@@ -201,13 +201,13 @@ func TestHistoryFilterAppliesToCurrentSnapshotOnly(t *testing.T) {
 	h.reloadIndex(true)
 	h.textFilter = "172.25.110.76"
 
-	if got := len(h.visibleRows()); got != 0 {
-		t.Fatalf("latest snapshot should not match filter, got=%d", got)
+	if got := len(h.visibleRows()); got != 1 {
+		t.Fatalf("oldest snapshot should match filter once, got=%d", got)
 	}
 
-	h.navigatePrev()
-	if got := len(h.visibleRows()); got != 1 {
-		t.Fatalf("previous snapshot should match filter once, got=%d", got)
+	h.navigateNext()
+	if got := len(h.visibleRows()); got != 0 {
+		t.Fatalf("next snapshot should not match filter, got=%d", got)
 	}
 }
 
@@ -233,8 +233,8 @@ func TestHistoryReloadIndexAppliesBeginRangeFilter(t *testing.T) {
 	if len(h.refs) != 2 {
 		t.Fatalf("expected 2 refs with begin filter, got=%d", len(h.refs))
 	}
-	if h.currentIndex != 1 {
-		t.Fatalf("replay should start at latest filtered snapshot, got index=%d", h.currentIndex)
+	if h.currentIndex != 0 {
+		t.Fatalf("replay should start at oldest filtered snapshot, got index=%d", h.currentIndex)
 	}
 	if got := h.refs[0].CapturedAt; !got.Equal(begin) {
 		t.Fatalf("expected first ref at begin boundary, got=%s want=%s", got, begin)
@@ -263,8 +263,8 @@ func TestHistoryReloadIndexAppliesEndRangeFilter(t *testing.T) {
 	if len(h.refs) != 2 {
 		t.Fatalf("expected 2 refs with end filter, got=%d", len(h.refs))
 	}
-	if h.currentIndex != 1 {
-		t.Fatalf("replay should start at latest filtered snapshot, got index=%d", h.currentIndex)
+	if h.currentIndex != 0 {
+		t.Fatalf("replay should start at oldest filtered snapshot, got index=%d", h.currentIndex)
 	}
 	if got := h.refs[len(h.refs)-1].CapturedAt; !got.Equal(end) {
 		t.Fatalf("expected last ref at end boundary, got=%s want=%s", got, end)
@@ -414,8 +414,8 @@ func TestHistoryTimelineSearchJumpKeepsCurrentTextFilter(t *testing.T) {
 
 	h := newHistoryTestApp(dir)
 	h.reloadIndex(true)
-	if h.currentIndex != 1 {
-		t.Fatalf("expected to start at latest index=1, got=%d", h.currentIndex)
+	if h.currentIndex != 0 {
+		t.Fatalf("expected to start at oldest index=0, got=%d", h.currentIndex)
 	}
 
 	h.textFilter = "198.51.100.20"
@@ -458,18 +458,18 @@ func TestHistoryNavigationSkipsEmptyByDefault(t *testing.T) {
 
 	h := newHistoryTestApp(dir)
 	h.reloadIndex(true)
-	if h.currentIndex != 3 {
-		t.Fatalf("expected start at latest non-empty index=3, got=%d", h.currentIndex)
-	}
-
-	h.navigatePrev()
 	if h.currentIndex != 0 {
-		t.Fatalf("expected prev to skip empties and jump to index=0, got=%d", h.currentIndex)
+		t.Fatalf("expected start at oldest non-empty index=0, got=%d", h.currentIndex)
 	}
 
 	h.navigateNext()
 	if h.currentIndex != 3 {
-		t.Fatalf("expected next to skip empties and jump back to index=3, got=%d", h.currentIndex)
+		t.Fatalf("expected next to skip empties and jump to index=3, got=%d", h.currentIndex)
+	}
+
+	h.navigatePrev()
+	if h.currentIndex != 0 {
+		t.Fatalf("expected prev to skip empties and jump back to index=0, got=%d", h.currentIndex)
 	}
 }
 
