@@ -129,14 +129,14 @@ func TestTopConnectionsSortHintsIncludeDirectOnly(t *testing.T) {
 	}
 }
 
-func TestStatusHotkeysIncludeDirectSortKeys(t *testing.T) {
+func TestStatusHotkeysIncludeHelp(t *testing.T) {
 	t.Parallel()
 
 	_, plain := statusHotkeysForPage("main")
 	if strings.Contains(plain, " o ") {
 		t.Fatalf("main hotkeys should not mention o, got: %q", plain)
 	}
-	if !strings.Contains(plain, "Shift+B/C/P") {
-		t.Fatalf("main hotkeys should mention direct sort keys, got: %q", plain)
+	if !strings.Contains(plain, "? help") {
+		t.Fatalf("main hotkeys should mention help, got: %q", plain)
 	}
 }
