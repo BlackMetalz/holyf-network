@@ -10,8 +10,6 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/history"
 )
 
-const historyAggregateHintLine = "  [dim]Use ↑/↓ select, ]=next snapshot, [=previous snapshot, t=jump-time, /=snapshot search, Shift+S=timeline search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i/Shift+I=explain qcols, x=skip-empty, L=follow[white]"
-
 func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, skipEmpty bool, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
 	var sb strings.Builder
 
@@ -40,7 +38,7 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		sortLabelWithDirection(sortMode, sortDesc),
 		skipChip,
 	))
-	sb.WriteString(historyAggregateHintLine)
+	sb.WriteString(historyAggregateHintLine(skipEmpty))
 	if !bandwidthAvailable {
 		sb.WriteString("\n  [yellow]Bandwidth counters unavailable in this snapshot[white]")
 	}
@@ -148,6 +146,14 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 
 	sb.WriteString(fmt.Sprintf("\n  [dim]Showing %d of %d aggregate rows[white]", min(len(items), maxRows), len(items)))
 	return sb.String()
+}
+
+func historyAggregateHintLine(skipEmpty bool) string {
+	base := "  [dim]Use ↑/↓ select, t=jump-time, /=snapshot search, Shift+S=timeline search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i/Shift+I=explain qcols, L=follow, "
+	if skipEmpty {
+		return base + "]=next active snapshot, [=previous active snapshot, x=show all snapshots[white]"
+	}
+	return base + "]=next snapshot, [=previous snapshot, x=skip empty snapshots[white]"
 }
 
 func sortHistoryGroups(rows []history.SnapshotGroup, mode SortMode, desc bool) {

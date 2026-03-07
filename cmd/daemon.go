@@ -169,7 +169,7 @@ func newDaemonStartCmd() *cobra.Command {
 				PIDFile:   paths.pidFile,
 				LogFile:   paths.logFile,
 				LockFile:  paths.lockFile,
-				StartedAt: time.Now().UTC(),
+				StartedAt: time.Now().Local(),
 			}
 			if err := writeActiveState(paths.stateFile, activeState); err != nil {
 				_ = child.Process.Kill()

@@ -340,9 +340,8 @@ func (h *HistoryApp) renderPanel() {
 	}
 
 	header := fmt.Sprintf(
-		"  [dim]Snapshot %d/%d | %s | %s | rows=%d | scope=%s | range=%s[white]\n",
-		h.currentIndex+1,
-		len(h.refs),
+		"  [dim]%s | %s | %s | rows=%d | scope=%s | range=%s[white]\n",
+		h.headerSnapshotLabel(),
 		captured,
 		iface,
 		len(rec.Groups),
@@ -467,7 +466,12 @@ func (h *HistoryApp) updateStatusBar() {
 
 	snapshotPart := "Snapshot: 0/0"
 	if len(h.refs) > 0 && h.currentIndex >= 0 {
-		snapshotPart = fmt.Sprintf("Snapshot: %d/%d", h.currentIndex+1, len(h.refs))
+		if h.skipEmpty {
+			activePos, activeTotal := h.activeTimelinePosition()
+			snapshotPart = fmt.Sprintf("Active: %d/%d Raw: %d/%d", activePos, activeTotal, h.currentIndex+1, len(h.refs))
+		} else {
+			snapshotPart = fmt.Sprintf("Snapshot: %d/%d", h.currentIndex+1, len(h.refs))
+		}
 	}
 
 	followState := "FOLLOW-OFF"
@@ -548,6 +552,43 @@ func (h *HistoryApp) setSnapshotMessage(msg string) {
 	h.snapshotMessage = strings.TrimSpace(msg)
 }
 
+func (h *HistoryApp) headerSnapshotLabel() string {
+	if len(h.refs) == 0 || h.currentIndex < 0 || h.currentIndex >= len(h.refs) {
+		return "Snapshot 0/0"
+	}
+	if !h.skipEmpty {
+		return fmt.Sprintf("Snapshot %d/%d", h.currentIndex+1, len(h.refs))
+	}
+	activePos, activeTotal := h.activeTimelinePosition()
+	return fmt.Sprintf("Snapshot Active %d/%d | Raw %d/%d", activePos, activeTotal, h.currentIndex+1, len(h.refs))
+}
+
+func (h *HistoryApp) activeTimelinePosition() (int, int) {
+	if len(h.refs) == 0 || h.currentIndex < 0 || h.currentIndex >= len(h.refs) {
+		return 0, 0
+	}
+
+	total := 0
+	pos := 0
+	for i, ref := range h.refs {
+		if ref.ConnCount <= 0 {
+			continue
+		}
+		total++
+		if i == h.currentIndex {
+			pos = total
+		}
+	}
+	if total == 0 {
+		return 0, 0
+	}
+	if pos == 0 {
+		// Current snapshot can be empty when there are no active rows nearby.
+		return 0, total
+	}
+	return pos, total
+}
+
 func (h *HistoryApp) hasSnapshotsOnLocalDate(target time.Time) bool {
 	y, m, d := target.Local().Date()
 	for _, ref := range h.refs {
@@ -588,7 +629,14 @@ func (h *HistoryApp) adjustStartIndexForSkipEmpty(target int) int {
 
 	if idx, skipped, ok := h.findNextNonEmptyIndex(target); ok {
 		if skipped > 0 {
-			h.setStatusNote(fmt.Sprintf("Oldest is empty, jumped forward %d snapshots", skipped), 5*time.Second)
+			h.setStatusNote(
+				fmt.Sprintf(
+					"Jumped to oldest active snapshot (%s). Hidden empty before: %d.",
+					h.rawPositionLabel(idx),
+					skipped,
+				),
+				6*time.Second,
+			)
 		}
 		return idx
 	}

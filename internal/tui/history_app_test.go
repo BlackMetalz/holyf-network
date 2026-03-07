@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/BlackMetalz/holyf-network/internal/history"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -496,6 +497,140 @@ func TestHistoryToggleSkipEmptyWithX(t *testing.T) {
 	}
 	if !h.skipEmpty {
 		t.Fatalf("expected skip-empty to be enabled after second x")
+	}
+}
+
+func TestHistoryRenderHeaderShowsDualIndexWhenSkipEmptyOn(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir())
+	h.skipEmpty = true
+	h.refs = []history.SnapshotRef{
+		{ConnCount: 1},
+		{ConnCount: 0},
+		{ConnCount: 3},
+	}
+	h.currentIndex = 2
+	h.currentRecord = history.SnapshotRecord{
+		CapturedAt: time.Date(2026, 3, 5, 19, 16, 17, 0, time.FixedZone("+07", 7*3600)),
+		Interface:  "eth0",
+		Groups:     []history.SnapshotGroup{{PeerIP: "103.160.74.90", LocalPort: 22, ProcName: "sshd", ConnCount: 1}},
+	}
+
+	h.renderPanel()
+	text := h.panel.GetText(true)
+	if !strings.Contains(text, "Snapshot Active 2/2 | Raw 3/3") {
+		t.Fatalf("expected dual index in header, got=%q", text)
+	}
+}
+
+func TestHistoryRenderHeaderShowsRawIndexWhenSkipEmptyOff(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir())
+	h.skipEmpty = false
+	h.refs = []history.SnapshotRef{
+		{ConnCount: 1},
+		{ConnCount: 0},
+		{ConnCount: 3},
+	}
+	h.currentIndex = 2
+	h.currentRecord = history.SnapshotRecord{
+		CapturedAt: time.Date(2026, 3, 5, 19, 16, 17, 0, time.FixedZone("+07", 7*3600)),
+		Interface:  "eth0",
+		Groups:     []history.SnapshotGroup{{PeerIP: "103.160.74.90", LocalPort: 22, ProcName: "sshd", ConnCount: 1}},
+	}
+
+	h.renderPanel()
+	text := h.panel.GetText(true)
+	if !strings.Contains(text, "Snapshot 3/3") {
+		t.Fatalf("expected raw index in header, got=%q", text)
+	}
+	if strings.Contains(text, "Snapshot Active") {
+		t.Fatalf("header should not show active index when skip-empty is off, got=%q", text)
+	}
+}
+
+func TestHistoryNavigateNextAtLastActiveShowsBoundaryMessage(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir())
+	h.skipEmpty = true
+	h.refs = []history.SnapshotRef{
+		{ConnCount: 1},
+		{ConnCount: 0},
+		{ConnCount: 0},
+	}
+	h.currentIndex = 0
+	h.currentRecord = history.SnapshotRecord{
+		CapturedAt: time.Now(),
+		Interface:  "eth0",
+		Groups:     []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}},
+	}
+
+	h.navigateNext()
+	if h.currentIndex != 0 {
+		t.Fatalf("index should stay at last active snapshot, got=%d", h.currentIndex)
+	}
+	if !strings.Contains(h.statusNote, "Reached last active snapshot") {
+		t.Fatalf("expected last-active boundary note, got=%q", h.statusNote)
+	}
+	if !strings.Contains(h.statusNote, "Hidden empty after: 2") {
+		t.Fatalf("expected hidden-after count in boundary note, got=%q", h.statusNote)
+	}
+}
+
+func TestHistoryNavigatePrevAtFirstActiveShowsBoundaryMessage(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir())
+	h.skipEmpty = true
+	h.refs = []history.SnapshotRef{
+		{ConnCount: 0},
+		{ConnCount: 0},
+		{ConnCount: 1},
+	}
+	h.currentIndex = 2
+	h.currentRecord = history.SnapshotRecord{
+		CapturedAt: time.Now(),
+		Interface:  "eth0",
+		Groups:     []history.SnapshotGroup{{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}},
+	}
+
+	h.navigatePrev()
+	if h.currentIndex != 2 {
+		t.Fatalf("index should stay at first active snapshot, got=%d", h.currentIndex)
+	}
+	if !strings.Contains(h.statusNote, "Reached first active snapshot") {
+		t.Fatalf("expected first-active boundary note, got=%q", h.statusNote)
+	}
+	if !strings.Contains(h.statusNote, "Hidden empty before: 2") {
+		t.Fatalf("expected hidden-before count in boundary note, got=%q", h.statusNote)
+	}
+}
+
+func TestHistoryAggregateHintLineChangesWithSkipEmpty(t *testing.T) {
+	t.Parallel()
+
+	rows := []history.SnapshotGroup{
+		{
+			PeerIP:    "103.160.74.90",
+			LocalPort: 22,
+			ProcName:  "sshd",
+			ConnCount: 1,
+			States:    map[string]int{"ESTABLISHED": 1},
+		},
+	}
+	thresholds := config.DefaultHealthThresholds()
+
+	withSkip := renderHistoryAggregatePanel(rows, "", "", 20, false, 0, SortByBandwidth, true, true, thresholds, true)
+	if !strings.Contains(withSkip, "]=next active snapshot") || !strings.Contains(withSkip, "x=show all snapshots") {
+		t.Fatalf("expected active hint line when skip-empty on, got=%q", withSkip)
+	}
+
+	withoutSkip := renderHistoryAggregatePanel(rows, "", "", 20, false, 0, SortByBandwidth, true, false, thresholds, true)
+	if !strings.Contains(withoutSkip, "]=next snapshot") || !strings.Contains(withoutSkip, "x=skip empty snapshots") {
+		t.Fatalf("expected raw hint line when skip-empty off, got=%q", withoutSkip)
 	}
 }
 

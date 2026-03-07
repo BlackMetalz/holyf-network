@@ -132,7 +132,7 @@ func (h *HistoryApp) navigatePrev() {
 				h.setStatusNote(fmt.Sprintf("Skipped %d empty snapshots", skipped), 4*time.Second)
 			}
 		} else {
-			h.setStatusNote("No previous active snapshot", 4*time.Second)
+			h.setStatusNote(h.prevActiveBoundaryMessage(), 6*time.Second)
 			h.renderPanel()
 			h.updateStatusBar()
 			return
@@ -156,7 +156,7 @@ func (h *HistoryApp) navigateNext() {
 				h.setStatusNote(fmt.Sprintf("Skipped %d empty snapshots", skipped), 4*time.Second)
 			}
 		} else {
-			h.setStatusNote("No next active snapshot", 4*time.Second)
+			h.setStatusNote(h.nextActiveBoundaryMessage(), 6*time.Second)
 			h.renderPanel()
 			h.updateStatusBar()
 			return
@@ -177,7 +177,14 @@ func (h *HistoryApp) navigateOldest() {
 		if idx, skipped, ok := h.findNextNonEmptyIndex(target); ok {
 			target = idx
 			if skipped > 0 {
-				h.setStatusNote(fmt.Sprintf("Oldest is empty, jumped forward %d snapshots", skipped), 4*time.Second)
+				h.setStatusNote(
+					fmt.Sprintf(
+						"Jumped to oldest active snapshot (%s). Hidden empty before: %d.",
+						h.rawPositionLabel(target),
+						skipped,
+					),
+					6*time.Second,
+				)
 			}
 		}
 	}
@@ -195,7 +202,14 @@ func (h *HistoryApp) navigateLatest() {
 		if idx, skipped, ok := h.findPrevNonEmptyIndex(target); ok {
 			target = idx
 			if skipped > 0 {
-				h.setStatusNote(fmt.Sprintf("Latest is empty, jumped back %d snapshots", skipped), 4*time.Second)
+				h.setStatusNote(
+					fmt.Sprintf(
+						"Jumped to latest active snapshot (%s). Hidden empty after: %d.",
+						h.rawPositionLabel(target),
+						skipped,
+					),
+					6*time.Second,
+				)
 			}
 		}
 	}
@@ -429,6 +443,70 @@ func (h *HistoryApp) snapshotSummary() string {
 	rec := h.currentRecord
 	when := rec.CapturedAt.Local().Format("2006-01-02 15:04:05")
 	return fmt.Sprintf("Snapshot: %d/%d (%s)", h.currentIndex+1, len(h.refs), when)
+}
+
+func (h *HistoryApp) nextActiveBoundaryMessage() string {
+	if len(h.refs) == 0 || h.currentIndex < 0 || h.currentIndex >= len(h.refs) {
+		return "Reached last active snapshot"
+	}
+	return fmt.Sprintf(
+		"Reached last active snapshot (%s). Hidden empty after: %d. Press x to include empty snapshots.",
+		h.rawPositionLabel(h.currentIndex),
+		h.emptyCountAfter(h.currentIndex),
+	)
+}
+
+func (h *HistoryApp) prevActiveBoundaryMessage() string {
+	if len(h.refs) == 0 || h.currentIndex < 0 || h.currentIndex >= len(h.refs) {
+		return "Reached first active snapshot"
+	}
+	return fmt.Sprintf(
+		"Reached first active snapshot (%s). Hidden empty before: %d. Press x to include empty snapshots.",
+		h.rawPositionLabel(h.currentIndex),
+		h.emptyCountBefore(h.currentIndex),
+	)
+}
+
+func (h *HistoryApp) rawPositionLabel(index int) string {
+	if len(h.refs) == 0 || index < 0 || index >= len(h.refs) {
+		return "raw 0/0"
+	}
+	return fmt.Sprintf("raw %d/%d", index+1, len(h.refs))
+}
+
+func (h *HistoryApp) emptyCountAfter(index int) int {
+	if len(h.refs) == 0 {
+		return 0
+	}
+	if index < -1 {
+		index = -1
+	}
+	if index >= len(h.refs)-1 {
+		return 0
+	}
+	count := 0
+	for i := index + 1; i < len(h.refs); i++ {
+		if h.refs[i].ConnCount <= 0 {
+			count++
+		}
+	}
+	return count
+}
+
+func (h *HistoryApp) emptyCountBefore(index int) int {
+	if len(h.refs) == 0 || index <= 0 {
+		return 0
+	}
+	if index >= len(h.refs) {
+		index = len(h.refs) - 1
+	}
+	count := 0
+	for i := 0; i < index; i++ {
+		if h.refs[i].ConnCount <= 0 {
+			count++
+		}
+	}
+	return count
 }
 
 func parseHistoryPortFilter(raw string) (string, error) {

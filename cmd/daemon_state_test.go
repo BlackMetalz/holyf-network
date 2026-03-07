@@ -28,7 +28,7 @@ func TestWriteReadActiveStateRoundTrip(t *testing.T) {
 		PIDFile:   filepath.Join(dir, "daemon.pid"),
 		LogFile:   filepath.Join(dir, "daemon.log"),
 		LockFile:  filepath.Join(dir, ".daemon.lock"),
-		StartedAt: time.Now().UTC().Truncate(time.Second),
+		StartedAt: time.Now().Local().Truncate(time.Second),
 	}
 
 	if err := writeActiveState(stateFile, want); err != nil {
