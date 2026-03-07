@@ -31,5 +31,6 @@ go test ./...
 
 - Linux-first TUI network observability tool.
 - Core runtime data comes from `/proc` and `/sys`.
+- For Docker/NAT traffic, live/replay can show synthetic process label `ct/nat` (conntrack-derived visibility path).
 - Active mitigation uses `iptables`/`ip6tables`, `conntrack`, and `ss`.
 - Full functionality expects `sudo`.

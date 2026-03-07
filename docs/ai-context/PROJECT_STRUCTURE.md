@@ -18,7 +18,10 @@ This is the current high-signal layout (non-essential folders omitted):
 │   │   ├── connections.go
 │   │   ├── top_connections.go
 │   │   ├── conntrack_flows.go
+│   │   ├── conntrack_merge.go
 │   │   ├── bandwidth_tracker.go
+│   │   ├── socket_counters.go
+│   │   ├── socket_bandwidth_tracker.go
 │   │   ├── tcp_retransmits.go
 │   │   ├── interface_stats.go
 │   │   └── conntrack.go
@@ -74,7 +77,10 @@ This is the current high-signal layout (non-essential folders omitted):
     - `/sys/class/net/<iface>/statistics/*`
     - `/proc/sys/net/netfilter/nf_conntrack_*`
     - `conntrack -S` command
-    - `conntrack -L -p tcp -o extended` command (flow byte counters for bandwidth delta)
+    - `conntrack -L -p tcp -o extended` + `conntrack -L -p tcp` (hybrid flow visibility)
+  - Docker/NAT visibility:
+    - `conntrack_merge.go` injects host-facing NAT tuples missing in `/proc/net/tcp*`
+    - synthetic process label `ct/nat` marks conntrack-derived ownership
 
 - `internal/actions`
   - Side-effecting runtime actions:
@@ -101,6 +107,7 @@ This is the current high-signal layout (non-essential folders omitted):
     - `app_history.go`: action log modal + persistence (`~/.holyf-network/history.log`).
     - `history_*.go`: read-only replay mode UI and key handling.
     - `panel_*.go`: pure rendering text for each panel.
+      - live `View=GROUP` in `panel_top_connections.go` groups by `(peer, process)` (not peer-only).
     - `layout.go`: grid composition.
 
 ## Test Map

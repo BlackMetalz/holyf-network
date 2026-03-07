@@ -26,10 +26,11 @@ flowchart TD
 3. Collect connection state counts.
 4. Collect interface stats and rates.
 5. Collect top talkers (`/proc/net/tcp*`, PID mapping from `/proc/<pid>/fd`).
-6. Collect conntrack TCP flow byte counters and compute interval deltas.
-7. Fallback collect socket counters from `ss` and overlay missing bandwidth.
-8. Enrich top talkers with throughput metrics (`TX/s`, `RX/s`) and internal total-delta fields for ranking/sort.
-9. Render panels and status bar.
+6. Collect conntrack TCP flows (hybrid parse: extended + plain output), then merge host-facing NAT tuples when `/proc` misses sockets (Docker/NAT case).
+7. Compute conntrack byte deltas and per-row throughput metrics (`TX/s`, `RX/s`).
+8. Fallback collect socket counters from `ss` and overlay missing bandwidth.
+9. Enrich top talkers with throughput metrics and internal total-delta fields for ranking/sort.
+10. Render panels and status bar.
 
 Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).
 
@@ -101,12 +102,19 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
      - internal activity score `Activity = tx_queue + rx_queue`
    - Extra enrichment:
      - PID/Proc mapping via `/proc/<pid>/fd/* -> socket:[inode]` and `/proc/<pid>/comm`
+     - conntrack host-facing merge for NAT/Docker visibility (`internal/collector/conntrack_merge.go`)
+       - synthetic process label: `ct/nat`
+       - only injects `ESTABLISHED` tuples missing from `/proc` socket view
    - Commands:
      - `ss -tnap` (human-readable queue + process cross-check)
 
 6. Per-connection bandwidth (`internal/collector/conntrack_flows.go`, `bandwidth_tracker.go`, `socket_counters.go`, `socket_bandwidth_tracker.go`)
    - Primary source:
-     - `conntrack -L -p tcp -o extended -n`
+     - union of:
+       - `conntrack -L -p tcp -o extended -n`
+       - `conntrack -L -p tcp`
+     - flows are de-duplicated by canonical tuple key
+     - duplicate preference favors richer `bytes=` counters (then larger byte totals)
      - parse both directional `bytes=` counters per flow (orig/reply)
    - Primary formulas:
      - `tx_delta = clamp(curr_orig_bytes - prev_orig_bytes)`
@@ -121,6 +129,7 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
      - `ss -tinHn` metrics `bytes_acked` / `bytes_received`
    - Commands:
      - `conntrack -L -p tcp -o extended -n`
+     - `conntrack -L -p tcp`
      - `cat /proc/sys/net/netfilter/nf_conntrack_acct` (should be `1` for byte accounting)
      - `ss -tinHn`
 
@@ -132,7 +141,9 @@ Package: `internal/history` + `cmd/daemon.go`
 2. Worker resolves interface (`--interface`) and starts `SnapshotWriter` with lock file (`.daemon.lock`) under `--data-dir`.
 3. Every `--interval` seconds:
    - call `collector.CollectTopTalkers(0)` to sample current connections
-   - call `collector.CollectConntrackFlowsTCP()` and compute byte deltas from previous sample
+   - call `collector.CollectConntrackFlowsTCP()` and merge host-facing conntrack NAT tuples into live sample
+   - synthetic NAT tuples are persisted as `proc_name=ct/nat` when host PID ownership is unavailable
+   - compute byte deltas from previous sample
    - enrich connections with bandwidth fields
    - aggregate by `peer_ip + local_port + proc_name` with sums:
      - `conn_count = count(rows)`
@@ -232,6 +243,7 @@ Behavior constraints:
 - kill/block hotkeys (`Enter`, `k`, `b`) are explicitly blocked with status note
 - search/filter apply only to current snapshot
 - replay renders queue + bandwidth columns from aggregate rows
+- replay rows keep `proc_name` exactly as persisted (including `ct/nat` synthetic NAT label)
 
 ## 6) UI Composition
 
@@ -240,6 +252,7 @@ Behavior constraints:
 - Left: `Top Connections`
 - Right stack: `Connection States`, `Interface Stats`, `Conntrack`
 - Bottom: status bar
+- Live `GROUP` view groups by `(peer, process)` for clarity under mixed ownership (`sshd` + `ct/nat`, etc.)
 
 ### Replay mode (`history_layout.go`)
 
@@ -255,7 +268,8 @@ Behavior constraints:
    - `h` shows latest 20
 
 2. Connection snapshots (daemon/replay)
-   - `~/.holyf-network/snapshots` by default
+   - root default: `/var/lib/holyf-network/snapshots`
+   - non-root/dev default: `~/.holyf-network/snapshots`
    - daily NDJSON segment files (`connections-YYYYMMDD.jsonl`)
    - retention via age (`--retention-hours`)
 
@@ -269,7 +283,8 @@ Behavior constraints:
 
 - Linux runtime (`/proc`, `/sys`, netfilter tooling).
 - Collector path relies on kernel network procfs/sysfs files.
-- Bandwidth enrichment relies on `conntrack -L -p tcp -o extended` counters (TCP flows).
+- Bandwidth/NAT enrichment relies on conntrack TCP dumps (`-o extended` + plain fallback) and tuple normalization.
+- `ct/nat` indicates conntrack-derived NAT visibility, not direct host process PID ownership.
 - Mitigation path relies on `iptables`/`ip6tables`, `conntrack`, `ss`.
 - `sudo` recommended for full live-mode visibility/mitigation.
 

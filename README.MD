@@ -62,7 +62,7 @@ sudo holyf-network -r 5
 # Shift+P: sort by Port (press again toggles DESC/ASC)
 # i: explain Send-Q / Recv-Q / TX/s / RX/s
 # Shift+I: explain Interface Stats (RX/TX, Packets, Errors, Drops)
-# g: toggle group-by-peer view
+# g: toggle grouped view (peer + process)
 # /: search Top Connections by text (contains match)
 # f: port filter (press f again to clear all filters)
 # s: toggle sensitive IP masking
@@ -74,6 +74,19 @@ sudo holyf-network -r 5
 # ?: show help
 # q: quit
 ```
+
+### Top Connections process labels (important)
+
+- `PID/NAME` (example `44011/sshd`): socket is visible in host `/proc` and mapped to a host process.
+- `ct/nat`: synthetic connection row inferred from conntrack host-facing NAT tuple.
+  - This is used for Docker/NAT cases where host socket/PID is not directly visible in `/proc/net/tcp*`.
+  - It means traffic is real and seen by conntrack, but process ownership is NAT-derived.
+- `-`: process info not available.
+
+Group view behavior:
+- Live `View=GROUP` now groups by `(peer, process)` instead of peer-only.
+- Example: same peer with `sshd=1` and `ct/nat=4999` will render as 2 separate rows for clarity.
+- Footer shows `groups, peers, total connections`.
 
 ## Daemon Snapshot Mode
 
@@ -99,6 +112,7 @@ holyf-network daemon stop
 Daemon notes:
 - Storage format: daily NDJSON segments by server local time (`connections-YYYYMMDD.jsonl`).
 - Snapshot payload stores aggregate rows by `peer_ip + local_port + proc_name` (no raw connection list).
+- For Docker/NAT traffic, daemon snapshots can persist `proc_name=ct/nat` rows (same semantics as live view).
 - `--top-limit` is the max aggregate rows stored per snapshot.
 - Retention policy: remove old segments beyond `--retention-hours`.
 - A lock file prevents multiple daemons writing the same `--data-dir`.
@@ -165,6 +179,7 @@ Time-window filtering is inclusive (`captured_at >= begin` and `captured_at <= e
 Replay mode is read-only: no block/kill actions are executed.
 Replay view is aggregate-only: rows are grouped by `peer_ip + local_port + proc_name`.
 History reader accepts only this aggregate snapshot format.
+`proc_name=ct/nat` in replay means the row came from conntrack/NAT visibility path (not direct host PID ownership).
 Bandwidth columns:
 - `TX/s`, `RX/s`: conntrack byte-delta throughput rate for current sample interval.
 - `Send-Q/Recv-Q`: kernel queue backlog snapshot (not throughput counters).
