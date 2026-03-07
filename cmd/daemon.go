@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -21,6 +23,7 @@ import (
 const (
 	defaultDaemonPIDFileName = "daemon.pid"
 	defaultDaemonLogFileName = "daemon.log"
+	defaultDaemonStateName   = "daemon.state"
 )
 
 type daemonCaptureOptions struct {
@@ -43,10 +46,21 @@ type daemonControlOptions struct {
 }
 
 type daemonRuntimePaths struct {
-	dataDir  string
-	pidFile  string
-	logFile  string
-	lockFile string
+	dataDir              string
+	pidFile              string
+	logFile              string
+	lockFile             string
+	stateFile            string
+	allowLogFileFallback bool
+}
+
+type daemonActiveState struct {
+	PID       int       `json:"pid"`
+	DataDir   string    `json:"data_dir"`
+	PIDFile   string    `json:"pid_file"`
+	LogFile   string    `json:"log_file"`
+	LockFile  string    `json:"lock_file"`
+	StartedAt time.Time `json:"started_at"`
 }
 
 func newDaemonCmd() *cobra.Command {
@@ -80,8 +94,19 @@ func newDaemonStartCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := ensureRuntimePaths(paths); err != nil {
+			if err := ensureRuntimePaths(&paths); err != nil {
 				return err
+			}
+
+			stateExists, state, stateRunning, err := readActiveStateStatus(paths.stateFile)
+			if err != nil {
+				return err
+			}
+			if stateExists && stateRunning {
+				return fmt.Errorf("daemon already running (pid=%d, data-dir=%s)", state.PID, state.DataDir)
+			}
+			if stateExists && !stateRunning {
+				_ = cleanupStaleActiveState(paths.stateFile, state)
 			}
 
 			running, pid, err := readDaemonStatus(paths.pidFile)
@@ -138,10 +163,26 @@ func newDaemonStartCmd() *cobra.Command {
 				return fmt.Errorf("daemon failed to stay running; check log: %s", paths.logFile)
 			}
 
+			activeState := daemonActiveState{
+				PID:       pid,
+				DataDir:   paths.dataDir,
+				PIDFile:   paths.pidFile,
+				LogFile:   paths.logFile,
+				LockFile:  paths.lockFile,
+				StartedAt: time.Now().UTC(),
+			}
+			if err := writeActiveState(paths.stateFile, activeState); err != nil {
+				_ = child.Process.Kill()
+				_ = os.Remove(paths.pidFile)
+				return err
+			}
+
 			fmt.Printf("daemon started (pid=%d)\n", pid)
+			fmt.Println("source: active-state")
 			fmt.Printf("data-dir: %s\n", paths.dataDir)
 			fmt.Printf("pid-file: %s\n", paths.pidFile)
 			fmt.Printf("log-file: %s\n", paths.logFile)
+			fmt.Printf("state-file: %s\n", paths.stateFile)
 			fmt.Printf("interval=%ds top-limit=%d retention=%dh\n",
 				opts.intervalSec,
 				opts.topLimit,
@@ -163,51 +204,45 @@ func newDaemonStopCmd() *cobra.Command {
 		Use:   "stop",
 		Short: "Stop running snapshot daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			explicit := cmd.Flags().Changed("data-dir") || cmd.Flags().Changed("pid-file")
 			paths, err := resolveDaemonPaths(opts.dataDir, opts.pidFile, "")
 			if err != nil {
 				return err
 			}
 
-			running, pid, err := readDaemonStatus(paths.pidFile)
+			if explicit {
+				return stopDaemonFromPIDFile(paths, "explicit-flags", false)
+			}
+
+			stateExists, state, stateRunning, err := readActiveStateStatus(paths.stateFile)
 			if err != nil {
 				return err
 			}
-			if !running {
-				if pid > 0 {
-					_ = os.Remove(paths.pidFile)
-					fmt.Printf("daemon not running (stale pid file removed: %s)\n", paths.pidFile)
-				} else {
-					fmt.Println("daemon not running")
-				}
+			if !stateExists {
+				fmt.Println("daemon not running (no active-state)")
+				fmt.Println("source: active-state")
+				fmt.Printf("state-file: %s\n", paths.stateFile)
+				return nil
+			}
+			if !stateRunning {
+				_ = cleanupStaleActiveState(paths.stateFile, state)
+				fmt.Printf("daemon not running (stale active-state cleaned, pid=%d)\n", state.PID)
+				fmt.Println("source: active-state")
+				fmt.Printf("state-file: %s\n", paths.stateFile)
 				return nil
 			}
 
-			proc, err := os.FindProcess(pid)
-			if err != nil {
-				return fmt.Errorf("find daemon process %d: %w", pid, err)
+			statePaths := daemonRuntimePaths{
+				dataDir:   state.DataDir,
+				pidFile:   state.PIDFile,
+				logFile:   state.LogFile,
+				lockFile:  state.LockFile,
+				stateFile: paths.stateFile,
 			}
-
-			if err := proc.Signal(syscall.SIGTERM); err != nil {
-				return fmt.Errorf("send SIGTERM to pid %d: %w", pid, err)
+			if err := stopDaemonByPID(state.PID, statePaths, "active-state", true); err != nil {
+				return err
 			}
-
-			deadline := time.Now().Add(10 * time.Second)
-			for isProcessRunning(pid) && time.Now().Before(deadline) {
-				time.Sleep(200 * time.Millisecond)
-			}
-			if isProcessRunning(pid) {
-				_ = proc.Signal(syscall.SIGKILL)
-				for i := 0; i < 20 && isProcessRunning(pid); i++ {
-					time.Sleep(100 * time.Millisecond)
-				}
-			}
-
-			if isProcessRunning(pid) {
-				return fmt.Errorf("failed to stop daemon pid %d", pid)
-			}
-
-			_ = os.Remove(paths.pidFile)
-			fmt.Printf("daemon stopped (pid=%d)\n", pid)
+			_ = removeActiveState(paths.stateFile)
 			return nil
 		},
 	}
@@ -222,32 +257,72 @@ func newDaemonStatusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Show snapshot daemon status",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			explicit := cmd.Flags().Changed("data-dir") || cmd.Flags().Changed("pid-file")
 			paths, err := resolveDaemonPaths(opts.dataDir, opts.pidFile, "")
 			if err != nil {
 				return err
 			}
 
-			running, pid, err := readDaemonStatus(paths.pidFile)
-			if err != nil {
-				return err
-			}
-			if !running {
-				if pid > 0 {
-					fmt.Printf("daemon status: stopped (stale pid=%d in %s)\n", pid, paths.pidFile)
-				} else {
-					fmt.Println("daemon status: stopped")
+			if explicit {
+				running, pid, err := readDaemonStatus(paths.pidFile)
+				if err != nil {
+					return err
 				}
+				if !running {
+					if pid > 0 {
+						fmt.Printf("daemon status: stopped (stale pid=%d in %s)\n", pid, paths.pidFile)
+					} else {
+						fmt.Println("daemon status: stopped")
+					}
+					fmt.Println("source: explicit-flags")
+					fmt.Printf("data-dir: %s\n", paths.dataDir)
+					fmt.Printf("pid-file: %s\n", paths.pidFile)
+					fmt.Printf("log-file: %s\n", paths.logFile)
+					fmt.Printf("state-file: %s\n", paths.stateFile)
+					return nil
+				}
+
+				fmt.Printf("daemon status: running (pid=%d)\n", pid)
+				fmt.Println("source: explicit-flags")
 				fmt.Printf("data-dir: %s\n", paths.dataDir)
 				fmt.Printf("pid-file: %s\n", paths.pidFile)
 				fmt.Printf("log-file: %s\n", paths.logFile)
+				fmt.Printf("lock-file: %s\n", paths.lockFile)
+				fmt.Printf("state-file: %s\n", paths.stateFile)
 				return nil
 			}
 
-			fmt.Printf("daemon status: running (pid=%d)\n", pid)
-			fmt.Printf("data-dir: %s\n", paths.dataDir)
-			fmt.Printf("pid-file: %s\n", paths.pidFile)
-			fmt.Printf("log-file: %s\n", paths.logFile)
-			fmt.Printf("lock-file: %s\n", paths.lockFile)
+			stateExists, state, stateRunning, err := readActiveStateStatus(paths.stateFile)
+			if err != nil {
+				return err
+			}
+			if !stateExists {
+				fmt.Println("daemon status: stopped")
+				fmt.Println("source: active-state")
+				fmt.Printf("data-dir: %s\n", paths.dataDir)
+				fmt.Printf("pid-file: %s\n", paths.pidFile)
+				fmt.Printf("log-file: %s\n", paths.logFile)
+				fmt.Printf("state-file: %s\n", paths.stateFile)
+				return nil
+			}
+			if !stateRunning {
+				_ = cleanupStaleActiveState(paths.stateFile, state)
+				fmt.Printf("daemon status: stopped (stale active-state pid=%d cleaned)\n", state.PID)
+				fmt.Println("source: active-state")
+				fmt.Printf("data-dir: %s\n", state.DataDir)
+				fmt.Printf("pid-file: %s\n", state.PIDFile)
+				fmt.Printf("log-file: %s\n", state.LogFile)
+				fmt.Printf("state-file: %s\n", paths.stateFile)
+				return nil
+			}
+
+			fmt.Printf("daemon status: running (pid=%d)\n", state.PID)
+			fmt.Println("source: active-state")
+			fmt.Printf("data-dir: %s\n", state.DataDir)
+			fmt.Printf("pid-file: %s\n", state.PIDFile)
+			fmt.Printf("log-file: %s\n", state.LogFile)
+			fmt.Printf("lock-file: %s\n", state.LockFile)
+			fmt.Printf("state-file: %s\n", paths.stateFile)
 			return nil
 		},
 	}
@@ -284,7 +359,7 @@ func newDaemonRunCmd() *cobra.Command {
 				return err
 			}
 			opts.dataDir = paths.dataDir
-			if err := ensureRuntimePaths(paths); err != nil {
+			if err := ensureRuntimePaths(&paths); err != nil {
 				return err
 			}
 
@@ -449,21 +524,30 @@ func resolveDaemonPaths(dataDir, pidFile, logFile string) (daemonRuntimePaths, e
 	}
 
 	resolvedLog := strings.TrimSpace(logFile)
+	allowLogFallback := false
 	if resolvedLog == "" {
-		resolvedLog = filepath.Join(resolvedDataDir, defaultDaemonLogFileName)
+		resolvedLog = defaultDaemonLogPath(runtime.GOOS, os.Geteuid(), resolvedDataDir)
+		allowLogFallback = shouldUseSystemDaemonPaths(runtime.GOOS, os.Geteuid())
 	} else {
 		resolvedLog = history.ExpandPath(resolvedLog)
 	}
 
+	stateFile := defaultDaemonStatePath()
+	if strings.TrimSpace(stateFile) == "" {
+		return daemonRuntimePaths{}, fmt.Errorf("cannot determine daemon state file path")
+	}
+
 	return daemonRuntimePaths{
-		dataDir:  resolvedDataDir,
-		pidFile:  resolvedPID,
-		logFile:  resolvedLog,
-		lockFile: filepath.Join(resolvedDataDir, ".daemon.lock"),
+		dataDir:              resolvedDataDir,
+		pidFile:              resolvedPID,
+		logFile:              resolvedLog,
+		lockFile:             filepath.Join(resolvedDataDir, ".daemon.lock"),
+		stateFile:            stateFile,
+		allowLogFileFallback: allowLogFallback,
 	}, nil
 }
 
-func ensureRuntimePaths(paths daemonRuntimePaths) error {
+func ensureRuntimePaths(paths *daemonRuntimePaths) error {
 	if err := os.MkdirAll(paths.dataDir, 0o755); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
@@ -474,10 +558,113 @@ func ensureRuntimePaths(paths daemonRuntimePaths) error {
 	}
 	if paths.logFile != "" {
 		if err := os.MkdirAll(filepath.Dir(paths.logFile), 0o755); err != nil {
-			return fmt.Errorf("create log-file dir: %w", err)
+			if !paths.allowLogFileFallback {
+				return fmt.Errorf("create log-file dir: %w", err)
+			}
+			fallbackLog := filepath.Join(paths.dataDir, defaultDaemonLogFileName)
+			if mkErr := os.MkdirAll(filepath.Dir(fallbackLog), 0o755); mkErr != nil {
+				return fmt.Errorf("create log-file dir: %w", err)
+			}
+			paths.logFile = fallbackLog
+			paths.allowLogFileFallback = false
+		}
+	}
+	if paths.stateFile != "" {
+		if err := os.MkdirAll(filepath.Dir(paths.stateFile), 0o755); err != nil {
+			return fmt.Errorf("create state-file dir: %w", err)
 		}
 	}
 	return nil
+}
+
+func defaultDaemonLogPath(goos string, euid int, dataDir string) string {
+	if shouldUseSystemDaemonPaths(goos, euid) {
+		return "/var/log/holyf-network/" + defaultDaemonLogFileName
+	}
+	return filepath.Join(dataDir, defaultDaemonLogFileName)
+}
+
+func shouldUseSystemDaemonPaths(goos string, euid int) bool {
+	return goos == "linux" && euid == 0
+}
+
+func defaultDaemonStatePath() string {
+	if override := strings.TrimSpace(os.Getenv("HOLYF_NETWORK_DAEMON_STATE_FILE")); override != "" {
+		return history.ExpandPath(override)
+	}
+	if shouldUseSystemDaemonPaths(runtime.GOOS, os.Geteuid()) {
+		return "/run/holyf-network/" + defaultDaemonStateName
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return ""
+	}
+	return filepath.Join(home, ".holyf-network", defaultDaemonStateName)
+}
+
+func writeActiveState(path string, state daemonActiveState) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("active-state path is required")
+	}
+	if state.PID <= 0 {
+		return fmt.Errorf("active-state pid is invalid: %d", state.PID)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create active-state dir: %w", err)
+	}
+	payload, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("marshal active-state: %w", err)
+	}
+	tempPath := path + ".tmp"
+	if err := os.WriteFile(tempPath, append(payload, '\n'), 0o644); err != nil {
+		return fmt.Errorf("write active-state temp file: %w", err)
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("rename active-state file: %w", err)
+	}
+	return nil
+}
+
+func readActiveState(path string) (daemonActiveState, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return daemonActiveState{}, err
+	}
+	var state daemonActiveState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return daemonActiveState{}, fmt.Errorf("decode active-state %s: %w", path, err)
+	}
+	return state, nil
+}
+
+func removeActiveState(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func cleanupStaleActiveState(stateFile string, state daemonActiveState) error {
+	if strings.TrimSpace(state.PIDFile) != "" {
+		_ = os.Remove(state.PIDFile)
+	}
+	return removeActiveState(stateFile)
+}
+
+func readActiveStateStatus(stateFile string) (exists bool, state daemonActiveState, running bool, err error) {
+	state, err = readActiveState(stateFile)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, daemonActiveState{}, false, nil
+		}
+		return false, daemonActiveState{}, false, err
+	}
+	return true, state, isProcessRunning(state.PID), nil
 }
 
 func readDaemonStatus(pidFile string) (running bool, pid int, err error) {
@@ -489,6 +676,74 @@ func readDaemonStatus(pidFile string) (running bool, pid int, err error) {
 		return false, 0, err
 	}
 	return isProcessRunning(pid), pid, nil
+}
+
+func stopDaemonFromPIDFile(paths daemonRuntimePaths, source string, cleanupState bool) error {
+	running, pid, err := readDaemonStatus(paths.pidFile)
+	if err != nil {
+		return err
+	}
+	if !running {
+		if pid > 0 {
+			_ = os.Remove(paths.pidFile)
+			fmt.Printf("daemon not running (stale pid file removed: %s)\n", paths.pidFile)
+		} else {
+			fmt.Println("daemon not running")
+		}
+		fmt.Printf("source: %s\n", source)
+		if cleanupState {
+			_ = removeActiveState(paths.stateFile)
+		}
+		return nil
+	}
+
+	return stopDaemonByPID(pid, paths, source, cleanupState)
+}
+
+func stopDaemonByPID(pid int, paths daemonRuntimePaths, source string, cleanupState bool) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("find daemon process %d: %w", pid, err)
+	}
+
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		return fmt.Errorf("send SIGTERM to pid %d: %w", pid, err)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for isProcessRunning(pid) && time.Now().Before(deadline) {
+		time.Sleep(200 * time.Millisecond)
+	}
+	if isProcessRunning(pid) {
+		_ = proc.Signal(syscall.SIGKILL)
+		for i := 0; i < 20 && isProcessRunning(pid); i++ {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	if isProcessRunning(pid) {
+		return fmt.Errorf("failed to stop daemon pid %d", pid)
+	}
+
+	_ = os.Remove(paths.pidFile)
+	if cleanupState {
+		_ = removeActiveState(paths.stateFile)
+	}
+	fmt.Printf("daemon stopped (pid=%d)\n", pid)
+	fmt.Printf("source: %s\n", source)
+	if paths.dataDir != "" {
+		fmt.Printf("data-dir: %s\n", paths.dataDir)
+	}
+	if paths.pidFile != "" {
+		fmt.Printf("pid-file: %s\n", paths.pidFile)
+	}
+	if paths.logFile != "" {
+		fmt.Printf("log-file: %s\n", paths.logFile)
+	}
+	if paths.stateFile != "" {
+		fmt.Printf("state-file: %s\n", paths.stateFile)
+	}
+	return nil
 }
 
 func readPIDFile(path string) (int, error) {

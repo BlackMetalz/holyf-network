@@ -102,6 +102,12 @@ Daemon notes:
 - `--top-limit` is the max aggregate rows stored per snapshot.
 - Retention policy: remove old segments beyond `--retention-hours`.
 - A lock file prevents multiple daemons writing the same `--data-dir`.
+- Default paths on Linux root:
+  - snapshots: `/var/lib/holyf-network/snapshots`
+  - daemon log: `/var/log/holyf-network/daemon.log`
+  - active state: `/run/holyf-network/daemon.state`
+- `daemon status/stop` without explicit `--data-dir/--pid-file` uses active-state targeting.
+- Explicit flags (`--data-dir` or `--pid-file`) force `status/stop` to target that explicit location.
 - For bandwidth monitoring, use shorter interval (`--interval 5..10`) to capture bursts better.
 - For connection trend monitoring, keep default interval (`30s`) to reduce noise/storage.
 

@@ -128,7 +128,7 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
 
 Package: `internal/history` + `cmd/daemon.go`
 
-1. `daemon start` launches internal worker in background and writes PID/log paths.
+1. `daemon start` launches internal worker in background and writes PID/log/runtime state paths.
 2. Worker resolves interface (`--interface`) and starts `SnapshotWriter` with lock file (`.daemon.lock`) under `--data-dir`.
 3. Every `--interval` seconds:
    - call `collector.CollectTopTalkers(0)` to sample current connections
@@ -148,10 +148,15 @@ Package: `internal/history` + `cmd/daemon.go`
 4. Segment file naming by server local day: `connections-YYYYMMDD.jsonl`.
 5. Retention:
    - remove segments older than `--retention-hours`
-6. `daemon stop` sends `SIGTERM` (fallback `SIGKILL`) and removes PID file.
-7. `daemon status` reads PID file and reports running/stopped state.
-8. Worker handles `SIGINT/SIGTERM` and closes cleanly.
-9. Interval guidance:
+6. Active daemon state file (`daemon.state`) is the default source of truth for `status/stop` without explicit targeting flags.
+7. `daemon stop` sends `SIGTERM` (fallback `SIGKILL`) and removes PID file + active state.
+8. `daemon status` reports running/stopped from active-state or explicit flags (`source` in output).
+9. Default Linux root paths:
+   - snapshots: `/var/lib/holyf-network/snapshots`
+   - daemon log: `/var/log/holyf-network/daemon.log`
+   - active-state: `/run/holyf-network/daemon.state`
+10. Worker handles `SIGINT/SIGTERM` and closes cleanly.
+11. Interval guidance:
    - bandwidth-focused monitoring: `5-10s`
    - connection trend monitoring: `30s` default
 

@@ -3,6 +3,7 @@ package history
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -94,10 +95,17 @@ func DefaultDataDir() string {
 		return ""
 	}
 	home = strings.TrimSpace(home)
+	if shouldUseSystemDefaultPaths(runtime.GOOS, os.Geteuid()) {
+		return "/var/lib/holyf-network/snapshots"
+	}
 	if home == "" {
 		return ""
 	}
 	return filepath.Join(home, ".holyf-network", snapshotDirName)
+}
+
+func shouldUseSystemDefaultPaths(goos string, euid int) bool {
+	return goos == "linux" && euid == 0
 }
 
 func ExpandPath(path string) string {
