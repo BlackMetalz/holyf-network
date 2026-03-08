@@ -36,7 +36,30 @@ flowchart TD
 
 Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).
 
-### 2.1) Metric sources, formulas, and equivalent shell commands
+### 2.1) Active mitigation path (block vs kill flow)
+
+Mitigation is implemented in `internal/tui/app_blocking_runtime.go` and `internal/actions/peer_blocker.go`.
+
+Execution paths:
+
+1. Timed block (`minutes > 0`, from `k/Enter` flow):
+   - Step 1: insert firewall DROP rules (`BlockPeer`) with `iptables`/`ip6tables` for `INPUT` + `OUTPUT`.
+   - Step 2: clear active connections:
+     - `QueryAndKillPeerSockets` (uses `ss -K`, broad + exact + verify)
+     - fallback `KillSockets` with tuples captured from current UI snapshot
+     - `DropPeerConnections` (best-effort `ss -K` + `conntrack -D`)
+   - Step 3: start timer and auto-unblock at expiry (`UnblockPeer` removes DROP rules).
+
+2. Kill-only (`minutes = 0`):
+   - No firewall rule is inserted.
+   - Only connection-clearing path runs (`ss -K` / `conntrack -D` via methods above).
+
+Important clarification:
+
+- `iptables/ip6tables` is for block/unblock policy only.
+- Actual active flow termination uses `ss -K` and `conntrack -D`.
+
+### 2.2) Metric sources, formulas, and equivalent shell commands
 
 All per-second metrics in app use the same pattern:
 
@@ -294,7 +317,9 @@ Behavior constraints:
 - Collector path relies on kernel network procfs/sysfs files.
 - Bandwidth/NAT enrichment relies on conntrack TCP dumps (`-o extended` + plain fallback) and tuple normalization.
 - `ct/nat` indicates conntrack-derived NAT visibility, not direct host process PID ownership.
-- Mitigation path relies on `iptables`/`ip6tables`, `conntrack`, `ss`.
+- Mitigation path uses:
+  - `iptables`/`ip6tables` for block/unblock rules
+  - `ss -K` + `conntrack -D` for killing active flows
 - `sudo` recommended for full live-mode visibility/mitigation.
 
 ## 10) Extension Guidelines
