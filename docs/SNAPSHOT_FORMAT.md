@@ -21,12 +21,12 @@ This document defines the on-disk snapshot format used by daemon/replay.
 ## Retention and Prune Timing
 
 - Retention policy is age-based: remove segments older than `--retention-hours`.
-- Prune is write-driven (not a separate cron):
-  - runs right after segment rotate/open (first write after start, and day rollover)
-  - runs periodically every 10 appended snapshots (`PruneEverySnapshots=10`)
-- Effective periodic prune cadence in daemon mode is approximately:
-  - `--interval * 10`
-  - Example: `--interval=30s` => periodic prune check about every 5 minutes
+- Daemon runtime prune cadence:
+  - once at daemon startup
+  - daily at local server `00:00`
+- Manual on-demand prune:
+  - `holyf-network daemon prune`
+  - useful when you want immediate cleanup without waiting for midnight
 
 ## Record Schema
 

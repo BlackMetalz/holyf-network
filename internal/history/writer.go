@@ -50,7 +50,8 @@ func normalizeWriterConfig(cfg WriterConfig) WriterConfig {
 	if cfg.RetentionHours <= 0 {
 		cfg.RetentionHours = defaultRetentionHours
 	}
-	if cfg.PruneEverySnapshots <= 0 {
+	// 0 explicitly disables periodic append-count prune.
+	if cfg.PruneEverySnapshots < 0 {
 		cfg.PruneEverySnapshots = defaultPruneEveryWrites
 	}
 	return cfg
@@ -77,11 +78,13 @@ func (w *SnapshotWriter) Append(record SnapshotRecord) (AppendResult, error) {
 		if err := w.rotateSegmentLocked(segmentPath, segment); err != nil {
 			return result, err
 		}
-		pruned, err := w.pruneLocked(record.CapturedAt)
-		if err != nil {
-			return result, err
+		if w.cfg.PruneEverySnapshots != 0 {
+			pruned, err := w.pruneLocked(record.CapturedAt)
+			if err != nil {
+				return result, err
+			}
+			result.Prune = pruned
 		}
-		result.Prune = pruned
 	}
 
 	payload, err := json.Marshal(record)
@@ -93,7 +96,7 @@ func (w *SnapshotWriter) Append(record SnapshotRecord) (AppendResult, error) {
 	}
 
 	w.appendCount++
-	if w.appendCount%w.cfg.PruneEverySnapshots == 0 {
+	if w.cfg.PruneEverySnapshots > 0 && w.appendCount%w.cfg.PruneEverySnapshots == 0 {
 		pruned, err := w.pruneLocked(record.CapturedAt)
 		if err != nil {
 			return result, err
@@ -119,33 +122,7 @@ func (w *SnapshotWriter) rotateSegmentLocked(path, segment string) error {
 }
 
 func (w *SnapshotWriter) pruneLocked(now time.Time) (PruneResult, error) {
-	files, err := listSegmentFiles(w.cfg.DataDir)
-	if err != nil {
-		return PruneResult{}, err
-	}
-
-	result := PruneResult{}
-	if len(files) == 0 {
-		return result, nil
-	}
-
-	cutoff := now.Local().Add(-time.Duration(w.cfg.RetentionHours) * time.Hour)
-	kept := make([]segmentFile, 0, len(files))
-	for _, file := range files {
-		segmentEnd := file.Timestamp
-		if file.Span > 0 {
-			segmentEnd = segmentEnd.Add(file.Span)
-		}
-		if segmentEnd.Before(cutoff) {
-			if err := os.Remove(file.Path); err == nil {
-				result.RemovedByAge++
-			}
-			continue
-		}
-		kept = append(kept, file)
-	}
-
-	return result, nil
+	return PruneDataDirByAge(w.cfg.DataDir, w.cfg.RetentionHours, now)
 }
 
 func (w *SnapshotWriter) Close() error {

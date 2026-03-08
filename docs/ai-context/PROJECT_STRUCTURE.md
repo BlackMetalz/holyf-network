@@ -63,7 +63,7 @@ This is the current high-signal layout (non-essential folders omitted):
 
 - `cmd`
   - CLI flags, version resolution, startup wiring.
-  - Entry points for live mode (`root`), daemon mode (`daemon start/stop/status`), and replay mode (`replay`).
+  - Entry points for live mode (`root`), daemon mode (`daemon start/stop/status/prune`), and replay mode (`replay`).
 
 - `internal/network`
   - Interface detection/listing helpers used by CLI.
@@ -94,7 +94,7 @@ This is the current high-signal layout (non-essential folders omitted):
 
 - `internal/history`
   - Snapshot persistence/indexing for daemon + replay flow.
-  - NDJSON writer with retention and lock file.
+  - JSON Lines (`.jsonl`) writer with retention and lock file.
   - Reader/indexer for timeline replay.
   - Aggregate snapshots persist queue + bandwidth metrics per peer/port/proc row.
 

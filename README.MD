@@ -104,6 +104,9 @@ holyf-network daemon start \
 # Check status
 holyf-network daemon status
 
+# Prune old segment files immediately (on-demand)
+holyf-network daemon prune
+
 # Stop daemon
 holyf-network daemon stop
 ```
@@ -116,15 +119,20 @@ Daemon notes:
 - For Docker/NAT traffic, daemon snapshots can persist `proc_name=ct/nat` rows (same semantics as live view).
 - `--top-limit` is the max aggregate rows stored per snapshot.
 - Retention policy: remove old segments beyond `--retention-hours`.
-  - Retention check runs on writer rotate (first write / day rollover) and then every 10 snapshot writes.
-  - So in daemon mode, prune cadence follows write cadence (effective interval: `--interval * 10` between periodic checks).
+  - In daemon runtime, prune runs once at startup and then daily at local `00:00`.
+  - Use `holyf-network daemon prune` for immediate manual prune.
 - A lock file prevents multiple daemons writing the same `--data-dir`.
 - Default paths on Linux root:
   - snapshots: `/var/lib/holyf-network/snapshots`
   - daemon log: `/var/log/holyf-network/daemon.log`
   - active state: `/run/holyf-network/daemon.state`
 - `daemon status/stop` without explicit `--data-dir/--pid-file` uses active-state targeting.
-- Explicit flags (`--data-dir` or `--pid-file`) force `status/stop` to target that explicit location.
+- `daemon prune` without explicit `--data-dir/--pid-file` also uses active-state targeting.
+- `daemon prune` retention source precedence:
+  - `--retention-hours` flag
+  - active-state `retention_hours` (if present)
+  - default `168h`
+- Explicit flags (`--data-dir` or `--pid-file`) force `status/stop/prune` to target that explicit location.
 - For bandwidth monitoring, use shorter interval (`--interval 5..10`) to capture bursts better.
 - For connection trend monitoring, keep default interval (`30s`) to reduce noise/storage.
 

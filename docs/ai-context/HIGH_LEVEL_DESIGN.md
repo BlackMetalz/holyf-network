@@ -5,7 +5,7 @@
 This project now has 3 runtime paths:
 
 1. `holyf-network` (live TUI, existing mode)
-2. `holyf-network daemon start/stop/status` (snapshot collector daemon lifecycle)
+2. `holyf-network daemon start/stop/status/prune` (snapshot collector daemon lifecycle + manual retention prune)
 3. `holyf-network replay` (read-only history TUI)
 
 ```mermaid
@@ -184,19 +184,22 @@ Package: `internal/history` + `cmd/daemon.go`
 4. Segment file naming by server local day: `connections-YYYYMMDD.jsonl`.
 5. Retention:
    - remove segments older than `--retention-hours`
-   - prune trigger points:
-     - immediately after segment rotate/open (first write, day rollover)
-     - periodic prune every 10 appended snapshots (`PruneEverySnapshots=10`)
-   - practical cadence in daemon mode: retention checks are write-driven, so periodic checks happen roughly every `--interval * 10`
-6. Active daemon state file (`daemon.state`) is the default source of truth for `status/stop` without explicit targeting flags.
-7. `daemon stop` sends `SIGTERM` (fallback `SIGKILL`) and removes PID file + active state.
-8. `daemon status` reports running/stopped from active-state or explicit flags.
-9. Default Linux root paths:
+   - daemon runtime prune schedule:
+     - once at startup
+     - daily at local `00:00`
+   - manual prune command:
+     - `holyf-network daemon prune`
+6. Active daemon state file (`daemon.state`) is the default source of truth for `status/stop/prune` without explicit targeting flags.
+   - includes runtime metadata such as `retention_hours` for prune default resolution
+7. `daemon prune` without explicit target flags uses active-state target resolution.
+8. `daemon stop` sends `SIGTERM` (fallback `SIGKILL`) and removes PID file + active state.
+9. `daemon status` reports running/stopped from active-state or explicit flags.
+10. Default Linux root paths:
    - snapshots: `/var/lib/holyf-network/snapshots`
    - daemon log: `/var/log/holyf-network/daemon.log`
    - active-state: `/run/holyf-network/daemon.state`
-10. Worker handles `SIGINT/SIGTERM` and closes cleanly.
-11. Interval guidance:
+11. Worker handles `SIGINT/SIGTERM` and closes cleanly.
+12. Interval guidance:
    - bandwidth-focused monitoring: `5-10s`
    - connection trend monitoring: `30s` default
    - large intervals can miss short-lived flows in snapshots/replay

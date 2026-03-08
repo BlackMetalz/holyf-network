@@ -45,6 +45,11 @@ type daemonControlOptions struct {
 	pidFile string
 }
 
+type daemonPruneOptions struct {
+	daemonControlOptions
+	retentionHours int
+}
+
 type daemonRuntimePaths struct {
 	dataDir              string
 	pidFile              string
@@ -60,6 +65,7 @@ type daemonActiveState struct {
 	PIDFile   string    `json:"pid_file"`
 	LogFile   string    `json:"log_file"`
 	LockFile  string    `json:"lock_file"`
+	Retention int       `json:"retention_hours,omitempty"`
 	StartedAt time.Time `json:"started_at"`
 }
 
@@ -71,6 +77,7 @@ func newDaemonCmd() *cobra.Command {
 	daemonCmd.AddCommand(newDaemonStartCmd())
 	daemonCmd.AddCommand(newDaemonStopCmd())
 	daemonCmd.AddCommand(newDaemonStatusCmd())
+	daemonCmd.AddCommand(newDaemonPruneCmd())
 	daemonCmd.AddCommand(newDaemonRunCmd())
 	return daemonCmd
 }
@@ -169,6 +176,7 @@ func newDaemonStartCmd() *cobra.Command {
 				PIDFile:   paths.pidFile,
 				LogFile:   paths.logFile,
 				LockFile:  paths.lockFile,
+				Retention: opts.retentionHours,
 				StartedAt: time.Now().Local(),
 			}
 			if err := writeActiveState(paths.stateFile, activeState); err != nil {
@@ -323,6 +331,77 @@ func newDaemonStatusCmd() *cobra.Command {
 	return cmd
 }
 
+func newDaemonPruneCmd() *cobra.Command {
+	opts := daemonPruneOptions{}
+	cmd := &cobra.Command{
+		Use:   "prune",
+		Short: "Prune old snapshot segments immediately",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			explicitTarget := cmd.Flags().Changed("data-dir") || cmd.Flags().Changed("pid-file")
+			explicitRetention := cmd.Flags().Changed("retention-hours")
+			if explicitRetention && opts.retentionHours < 1 {
+				return fmt.Errorf("retention-hours must be >= 1, got %d", opts.retentionHours)
+			}
+
+			paths, err := resolveDaemonPaths(opts.dataDir, opts.pidFile, "")
+			if err != nil {
+				return err
+			}
+
+			stateExists, state, stateRunning, err := readActiveStateStatus(paths.stateFile)
+			if err != nil {
+				return err
+			}
+			if stateExists && !stateRunning {
+				_ = cleanupStaleActiveState(paths.stateFile, state)
+				fmt.Printf("daemon prune: stale active-state pid=%d cleaned\n", state.PID)
+				stateExists = false
+				state = daemonActiveState{}
+				stateRunning = false
+			}
+
+			targetDataDir := paths.dataDir
+			targetSource := "default"
+			if explicitTarget {
+				targetSource = "explicit-flags"
+			} else if stateExists {
+				targetDataDir = state.DataDir
+				targetSource = "active-state"
+			}
+
+			retention := history.DefaultRetentionHours()
+			retentionSource := "default"
+			if explicitRetention {
+				retention = opts.retentionHours
+				retentionSource = "flag"
+			} else if stateExists && state.Retention > 0 {
+				retention = state.Retention
+				retentionSource = "active-state"
+			}
+
+			now := time.Now().Local()
+			pruned, err := history.PruneDataDirByAge(targetDataDir, retention, now)
+			if err != nil {
+				return err
+			}
+
+			fmt.Println("daemon prune: done")
+			fmt.Printf("data-dir: %s (%s)\n", targetDataDir, targetSource)
+			fmt.Printf("retention: %dh (%s)\n", retention, retentionSource)
+			fmt.Printf("current-segment-kept: %s\n", segmentNameForTime(now))
+			if stateExists && stateRunning {
+				fmt.Printf("daemon-running: yes (pid=%d)\n", state.PID)
+			}
+			fmt.Printf("removed-by-age: %d\n", pruned.RemovedByAge)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&opts.dataDir, "data-dir", history.DefaultDataDir(), "Snapshot data directory")
+	cmd.Flags().StringVar(&opts.pidFile, "pid-file", "", "Daemon PID file path (default: <data-dir>/daemon.pid)")
+	cmd.Flags().IntVar(&opts.retentionHours, "retention-hours", history.DefaultRetentionHours(), "Retention window in hours (optional override)")
+	return cmd
+}
+
 func newDaemonRunCmd() *cobra.Command {
 	opts := daemonCaptureOptions{}
 	var pidFile string
@@ -365,7 +444,7 @@ func newDaemonRunCmd() *cobra.Command {
 			writer, err := history.NewSnapshotWriter(history.WriterConfig{
 				DataDir:             opts.dataDir,
 				RetentionHours:      opts.retentionHours,
-				PruneEverySnapshots: 10,
+				PruneEverySnapshots: 0,
 			})
 			if err != nil {
 				return err
@@ -385,6 +464,21 @@ func newDaemonRunCmd() *cobra.Command {
 
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
+
+			runPrune := func(ts time.Time, reason string) {
+				pruned, err := history.PruneDataDirByAge(opts.dataDir, opts.retentionHours, ts)
+				if err != nil {
+					fmt.Printf("[%s] prune failed (%s): %v\n", ts.Format(time.RFC3339), reason, err)
+					return
+				}
+				if pruned.RemovedByAge > 0 {
+					fmt.Printf("[%s] pruned files (%s): age=%d\n",
+						ts.Format(time.RFC3339),
+						reason,
+						pruned.RemovedByAge,
+					)
+				}
+			}
 
 			capture := func(ts time.Time) {
 				conns, err := collector.CollectTopTalkers(0)
@@ -448,17 +542,15 @@ func newDaemonRunCmd() *cobra.Command {
 				if ssErr != nil {
 					fmt.Printf("[%s] socket bandwidth fallback unavailable: %v\n", ts.Format(time.RFC3339), ssErr)
 				}
-				if result.Prune.RemovedByAge > 0 {
-					fmt.Printf("[%s] pruned files: age=%d\n",
-						ts.Format(time.RFC3339),
-						result.Prune.RemovedByAge,
-					)
-				}
 			}
+
+			runPrune(time.Now(), "startup")
 
 			capture(time.Now())
 			ticker := time.NewTicker(time.Duration(opts.intervalSec) * time.Second)
 			defer ticker.Stop()
+			pruneTimer := time.NewTimer(time.Until(nextLocalMidnight(time.Now())))
+			defer pruneTimer.Stop()
 
 			for {
 				select {
@@ -467,6 +559,10 @@ func newDaemonRunCmd() *cobra.Command {
 					return nil
 				case tickAt := <-ticker.C:
 					capture(tickAt)
+				case pruneAt := <-pruneTimer.C:
+					runPrune(pruneAt, "daily-midnight")
+					next := nextLocalMidnight(pruneAt.Add(time.Second))
+					pruneTimer.Reset(time.Until(next))
 				}
 			}
 		},
@@ -778,6 +874,16 @@ func isProcessRunning(pid int) bool {
 		return true
 	}
 	return false
+}
+
+func nextLocalMidnight(now time.Time) time.Time {
+	now = now.Local()
+	y, m, d := now.Date()
+	return time.Date(y, m, d+1, 0, 0, 0, 0, now.Location())
+}
+
+func segmentNameForTime(ts time.Time) string {
+	return "connections-" + ts.Local().Format("20060102") + ".jsonl"
 }
 
 func humanBytes(n int64) string {
