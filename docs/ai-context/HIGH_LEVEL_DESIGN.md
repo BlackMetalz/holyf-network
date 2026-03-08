@@ -44,20 +44,26 @@ Execution paths:
 
 1. Timed block (`minutes > 0`, from `k/Enter` flow):
    - Step 1: insert firewall DROP rules (`BlockPeer`) with `iptables`/`ip6tables` for `INPUT` + `OUTPUT`.
-   - Step 2: clear active connections:
-     - `QueryAndKillPeerSockets` (uses `ss -K`, broad + exact + verify)
-     - fallback `KillSockets` with tuples captured from current UI snapshot
-     - `DropPeerConnections` (best-effort `ss -K` + `conntrack -D`)
+   - Step 2: clear active connections with bounded converge sweep:
+     - `KillPeerFlowsConverge` loop (default: max `4s`, max `12` iterations, sleep `120ms`)
+     - each iteration:
+       - broad `ss -K` pass
+       - exact tuple kill pass (`KillSockets`) from real-time query + current snapshot tuples
+       - `conntrack -D` pass
+       - re-count kill-target sockets
+     - kill-target states: `ESTABLISHED` + `SYN_RECV`
+     - `TIME_WAIT` is tracked for diagnostics only (not kill-failure criterion)
    - Step 3: start timer and auto-unblock at expiry (`UnblockPeer` removes DROP rules).
 
 2. Kill-only (`minutes = 0`):
    - No firewall rule is inserted.
-   - Only connection-clearing path runs (`ss -K` / `conntrack -D` via methods above).
+   - Only bounded connection-clearing sweep runs (same converge engine without block rules).
 
 Important clarification:
 
 - `iptables/ip6tables` is for block/unblock policy only.
 - Actual active flow termination uses `ss -K` and `conntrack -D`.
+- Under conn storm/race windows, converge can return partial (`remaining N (storm/race)`) by design when bounded limits are hit.
 
 ### 2.2) Metric sources, formulas, and equivalent shell commands
 

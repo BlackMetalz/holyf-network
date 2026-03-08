@@ -127,6 +127,19 @@ Typical causes:
 2. Flows are too short-lived for current sampling window.
 3. Privilege/accounting mismatch on host conntrack path.
 
+## Case 4: Kill shows `remaining N (storm/race)`
+
+Meaning:
+
+1. The app already ran iterative kill sweep (`ss -K` + `conntrack -D`) but stopped at bounded limits.
+2. This is common during conn storms where new flows keep appearing.
+3. `TIME_WAIT` is informational only; kill target states are `ESTABLISHED` + `SYN_RECV`.
+
+Actions:
+
+1. Use timed block (`minutes > 0`) when you need stronger mitigation than kill-only.
+2. Keep port filter enabled and observe a few refresh cycles to confirm the trend is down.
+
 ## Quick action cheatsheet
 
 | Symptom | Operational meaning | Immediate action |

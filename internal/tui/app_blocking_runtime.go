@@ -36,27 +36,20 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 	})
 
 	tuples := matchingBlockTuplesFromSnapshot(snapshotTalkers, target.PeerIP, target.LocalPort)
-	beforeCount, beforeCountErr := actions.CountEstablishedPeerSockets(spec)
-	socketErr := actions.QueryAndKillPeerSockets(spec)
-	if socketErr != nil {
-		// Fallback: try killing with cached tuples from the TUI snapshot.
-		socketErr = actions.KillSockets(tuples)
-	}
-	flowErr := actions.DropPeerConnections(spec)
-	afterCount, afterCountErr := actions.CountEstablishedPeerSockets(spec)
+	killReport := actions.KillPeerFlowsConverge(spec, tuples, actions.DefaultKillConvergeOptions())
 
 	dropWarningParts := make([]string, 0, 2)
-	if socketErr != nil {
-		dropWarningParts = append(dropWarningParts, "socket "+shortStatus(socketErr.Error(), 28))
+	if killReport.SocketErr != nil {
+		dropWarningParts = append(dropWarningParts, "socket "+shortStatus(killReport.SocketErr.Error(), 28))
 	}
-	if flowErr != nil {
-		dropWarningParts = append(dropWarningParts, "flow "+shortStatus(flowErr.Error(), 28))
+	if killReport.FlowErr != nil {
+		dropWarningParts = append(dropWarningParts, "flow "+shortStatus(killReport.FlowErr.Error(), 28))
 	}
 	dropWarning := ""
 	if len(dropWarningParts) > 0 {
 		dropWarning = " (drop partial: " + strings.Join(dropWarningParts, "; ") + ")"
 	}
-	actionSummary := buildBlockActionSummary(spec, duration, beforeCount, beforeCountErr, afterCount, afterCountErr, socketErr, flowErr)
+	actionSummary := buildBlockActionSummary(spec, duration, killReport)
 	a.updateActiveBlockSummary(spec, actionSummary)
 	a.addActionLog(actionSummary)
 
@@ -100,27 +93,20 @@ func (a *App) killPeerConnectionsOnly(target peerKillTarget, snapshotTalkers []c
 	}
 
 	tuples := matchingBlockTuplesFromSnapshot(snapshotTalkers, target.PeerIP, target.LocalPort)
-	beforeCount, beforeCountErr := actions.CountEstablishedPeerSockets(spec)
-	socketErr := actions.QueryAndKillPeerSockets(spec)
-	if socketErr != nil {
-		// Fallback: try killing with cached tuples from the TUI snapshot.
-		socketErr = actions.KillSockets(tuples)
-	}
-	flowErr := actions.DropPeerConnections(spec)
-	afterCount, afterCountErr := actions.CountEstablishedPeerSockets(spec)
+	killReport := actions.KillPeerFlowsConverge(spec, tuples, actions.DefaultKillConvergeOptions())
 
 	dropWarningParts := make([]string, 0, 2)
-	if socketErr != nil {
-		dropWarningParts = append(dropWarningParts, "socket "+shortStatus(socketErr.Error(), 28))
+	if killReport.SocketErr != nil {
+		dropWarningParts = append(dropWarningParts, "socket "+shortStatus(killReport.SocketErr.Error(), 28))
 	}
-	if flowErr != nil {
-		dropWarningParts = append(dropWarningParts, "flow "+shortStatus(flowErr.Error(), 28))
+	if killReport.FlowErr != nil {
+		dropWarningParts = append(dropWarningParts, "flow "+shortStatus(killReport.FlowErr.Error(), 28))
 	}
 	dropWarning := ""
 	if len(dropWarningParts) > 0 {
 		dropWarning = " (drop partial: " + strings.Join(dropWarningParts, "; ") + ")"
 	}
-	actionSummary := buildKillOnlyActionSummary(spec, beforeCount, beforeCountErr, afterCount, afterCountErr, socketErr, flowErr)
+	actionSummary := buildKillOnlyActionSummary(spec, killReport)
 	a.addActionLog(actionSummary)
 
 	a.app.QueueUpdateDraw(func() {

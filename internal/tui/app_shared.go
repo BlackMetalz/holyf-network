@@ -64,58 +64,53 @@ func formatRemainingDuration(duration time.Duration) string {
 func buildBlockActionSummary(
 	spec actions.PeerBlockSpec,
 	duration time.Duration,
-	beforeCount int,
-	beforeErr error,
-	afterCount int,
-	afterErr error,
-	socketErr error,
-	flowErr error,
+	report actions.KillConvergeReport,
 ) string {
-	killPart := buildKillPart(beforeCount, beforeErr, afterCount, afterErr)
+	killPart, remainingPart := buildKillPart(report)
 
 	dropPart := "drop ok"
-	if socketErr != nil && flowErr != nil {
+	if report.SocketErr != nil && report.FlowErr != nil {
 		dropPart = "drop partial"
 	}
 
-	return fmt.Sprintf(
-		"Blocked %s:%d | %s | %s | expires in %s",
-		spec.PeerIP,
-		spec.LocalPort,
+	parts := []string{
+		fmt.Sprintf("Blocked %s:%d", spec.PeerIP, spec.LocalPort),
 		killPart,
-		dropPart,
-		formatRemainingDuration(duration),
-	)
+	}
+	if remainingPart != "" {
+		parts = append(parts, remainingPart)
+	}
+	parts = append(parts, dropPart, "expires in "+formatRemainingDuration(duration))
+	return strings.Join(parts, " | ")
 }
 
 func buildKillOnlyActionSummary(
 	spec actions.PeerBlockSpec,
-	beforeCount int,
-	beforeErr error,
-	afterCount int,
-	afterErr error,
-	socketErr error,
-	flowErr error,
+	report actions.KillConvergeReport,
 ) string {
-	killPart := buildKillPart(beforeCount, beforeErr, afterCount, afterErr)
+	killPart, remainingPart := buildKillPart(report)
 
 	dropPart := "drop ok"
-	if socketErr != nil && flowErr != nil {
+	if report.SocketErr != nil && report.FlowErr != nil {
 		dropPart = "drop partial"
 	}
 
-	return fmt.Sprintf(
-		"Killed connections for %s:%d | %s | %s",
-		spec.PeerIP,
-		spec.LocalPort,
+	parts := []string{
+		fmt.Sprintf("Killed connections for %s:%d", spec.PeerIP, spec.LocalPort),
 		killPart,
-		dropPart,
-	)
+	}
+	if remainingPart != "" {
+		parts = append(parts, remainingPart)
+	}
+	parts = append(parts, dropPart)
+	return strings.Join(parts, " | ")
 }
 
-func buildKillPart(beforeCount int, beforeErr error, afterCount int, afterErr error) string {
-	killPart := "killed ?/? flows"
-	if beforeErr == nil && afterErr == nil {
+func buildKillPart(report actions.KillConvergeReport) (killPart string, remainingPart string) {
+	killPart = "killed ?/? flows"
+	if report.BeforeCountErr == nil && report.AfterCountErr == nil {
+		beforeCount := report.BeforeTargetCount
+		afterCount := report.AfterTargetCount
 		if beforeCount < 0 {
 			beforeCount = 0
 		}
@@ -126,10 +121,17 @@ func buildKillPart(beforeCount int, beforeErr error, afterCount int, afterErr er
 			afterCount = beforeCount
 		}
 		killPart = fmt.Sprintf("killed %d/%d flows", beforeCount-afterCount, beforeCount)
-	} else if beforeErr == nil {
+		if report.IsPartial() {
+			remainingPart = fmt.Sprintf("remaining %d (storm/race)", afterCount)
+		}
+	} else if report.BeforeCountErr == nil {
+		beforeCount := report.BeforeTargetCount
+		if beforeCount < 0 {
+			beforeCount = 0
+		}
 		killPart = fmt.Sprintf("killed ?/%d flows", beforeCount)
 	}
-	return killPart
+	return killPart, remainingPart
 }
 
 func formatActiveBlockDetail(entry activeBlockEntry) string {

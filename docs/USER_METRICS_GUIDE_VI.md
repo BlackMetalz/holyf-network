@@ -127,6 +127,19 @@ Khả năng thường gặp:
 2. Flow quá ngắn, không kịp xuất hiện trong cửa sổ lấy mẫu.
 3. Thiếu quyền hoặc conntrack accounting chưa đúng trên host.
 
+## Case 4: Kill báo `remaining N (storm/race)`
+
+Ý nghĩa:
+
+1. App đã chạy kill sweep lặp (`ss -K` + `conntrack -D`) nhưng dừng theo giới hạn thời gian/vòng lặp.
+2. Đây thường là race trong conn storm (flow mới xuất hiện liên tục).
+3. `TIME_WAIT` không bị tính là kill-fail; chỉ `ESTABLISHED` + `SYN_RECV` mới là target kill.
+
+Gợi ý xử lý:
+
+1. Nếu cần chặn mạnh hơn, dùng block có thời hạn (`minutes > 0`) thay vì kill-only.
+2. Kết hợp filter theo port và theo dõi thêm vài chu kỳ refresh để xác nhận trend giảm.
+
 ## Cheat-sheet hành động nhanh
 
 | Triệu chứng | Ý nghĩa vận hành | Hành động ngay |

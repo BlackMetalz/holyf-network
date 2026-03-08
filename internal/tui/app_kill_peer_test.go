@@ -68,7 +68,10 @@ func TestBuildKillOnlyActionSummaryHasNoExpiryArtifact(t *testing.T) {
 	t.Parallel()
 
 	spec := actions.PeerBlockSpec{PeerIP: "203.0.113.10", LocalPort: 443}
-	summary := buildKillOnlyActionSummary(spec, 3, nil, 1, nil, nil, nil)
+	summary := buildKillOnlyActionSummary(spec, actions.KillConvergeReport{
+		BeforeTargetCount: 3,
+		AfterTargetCount:  1,
+	})
 
 	if !strings.Contains(summary, "Killed connections for 203.0.113.10:443") {
 		t.Fatalf("kill-only summary should describe kill-only action, got: %q", summary)
@@ -85,13 +88,52 @@ func TestBuildBlockActionSummaryIncludesExpiryArtifact(t *testing.T) {
 	t.Parallel()
 
 	spec := actions.PeerBlockSpec{PeerIP: "203.0.113.10", LocalPort: 443}
-	summary := buildBlockActionSummary(spec, 5*time.Minute, 4, nil, 1, nil, nil, nil)
+	summary := buildBlockActionSummary(spec, 5*time.Minute, actions.KillConvergeReport{
+		BeforeTargetCount: 4,
+		AfterTargetCount:  1,
+	})
 
 	if !strings.Contains(summary, "Blocked 203.0.113.10:443") {
 		t.Fatalf("timed-block summary should mention block action, got: %q", summary)
 	}
 	if !strings.Contains(summary, "expires in") {
 		t.Fatalf("timed-block summary should include expiry text, got: %q", summary)
+	}
+}
+
+func TestBuildKillOnlyActionSummaryAddsRemainingOnPartial(t *testing.T) {
+	t.Parallel()
+
+	spec := actions.PeerBlockSpec{PeerIP: "203.0.113.10", LocalPort: 443}
+	summary := buildKillOnlyActionSummary(spec, actions.KillConvergeReport{
+		BeforeTargetCount: 5,
+		AfterTargetCount:  2,
+		Converged:         false,
+	})
+	if !strings.Contains(summary, "killed 3/5 flows") {
+		t.Fatalf("summary should include kill ratio, got: %q", summary)
+	}
+	if !strings.Contains(summary, "remaining 2 (storm/race)") {
+		t.Fatalf("summary should include remaining hint for partial storm, got: %q", summary)
+	}
+}
+
+func TestBuildKillOnlyActionSummaryIgnoresTimeWaitAsFailure(t *testing.T) {
+	t.Parallel()
+
+	spec := actions.PeerBlockSpec{PeerIP: "203.0.113.10", LocalPort: 443}
+	summary := buildKillOnlyActionSummary(spec, actions.KillConvergeReport{
+		BeforeTargetCount:   1,
+		AfterTargetCount:    0,
+		BeforeTimeWaitCount: 0,
+		AfterTimeWaitCount:  7,
+		Converged:           true,
+	})
+	if strings.Contains(summary, "remaining") {
+		t.Fatalf("time_wait-only leftovers must not be treated as kill failure: %q", summary)
+	}
+	if !strings.Contains(summary, "killed 1/1 flows") {
+		t.Fatalf("summary should still be full success, got: %q", summary)
 	}
 }
 
