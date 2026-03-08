@@ -75,18 +75,16 @@ sudo holyf-network -r 5
 # q: quit
 ```
 
-### Top Connections process labels (important)
+## Metrics Guides
 
-- `PID/NAME` (example `44011/sshd`): socket is visible in host `/proc` and mapped to a host process.
-- `ct/nat`: synthetic connection row inferred from conntrack host-facing NAT tuple.
-  - This is used for Docker/NAT cases where host socket/PID is not directly visible in `/proc/net/tcp*`.
-  - It means traffic is real and seen by conntrack, but process ownership is NAT-derived.
+- Vietnamese (practical ops): `docs/USER_METRICS_GUIDE_VI.md`
+- English (practical ops): `docs/USER_METRICS_GUIDE_EN.md`
+
+### Top Connections process labels (short)
+
+- `PID/NAME` (example `44011/sshd`): socket mapped to a host process.
+- `ct/nat`: synthetic row from conntrack/NAT host-facing visibility path.
 - `-`: process info not available.
-
-Group view behavior:
-- Live `View=GROUP` now groups by `(peer, process)` instead of peer-only.
-- Example: same peer with `sshd=1` and `ct/nat=4999` will render as 2 separate rows for clarity.
-- Footer shows `groups, peers, total connections`.
 
 ## Daemon Snapshot Mode
 
@@ -179,10 +177,8 @@ Time-window filtering is inclusive (`captured_at >= begin` and `captured_at <= e
 Replay mode is read-only: no block/kill actions are executed.
 Replay view is aggregate-only: rows are grouped by `peer_ip + local_port + proc_name`.
 History reader accepts only this aggregate snapshot format.
-`proc_name=ct/nat` in replay means the row came from conntrack/NAT visibility path (not direct host PID ownership).
-Bandwidth columns:
-- `TX/s`, `RX/s`: conntrack byte-delta throughput rate for current sample interval.
-- `Send-Q/Recv-Q`: kernel queue backlog snapshot (not throughput counters).
+For metric semantics (`Send-Q`, `Recv-Q`, `TX/s`, `RX/s`, `Conntrack Used/Max`, `ct/nat`) and troubleshooting,
+see `docs/USER_METRICS_GUIDE_EN.md` (or Vietnamese version: `docs/USER_METRICS_GUIDE_VI.md`).
 
 Default threshold file:
 
