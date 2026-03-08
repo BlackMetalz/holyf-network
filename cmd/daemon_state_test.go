@@ -258,7 +258,7 @@ func TestDaemonPruneImplicitUsesActiveStateTargetAndRetention(t *testing.T) {
 }
 
 func TestNextLocalMidnight(t *testing.T) {
-	loc := time.FixedZone("UTC+7", 7*3600)
+	loc := time.Now().Local().Location()
 	now := time.Date(2026, 3, 8, 14, 45, 0, 0, loc)
 	got := nextLocalMidnight(now)
 	want := time.Date(2026, 3, 9, 0, 0, 0, 0, loc)
