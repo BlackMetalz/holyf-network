@@ -94,3 +94,35 @@ func TestBuildBlockActionSummaryIncludesExpiryArtifact(t *testing.T) {
 		t.Fatalf("timed-block summary should include expiry text, got: %q", summary)
 	}
 }
+
+func TestSanitizeActionLogMessageBlockedRemovesNoisyParts(t *testing.T) {
+	t.Parallel()
+
+	raw := "Blocked 172.25.110.137:3306 | killed 0/0 flows | drop ok | expires in 10:00"
+	got := sanitizeActionLogMessage(raw)
+	want := "Blocked 172.25.110.137:3306 | drop ok"
+	if got != want {
+		t.Fatalf("sanitize mismatch: got=%q want=%q", got, want)
+	}
+}
+
+func TestSanitizeActionLogMessageBlockedKeepsUsefulKillRatio(t *testing.T) {
+	t.Parallel()
+
+	raw := "Blocked 172.25.110.137:3306 | killed 3/5 flows | drop ok | expires in 10:00"
+	got := sanitizeActionLogMessage(raw)
+	want := "Blocked 172.25.110.137:3306 | killed 3/5 flows | drop ok"
+	if got != want {
+		t.Fatalf("sanitize mismatch: got=%q want=%q", got, want)
+	}
+}
+
+func TestSanitizeActionLogMessageNonBlockedUnchanged(t *testing.T) {
+	t.Parallel()
+
+	raw := "Killed connections for 172.25.110.137:3306 | killed 0/0 flows | drop ok"
+	got := sanitizeActionLogMessage(raw)
+	if got != raw {
+		t.Fatalf("non-blocked messages should stay unchanged: got=%q want=%q", got, raw)
+	}
+}

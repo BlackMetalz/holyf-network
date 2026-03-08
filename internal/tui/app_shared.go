@@ -170,3 +170,33 @@ func formatBlockedListSecondary(entry activeBlockEntry) string {
 	}
 	return secondary
 }
+
+func sanitizeActionLogMessage(message string) string {
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		return ""
+	}
+	if !strings.HasPrefix(msg, "Blocked ") {
+		return msg
+	}
+
+	parts := strings.Split(msg, " | ")
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		p := strings.TrimSpace(part)
+		if p == "" {
+			continue
+		}
+		if strings.HasPrefix(p, "expires in ") {
+			continue
+		}
+		if p == "killed 0/0 flows" {
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+	if len(filtered) == 0 {
+		return ""
+	}
+	return strings.Join(filtered, " | ")
+}

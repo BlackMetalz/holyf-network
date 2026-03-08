@@ -74,7 +74,7 @@ func (a *App) promptActionLog() {
 }
 
 func (a *App) addActionLog(message string) {
-	msg := strings.TrimSpace(message)
+	msg := sanitizeActionLogMessage(message)
 	if msg == "" {
 		return
 	}
