@@ -180,10 +180,14 @@ Package: `internal/history` + `cmd/daemon.go`
      - `conn_count DESC`
      - `total_queue DESC`
      - then deterministic tie-break: `peer_ip`, `local_port`, `proc_name`
-   - write one aggregate `SnapshotRecord` as NDJSON line
+   - write one aggregate `SnapshotRecord` as JSON Lines record (one JSON object per line)
 4. Segment file naming by server local day: `connections-YYYYMMDD.jsonl`.
 5. Retention:
    - remove segments older than `--retention-hours`
+   - prune trigger points:
+     - immediately after segment rotate/open (first write, day rollover)
+     - periodic prune every 10 appended snapshots (`PruneEverySnapshots=10`)
+   - practical cadence in daemon mode: retention checks are write-driven, so periodic checks happen roughly every `--interval * 10`
 6. Active daemon state file (`daemon.state`) is the default source of truth for `status/stop` without explicit targeting flags.
 7. `daemon stop` sends `SIGTERM` (fallback `SIGKILL`) and removes PID file + active state.
 8. `daemon status` reports running/stopped from active-state or explicit flags.
@@ -196,6 +200,16 @@ Package: `internal/history` + `cmd/daemon.go`
    - bandwidth-focused monitoring: `5-10s`
    - connection trend monitoring: `30s` default
    - large intervals can miss short-lived flows in snapshots/replay
+
+File format note:
+
+- Snapshot segments follow JSON Lines format: https://jsonlines.org/
+- `.jsonl` file contract:
+  - UTF-8 text
+  - one complete JSON object per line
+  - line order is chronological append order
+  - each line is one `SnapshotRecord`
+- Full on-disk format reference: `docs/SNAPSHOT_FORMAT.md`
 
 ## 4) Snapshot Storage Model
 
@@ -224,6 +238,12 @@ Single format policy:
   - `Offset`
   - `CapturedAt`
   - `ConnCount`
+
+### On-disk example (`.jsonl` one line)
+
+```json
+{"captured_at":"2026-03-08T12:56:30.196962352+07:00","interface":"eth0","top_limit":500,"sample_seconds":29.999999695,"bandwidth_available":true,"groups":[{"peer_ip":"172.25.110.116","local_port":22,"proc_name":"sshd","conn_count":2,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":377892,"rx_bytes_delta":41164,"total_bytes_delta":419056,"tx_bytes_per_sec":12596.400128063402,"rx_bytes_per_sec":1372.1333472833558,"total_bytes_per_sec":13968.533475346758,"states":{"ESTABLISHED":2}}],"version":"v0.3.16"}
+```
 
 ### Reader model (`internal/history/reader.go`)
 
@@ -302,7 +322,7 @@ Behavior constraints:
 2. Connection snapshots (daemon/replay)
    - root default: `/var/lib/holyf-network/snapshots`
    - non-root/dev default: `~/.holyf-network/snapshots`
-   - daily NDJSON segment files (`connections-YYYYMMDD.jsonl`)
+   - daily JSON Lines segment files (`connections-YYYYMMDD.jsonl`)
    - retention via age (`--retention-hours`)
 
 ## 8) Concurrency Model

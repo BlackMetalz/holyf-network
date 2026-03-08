@@ -79,6 +79,7 @@ sudo holyf-network -r 5
 
 - Vietnamese (practical ops): `docs/USER_METRICS_GUIDE_VI.md`
 - English (practical ops): `docs/USER_METRICS_GUIDE_EN.md`
+- Daemon snapshot file spec: `docs/SNAPSHOT_FORMAT.md`
 
 ### Top Connections process labels (short)
 
@@ -108,11 +109,15 @@ holyf-network daemon stop
 ```
 
 Daemon notes:
-- Storage format: daily NDJSON segments by server local time (`connections-YYYYMMDD.jsonl`).
+- Storage format: daily **JSON Lines** (`.jsonl`, one JSON object per line) by server local time (`connections-YYYYMMDD.jsonl`).
+  - Spec: https://jsonlines.org/
+  - Full format contract: `docs/SNAPSHOT_FORMAT.md`
 - Snapshot payload stores aggregate rows by `peer_ip + local_port + proc_name` (no raw connection list).
 - For Docker/NAT traffic, daemon snapshots can persist `proc_name=ct/nat` rows (same semantics as live view).
 - `--top-limit` is the max aggregate rows stored per snapshot.
 - Retention policy: remove old segments beyond `--retention-hours`.
+  - Retention check runs on writer rotate (first write / day rollover) and then every 10 snapshot writes.
+  - So in daemon mode, prune cadence follows write cadence (effective interval: `--interval * 10` between periodic checks).
 - A lock file prevents multiple daemons writing the same `--data-dir`.
 - Default paths on Linux root:
   - snapshots: `/var/lib/holyf-network/snapshots`
@@ -122,6 +127,22 @@ Daemon notes:
 - Explicit flags (`--data-dir` or `--pid-file`) force `status/stop` to target that explicit location.
 - For bandwidth monitoring, use shorter interval (`--interval 5..10`) to capture bursts better.
 - For connection trend monitoring, keep default interval (`30s`) to reduce noise/storage.
+
+Snapshot file quick inspect:
+
+```bash
+# count snapshots in one day file
+wc -l /var/lib/holyf-network/snapshots/connections-YYYYMMDD.jsonl
+
+# read latest 3 snapshots
+tail -n 3 /var/lib/holyf-network/snapshots/connections-YYYYMMDD.jsonl
+```
+
+One line = one snapshot record (JSON object), for example:
+
+```json
+{"captured_at":"2026-03-08T12:56:30.196962352+07:00","interface":"eth0","top_limit":500,"sample_seconds":29.999999695,"bandwidth_available":true,"groups":[{"peer_ip":"172.25.110.116","local_port":22,"proc_name":"sshd","conn_count":2,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":377892,"rx_bytes_delta":41164,"total_bytes_delta":419056,"tx_bytes_per_sec":12596.400128063402,"rx_bytes_per_sec":1372.1333472833558,"total_bytes_per_sec":13968.533475346758,"states":{"ESTABLISHED":2}}],"version":"v0.3.16"}
+```
 
 ## Replay (History) Mode
 
