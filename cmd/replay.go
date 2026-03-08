@@ -157,7 +157,7 @@ func defaultReplayWindowIfImplicit(beginAt, endAt *time.Time, segmentFile string
 	if strings.TrimSpace(segmentFile) != "" {
 		return beginAt, endAt
 	}
-	dayStart, dayEnd := replayDayBounds(now.Local())
+	dayStart, dayEnd := replayDayBounds(now)
 	return &dayStart, &dayEnd
 }
 
