@@ -236,6 +236,7 @@ Navigation keys:
 Behavior constraints:
 
 - replay index is filtered by `file scope ∩ time window` before UI state/navigation
+- when no `--file/-f` and no `--begin/-b`/`--end/-e`, replay defaults to current local day window
 - `-b/-e` parse with replay jump-time semantics; clock-only inputs use:
   - selected segment date when `--file` is provided
   - current local date when `--file` is not provided

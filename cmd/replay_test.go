@@ -234,3 +234,33 @@ func TestCompleteReplayDayWindowEndOnly(t *testing.T) {
 		t.Fatalf("end should be unchanged: got=%s want=%s", gotEnd.Format(time.RFC3339), end.Format(time.RFC3339))
 	}
 }
+
+func TestDefaultReplayWindowIfImplicitNoFileUsesToday(t *testing.T) {
+	t.Parallel()
+
+	loc := time.FixedZone("UTC+7", 7*3600)
+	now := time.Date(2026, 3, 8, 14, 20, 0, 0, loc)
+	gotBegin, gotEnd := defaultReplayWindowIfImplicit(nil, nil, "", now)
+	if gotBegin == nil || gotEnd == nil {
+		t.Fatalf("expected implicit replay to default to today window")
+	}
+	wantBegin := time.Date(2026, 3, 8, 0, 0, 0, 0, loc)
+	wantEnd := time.Date(2026, 3, 8, 23, 59, 59, int(time.Second-time.Nanosecond), loc)
+	if !gotBegin.Equal(wantBegin) || !gotEnd.Equal(wantEnd) {
+		t.Fatalf("unexpected default day window: got=%s..%s want=%s..%s",
+			gotBegin.Format(time.RFC3339), gotEnd.Format(time.RFC3339Nano),
+			wantBegin.Format(time.RFC3339), wantEnd.Format(time.RFC3339Nano),
+		)
+	}
+}
+
+func TestDefaultReplayWindowIfImplicitWithFileKeepsUnbounded(t *testing.T) {
+	t.Parallel()
+
+	loc := time.FixedZone("UTC+7", 7*3600)
+	now := time.Date(2026, 3, 8, 14, 20, 0, 0, loc)
+	gotBegin, gotEnd := defaultReplayWindowIfImplicit(nil, nil, "connections-20260308.jsonl", now)
+	if gotBegin != nil || gotEnd != nil {
+		t.Fatalf("expected file-scope replay without bounds to stay unbounded")
+	}
+}

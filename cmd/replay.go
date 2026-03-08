@@ -26,15 +26,17 @@ func newReplayCmd() *cobra.Command {
 		Use:   "replay",
 		Short: "Open read-only replay UI for connection snapshots",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			beginAt, err := resolveReplayBoundTime(opts.begin, time.Now(), opts.segmentFile)
+			now := time.Now()
+			beginAt, err := resolveReplayBoundTime(opts.begin, now, opts.segmentFile)
 			if err != nil {
 				return fmt.Errorf("invalid --begin: %w (use YYYY-MM-DD HH:MM[:SS], HH:MM[:SS], yesterday HH:MM[:SS], or RFC3339)", err)
 			}
-			endAt, err := resolveReplayBoundTime(opts.end, time.Now(), opts.segmentFile)
+			endAt, err := resolveReplayBoundTime(opts.end, now, opts.segmentFile)
 			if err != nil {
 				return fmt.Errorf("invalid --end: %w (use YYYY-MM-DD HH:MM[:SS], HH:MM[:SS], yesterday HH:MM[:SS], or RFC3339)", err)
 			}
 			beginAt, endAt = completeReplayDayWindow(beginAt, endAt)
+			beginAt, endAt = defaultReplayWindowIfImplicit(beginAt, endAt, opts.segmentFile, now)
 			if beginAt != nil && endAt != nil && beginAt.After(*endAt) {
 				return fmt.Errorf("invalid time window: --begin must be <= --end")
 			}
@@ -146,6 +148,17 @@ func completeReplayDayWindow(beginAt, endAt *time.Time) (*time.Time, *time.Time)
 		return &dayStart, endAt
 	}
 	return beginAt, endAt
+}
+
+func defaultReplayWindowIfImplicit(beginAt, endAt *time.Time, segmentFile string, now time.Time) (*time.Time, *time.Time) {
+	if beginAt != nil || endAt != nil {
+		return beginAt, endAt
+	}
+	if strings.TrimSpace(segmentFile) != "" {
+		return beginAt, endAt
+	}
+	dayStart, dayEnd := replayDayBounds(now.Local())
+	return &dayStart, &dayEnd
 }
 
 func replayDayBounds(ts time.Time) (time.Time, time.Time) {

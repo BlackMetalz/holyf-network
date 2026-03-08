@@ -128,7 +128,7 @@ Daemon notes:
 ## Replay (History) Mode
 
 ```bash
-# Open replay UI at oldest snapshot in scope
+# Open replay UI for current day (server local time)
 holyf-network replay
 
 # Open replay UI with masked IP prefixes
