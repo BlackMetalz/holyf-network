@@ -32,6 +32,8 @@ flowchart TD
 9. Enrich top talkers with throughput metrics and internal total-delta fields for ranking/sort.
 10. Render panels and status bar.
 
+`ct/nat` in live Top Connections means the row is conntrack/NAT-derived visibility (not direct host PID ownership).
+
 Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).
 
 ### 2.1) Metric sources, formulas, and equivalent shell commands
@@ -161,7 +163,7 @@ Package: `internal/history` + `cmd/daemon.go`
    - remove segments older than `--retention-hours`
 6. Active daemon state file (`daemon.state`) is the default source of truth for `status/stop` without explicit targeting flags.
 7. `daemon stop` sends `SIGTERM` (fallback `SIGKILL`) and removes PID file + active state.
-8. `daemon status` reports running/stopped from active-state or explicit flags (`source` in output).
+8. `daemon status` reports running/stopped from active-state or explicit flags.
 9. Default Linux root paths:
    - snapshots: `/var/lib/holyf-network/snapshots`
    - daemon log: `/var/log/holyf-network/daemon.log`
@@ -170,6 +172,7 @@ Package: `internal/history` + `cmd/daemon.go`
 11. Interval guidance:
    - bandwidth-focused monitoring: `5-10s`
    - connection trend monitoring: `30s` default
+   - large intervals can miss short-lived flows in snapshots/replay
 
 ## 4) Snapshot Storage Model
 
@@ -241,9 +244,14 @@ Behavior constraints:
   - `-e` only => begin bound auto-completes to start-of-day
 - replay renders aggregate rows only
 - kill/block hotkeys (`Enter`, `k`, `b`) are explicitly blocked with status note
-- search/filter apply only to current snapshot
+- `/` search/filter applies only to current snapshot
+- `Shift+S` timeline search scans all loaded snapshots in current replay scope
 - replay renders queue + bandwidth columns from aggregate rows
 - replay rows keep `proc_name` exactly as persisted (including `ct/nat` synthetic NAT label)
+- replay data source resolution:
+  - explicit hidden `--data-dir` override
+  - else active daemon state `data_dir`
+  - else runtime default snapshot dir
 
 ## 6) UI Composition
 

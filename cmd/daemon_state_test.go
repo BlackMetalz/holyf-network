@@ -67,9 +67,6 @@ func TestDaemonStatusUsesActiveStateWhenNoExplicitFlags(t *testing.T) {
 	if !strings.Contains(out, "daemon status: running") {
 		t.Fatalf("expected running status, got: %q", out)
 	}
-	if !strings.Contains(out, "source: active-state") {
-		t.Fatalf("expected active-state source, got: %q", out)
-	}
 	if !strings.Contains(out, state.DataDir) {
 		t.Fatalf("expected status to include state data-dir, got: %q", out)
 	}
@@ -97,9 +94,6 @@ func TestDaemonStatusExplicitFlagsDoNotUseActiveState(t *testing.T) {
 	out, err := captureCommandStdout(cmd)
 	if err != nil {
 		t.Fatalf("daemon status execute: %v", err)
-	}
-	if !strings.Contains(out, "source: explicit-flags") {
-		t.Fatalf("expected explicit-flags source, got: %q", out)
 	}
 	if strings.Contains(out, state.DataDir) {
 		t.Fatalf("status should not use active-state data-dir when explicit flag is set: %q", out)
@@ -161,12 +155,9 @@ func TestDaemonStopExplicitFlagsDoNotCleanupActiveState(t *testing.T) {
 	explicitDir := filepath.Join(dir, "explicit-data")
 	cmd := newDaemonStopCmd()
 	cmd.SetArgs([]string{"--data-dir", explicitDir})
-	out, err := captureCommandStdout(cmd)
+	_, err := captureCommandStdout(cmd)
 	if err != nil {
 		t.Fatalf("daemon stop execute: %v", err)
-	}
-	if !strings.Contains(out, "source: explicit-flags") {
-		t.Fatalf("expected explicit source in stop output, got: %q", out)
 	}
 	if _, err := os.Stat(stateFile); err != nil {
 		t.Fatalf("active-state file should remain for explicit stop path, err=%v", err)
