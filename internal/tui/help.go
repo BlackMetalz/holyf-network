@@ -9,6 +9,7 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 ──────────────────────────
 [yellow]Tab[white]         Next panel
 [yellow]Shift+Tab[white]   Previous panel
+[yellow]Ctrl+1..4[white]   Focus panel (1=Top, 2=States, 3=Interface, 4=Conntrack)
 [yellow]r[white]           Refresh now
 [yellow]p[white]           Pause/Resume auto-refresh
 [yellow]m[white]           Toggle sensitive IP mask
@@ -26,7 +27,7 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]g[white]           Toggle group-by-peer view
 [yellow]b[white]           Show blocked peers
 [yellow]h[white]           Show action log (latest 20)
-[yellow]z[white]           Toggle zoom (focused panel)
+[yellow]z[white]           Toggle zoom (Top Connections only)
 [yellow]?[white]           Toggle this help
 [yellow]q[white]           Quit
 

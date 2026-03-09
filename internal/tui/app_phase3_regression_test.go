@@ -291,6 +291,82 @@ func TestHandleKeyEventSOutsideConnectionStatesShowsHintOnly(t *testing.T) {
 	}
 }
 
+func TestFocusOrderFollowsRequestedPanelSequence(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.focusIndex = 2 // Top
+
+	a.focusNext()
+	if a.focusIndex != 0 { // States
+		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 0)
+	}
+	a.focusNext()
+	if a.focusIndex != 1 { // Interface
+		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 1)
+	}
+	a.focusNext()
+	if a.focusIndex != 3 { // Conntrack
+		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 3)
+	}
+	a.focusNext()
+	if a.focusIndex != 2 { // wrap Top
+		t.Fatalf("next wrap mismatch: got=%d want=%d", a.focusIndex, 2)
+	}
+}
+
+func TestHandleKeyEventCtrlNumberFocusShortcuts(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	tests := []struct {
+		rune      rune
+		wantFocus int
+	}{
+		{rune: '1', wantFocus: 2}, // Top
+		{rune: '2', wantFocus: 0}, // States
+		{rune: '3', wantFocus: 1}, // Interface
+		{rune: '4', wantFocus: 3}, // Conntrack
+	}
+
+	for _, tc := range tests {
+		ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, tc.rune, tcell.ModCtrl))
+		if ret != nil {
+			t.Fatalf("ctrl+%c should be handled", tc.rune)
+		}
+		if a.focusIndex != tc.wantFocus {
+			t.Fatalf("ctrl+%c focus mismatch: got=%d want=%d", tc.rune, a.focusIndex, tc.wantFocus)
+		}
+	}
+}
+
+func TestHandleKeyEventZoomOnlyForTopConnections(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.focusIndex = 0 // Connection States
+
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'z', 0))
+	if ret != nil {
+		t.Fatalf("z should be handled")
+	}
+	if a.zoomed {
+		t.Fatalf("non-top panel should not enter zoom mode")
+	}
+	if !strings.Contains(a.statusNote, "Top Connections") {
+		t.Fatalf("expected zoom restriction note, got=%q", a.statusNote)
+	}
+
+	a.focusIndex = 2 // Top Connections
+	ret = a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'z', 0))
+	if ret != nil {
+		t.Fatalf("z should be handled for top panel")
+	}
+	if !a.zoomed {
+		t.Fatalf("top panel should enter zoom mode")
+	}
+}
+
 func TestSelectedPeerKillTargetGroupViewRespectsLocalPortFilter(t *testing.T) {
 	t.Parallel()
 

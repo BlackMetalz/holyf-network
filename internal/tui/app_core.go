@@ -89,6 +89,8 @@ type App struct {
 	healthThresholds config.HealthThresholds
 }
 
+var livePanelFocusOrder = []int{2, 0, 1, 3} // 1=Top, 2=States, 3=Interface, 4=Conntrack
+
 type activeBlockEntry struct {
 	Spec      actions.PeerBlockSpec
 	StartedAt time.Time
@@ -360,6 +362,11 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 
 	case tcell.KeyRune:
+		if event.Modifiers()&tcell.ModCtrl != 0 {
+			if a.handleCtrlPanelShortcut(event.Rune()) {
+				return nil
+			}
+		}
 		// tcell.KeyRune means a regular character key (not special key)
 		switch event.Rune() {
 		case 'q':
@@ -432,6 +439,10 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			a.renderTopConnectionsPanel()
 			return nil
 		case 'z':
+			if !a.zoomed && a.focusIndex != 2 {
+				a.setStatusNote("Zoom is only available for Top Connections", 4*time.Second)
+				return nil
+			}
 			a.toggleZoom()
 			return nil
 		}
@@ -443,14 +454,64 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 
 // focusNext moves focus to the next panel (wraps around).
 func (a *App) focusNext() {
-	a.focusIndex = (a.focusIndex + 1) % len(a.panels)
+	orderPos := indexInOrder(livePanelFocusOrder, a.focusIndex)
+	if orderPos < 0 {
+		a.focusIndex = livePanelFocusOrder[0]
+		highlightPanel(a.panels, a.focusIndex)
+		return
+	}
+	nextPos := (orderPos + 1) % len(livePanelFocusOrder)
+	a.focusIndex = livePanelFocusOrder[nextPos]
 	highlightPanel(a.panels, a.focusIndex)
 }
 
 // focusPrev moves focus to the previous panel (wraps around).
 func (a *App) focusPrev() {
-	a.focusIndex = (a.focusIndex - 1 + len(a.panels)) % len(a.panels)
+	orderPos := indexInOrder(livePanelFocusOrder, a.focusIndex)
+	if orderPos < 0 {
+		a.focusIndex = livePanelFocusOrder[0]
+		highlightPanel(a.panels, a.focusIndex)
+		return
+	}
+	prevPos := (orderPos - 1 + len(livePanelFocusOrder)) % len(livePanelFocusOrder)
+	a.focusIndex = livePanelFocusOrder[prevPos]
 	highlightPanel(a.panels, a.focusIndex)
+}
+
+func (a *App) handleCtrlPanelShortcut(r rune) bool {
+	switch r {
+	case '1':
+		a.focusPanel(2)
+		return true
+	case '2':
+		a.focusPanel(0)
+		return true
+	case '3':
+		a.focusPanel(1)
+		return true
+	case '4':
+		a.focusPanel(3)
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *App) focusPanel(index int) {
+	if index < 0 || index >= len(a.panels) {
+		return
+	}
+	a.focusIndex = index
+	highlightPanel(a.panels, a.focusIndex)
+}
+
+func indexInOrder(order []int, target int) int {
+	for i, item := range order {
+		if item == target {
+			return i
+		}
+	}
+	return -1
 }
 
 func directSortModeForRune(r rune) (SortMode, bool) {

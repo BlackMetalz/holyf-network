@@ -19,10 +19,10 @@ type panelInfo struct {
 
 // defaultPanels defines the 4 panels shown in the TUI.
 var defaultPanels = []panelInfo{
-	{title: " Connection States ", text: "  Loading..."},
-	{title: " Interface Stats ", text: "  Loading..."},
-	{title: " Top Connections ", text: "  Loading..."},
-	{title: " Conntrack ", text: "  Loading..."},
+	{title: " 2. Connection States ", text: "  Loading..."},
+	{title: " 3. Interface Stats ", text: "  Loading..."},
+	{title: " 1. Top Connections ", text: "  Loading..."},
+	{title: " 4. Conntrack ", text: "  Loading..."},
 }
 
 // createPanels creates 4 tview.TextView panels.

@@ -55,6 +55,7 @@ sudo holyf-network -r 5
 
 # Keyboard shortcuts inside TUI
 # Tab / Shift+Tab: move focus between panels
+# Ctrl+1..4: focus panel (1=Top, 2=States, 3=Interface, 4=Conntrack)
 # Up / Down: select row in Top Connections
 # Enter / k: block selected Top Connections row
 # Shift+B: sort by Bandwidth (press again toggles DESC/ASC)
@@ -71,7 +72,7 @@ sudo holyf-network -r 5
 # h: show action log (latest 20)
 # p: pause/resume auto-refresh
 # r: refresh now
-# z: zoom/unzoom focused panel
+# z: zoom/unzoom Top Connections only
 # ?: show help
 # q: quit
 ```
