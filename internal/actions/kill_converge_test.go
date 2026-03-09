@@ -2,11 +2,12 @@ package actions
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestRunKillPeerFlowsConvergeConvergesToZero(t *testing.T) {
+func TestRunKillPeerFlowsConvergesToZero(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(0, 0)
@@ -18,7 +19,7 @@ func TestRunKillPeerFlowsConvergeConvergesToZero(t *testing.T) {
 	}
 	hooks := fakeKillHooks(t, &now, seq)
 
-	report := runKillPeerFlowsConverge(nil, KillConvergeOptions{
+	report := runKillPeerFlows(nil, KillConvergeOptions{
 		MaxDuration:       4 * time.Second,
 		MaxIterations:     12,
 		SleepBetweenIters: 120 * time.Millisecond,
@@ -27,8 +28,8 @@ func TestRunKillPeerFlowsConvergeConvergesToZero(t *testing.T) {
 	if !report.Converged {
 		t.Fatalf("expected converge=true, got false report=%+v", report)
 	}
-	if report.AfterTargetCount != 0 {
-		t.Fatalf("expected after target count=0, got %d", report.AfterTargetCount)
+	if report.AfterActiveCount != 0 {
+		t.Fatalf("expected after active count=0, got %d", report.AfterActiveCount)
 	}
 	if report.Iterations != 3 {
 		t.Fatalf("expected 3 iterations, got %d", report.Iterations)
@@ -38,7 +39,7 @@ func TestRunKillPeerFlowsConvergeConvergesToZero(t *testing.T) {
 	}
 }
 
-func TestRunKillPeerFlowsConvergeNoProgressTimesOutPartial(t *testing.T) {
+func TestRunKillPeerFlowsNoProgressTimesOutPartial(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(0, 0)
@@ -51,7 +52,7 @@ func TestRunKillPeerFlowsConvergeNoProgressTimesOutPartial(t *testing.T) {
 	}
 	hooks := fakeKillHooks(t, &now, seq)
 
-	report := runKillPeerFlowsConverge(nil, KillConvergeOptions{
+	report := runKillPeerFlows(nil, KillConvergeOptions{
 		MaxDuration:       250 * time.Millisecond,
 		MaxIterations:     12,
 		SleepBetweenIters: 120 * time.Millisecond,
@@ -63,15 +64,15 @@ func TestRunKillPeerFlowsConvergeNoProgressTimesOutPartial(t *testing.T) {
 	if !report.TimedOut {
 		t.Fatalf("expected timeout=true, got false")
 	}
-	if report.AfterTargetCount != 10 {
-		t.Fatalf("expected remaining target=10, got %d", report.AfterTargetCount)
+	if report.AfterActiveCount != 10 {
+		t.Fatalf("expected remaining active=10, got %d", report.AfterActiveCount)
 	}
 	if !report.IsPartial() {
 		t.Fatalf("expected partial=true for timed-out remaining flows")
 	}
 }
 
-func TestRunKillPeerFlowsConvergeIntermittentProgressEventuallyConverges(t *testing.T) {
+func TestRunKillPeerFlowsIntermittentProgressEventuallyConverges(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(0, 0)
@@ -85,7 +86,7 @@ func TestRunKillPeerFlowsConvergeIntermittentProgressEventuallyConverges(t *test
 	}
 	hooks := fakeKillHooks(t, &now, seq)
 
-	report := runKillPeerFlowsConverge(nil, KillConvergeOptions{
+	report := runKillPeerFlows(nil, KillConvergeOptions{
 		MaxDuration:       4 * time.Second,
 		MaxIterations:     12,
 		SleepBetweenIters: 120 * time.Millisecond,
@@ -102,7 +103,7 @@ func TestRunKillPeerFlowsConvergeIntermittentProgressEventuallyConverges(t *test
 	}
 }
 
-func TestRunKillPeerFlowsConvergeRespectsMaxIterations(t *testing.T) {
+func TestRunKillPeerFlowsRespectsMaxIterations(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(0, 0)
@@ -114,7 +115,7 @@ func TestRunKillPeerFlowsConvergeRespectsMaxIterations(t *testing.T) {
 	}
 	hooks := fakeKillHooks(t, &now, seq)
 
-	report := runKillPeerFlowsConverge(nil, KillConvergeOptions{
+	report := runKillPeerFlows(nil, KillConvergeOptions{
 		MaxDuration:       4 * time.Second,
 		MaxIterations:     2,
 		SleepBetweenIters: 120 * time.Millisecond,
@@ -131,19 +132,86 @@ func TestRunKillPeerFlowsConvergeRespectsMaxIterations(t *testing.T) {
 	}
 }
 
+func TestRunKillPeerFlowsRequeriesExactTuplesEachIteration(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(0, 0)
+	seq := []countSample{
+		{target: 2, timeWait: 0},
+		{target: 1, timeWait: 0},
+		{target: 0, timeWait: 1},
+	}
+
+	queryCalls := 0
+	killedKeysByIter := make([][]string, 0, 2)
+	hooks := killConvergeHooks{
+		now: func() time.Time { return now },
+		sleep: func(d time.Duration) {
+			now = now.Add(d)
+		},
+		broadKill: func() {},
+		queryExactTuples: func() ([]SocketTuple, error) {
+			queryCalls++
+			if queryCalls == 1 {
+				return []SocketTuple{
+					{LocalIP: "10.0.0.1", LocalPort: 22, RemoteIP: "10.0.0.2", RemotePort: 40001},
+				}, nil
+			}
+			return []SocketTuple{
+				{LocalIP: "10.0.0.1", LocalPort: 22, RemoteIP: "10.0.0.2", RemotePort: 40002},
+			}, nil
+		},
+		killTuples: func(tuples []SocketTuple) error {
+			keys := make([]string, 0, len(tuples))
+			for _, tuple := range tuples {
+				keys = append(keys, socketTupleKey(tuple))
+			}
+			killedKeysByIter = append(killedKeysByIter, keys)
+			return nil
+		},
+		dropConntrack: func() error { return nil },
+		countStates: func() (int, int, error) {
+			if len(seq) == 0 {
+				return 0, 0, nil
+			}
+			sample := seq[0]
+			seq = seq[1:]
+			return sample.target, sample.timeWait, sample.err
+		},
+	}
+
+	report := runKillPeerFlows(nil, KillConvergeOptions{
+		MaxDuration:       4 * time.Second,
+		MaxIterations:     12,
+		SleepBetweenIters: 120 * time.Millisecond,
+	}, hooks)
+	if !report.Converged {
+		t.Fatalf("expected converged report, got %+v", report)
+	}
+	if queryCalls < 2 {
+		t.Fatalf("expected queryExactTuples called each iteration, got %d calls", queryCalls)
+	}
+	if len(killedKeysByIter) < 2 {
+		t.Fatalf("expected killTuples called at least twice, got %d", len(killedKeysByIter))
+	}
+	secondIter := strings.Join(killedKeysByIter[1], ",")
+	if !strings.Contains(secondIter, "40002") {
+		t.Fatalf("expected second-iteration kill set to include newly discovered tuple, got %q", secondIter)
+	}
+}
+
 func TestNormalizeSSStateAndTargets(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		in         string
-		want       string
-		wantTarget bool
+		in   string
+		want string
 	}{
-		{in: "ESTAB", want: "ESTABLISHED", wantTarget: true},
-		{in: "ESTABLISHED", want: "ESTABLISHED", wantTarget: true},
-		{in: "SYN-RECV", want: "SYN_RECV", wantTarget: true},
-		{in: "SYN_RECV", want: "SYN_RECV", wantTarget: true},
-		{in: "TIME-WAIT", want: "TIME_WAIT", wantTarget: false},
+		{in: "ESTAB", want: "ESTABLISHED"},
+		{in: "ESTABLISHED", want: "ESTABLISHED"},
+		{in: "SYN-RECV", want: "SYN_RECV"},
+		{in: "SYN_RECV", want: "SYN_RECV"},
+		{in: "TIME-WAIT", want: "TIME_WAIT"},
 	}
 
 	for _, tc := range tests {
@@ -154,8 +222,29 @@ func TestNormalizeSSStateAndTargets(t *testing.T) {
 			if got != tc.want {
 				t.Fatalf("normalizeSSState(%q)=%q want=%q", tc.in, got, tc.want)
 			}
-			if isKillTargetState(got) != tc.wantTarget {
-				t.Fatalf("isKillTargetState(%q) mismatch", got)
+		})
+	}
+}
+
+func TestIsKillActiveState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		state string
+		want  bool
+	}{
+		{state: "ESTABLISHED", want: true},
+		{state: "SYN_RECV", want: true},
+		{state: "LAST_ACK", want: true},
+		{state: "TIME_WAIT", want: false},
+		{state: "", want: false},
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.state, func(t *testing.T) {
+			t.Parallel()
+			if got := isKillActiveState(tc.state); got != tc.want {
+				t.Fatalf("isKillActiveState(%q)=%v want=%v", tc.state, got, tc.want)
 			}
 		})
 	}
@@ -177,7 +266,7 @@ func fakeKillHooks(t *testing.T, now *time.Time, sequence []countSample) killCon
 			*now = (*now).Add(d)
 		},
 		broadKill: func() {},
-		queryTargetTuples: func() ([]SocketTuple, error) {
+		queryExactTuples: func() ([]SocketTuple, error) {
 			return []SocketTuple{
 				{LocalIP: "10.0.0.1", LocalPort: 22, RemoteIP: "10.0.0.2", RemotePort: 12345},
 			}, nil

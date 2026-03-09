@@ -232,14 +232,14 @@ func (a *App) promptKillPeerConfirm(target peerKillTarget, minutes int) {
 	if killOnly {
 		label = "Kill Connections"
 		text = fmt.Sprintf(
-			"Kill active connections for peer %s -> local port %d?\n\nMatches in current view: %d\nThis terminates active flows only (no block rule or timer).",
+			"Kill active connections for peer %s -> local port %d?\n\nMatches in current view: %d\nThis re-scans matching flows and terminates active connections only (no block rule or timer).",
 			target.PeerIP,
 			target.LocalPort,
 			target.Count,
 		)
 		if target.Count == 0 {
 			text = fmt.Sprintf(
-				"Kill active connections for peer %s -> local port %d?\n\nMatches in current view: 0 (manual target)\nThis terminates active flows only (no block rule or timer).",
+				"Kill active connections for peer %s -> local port %d?\n\nMatches in current view: 0 (manual target)\nThis re-scans matching flows and terminates active connections only (no block rule or timer).",
 				target.PeerIP,
 				target.LocalPort,
 			)

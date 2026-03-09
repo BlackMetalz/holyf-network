@@ -36,7 +36,7 @@ func (a *App) blockPeerForDuration(target peerKillTarget, duration time.Duration
 	})
 
 	tuples := matchingBlockTuplesFromSnapshot(snapshotTalkers, target.PeerIP, target.LocalPort)
-	killReport := actions.KillPeerFlowsConverge(spec, tuples, actions.DefaultKillConvergeOptions())
+	killReport := actions.KillPeerFlows(spec, tuples, actions.DefaultKillConvergeOptions())
 
 	dropWarningParts := make([]string, 0, 2)
 	if killReport.SocketErr != nil {
@@ -93,7 +93,7 @@ func (a *App) killPeerConnectionsOnly(target peerKillTarget, snapshotTalkers []c
 	}
 
 	tuples := matchingBlockTuplesFromSnapshot(snapshotTalkers, target.PeerIP, target.LocalPort)
-	killReport := actions.KillPeerFlowsConverge(spec, tuples, actions.DefaultKillConvergeOptions())
+	killReport := actions.KillPeerFlows(spec, tuples, actions.DefaultKillConvergeOptions())
 
 	dropWarningParts := make([]string, 0, 2)
 	if killReport.SocketErr != nil {

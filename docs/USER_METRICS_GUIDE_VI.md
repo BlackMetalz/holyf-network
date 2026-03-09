@@ -90,6 +90,17 @@ Mốc vận hành thường dùng:
   - mặc định `holyf-network replay` sẽ lấy snapshot của **ngày hiện tại** theo giờ local server.
   - dùng `-f`, `-b`, `-e` để bó hẹp phạm vi.
 
+## Block vs Kill
+
+- `minutes > 0`:
+  - app chèn rule block trước
+  - quét và kill lại toàn bộ connection khớp `peer + local port`
+  - giữ block tới khi hết hạn
+- `minutes = 0`:
+  - app chỉ chạy kill sweep, không chèn block rule
+  - nếu storm đang diễn ra thì có thể vẫn xuất hiện connection mới trong lúc sweep
+- `TIME_WAIT` không bị tính là kill fail. Nếu còn `remaining N (storm/race)` thì nghĩa là vẫn còn active flow sau giới hạn sweep.
+
 ## Troubleshooting Playbook
 
 ## Case 1: Interface có traffic nhưng Top không thấy rõ
@@ -133,7 +144,7 @@ Khả năng thường gặp:
 
 1. App đã chạy kill sweep lặp (`ss -K` + `conntrack -D`) nhưng dừng theo giới hạn thời gian/vòng lặp.
 2. Đây thường là race trong conn storm (flow mới xuất hiện liên tục).
-3. `TIME_WAIT` không bị tính là kill-fail; chỉ `ESTABLISHED` + `SYN_RECV` mới là target kill.
+3. `TIME_WAIT` không bị tính là kill-fail; app chỉ coi còn active state là chưa sạch.
 
 Gợi ý xử lý:
 

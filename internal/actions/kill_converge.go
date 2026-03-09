@@ -15,11 +15,6 @@ const (
 	defaultKillConvergeSleepBetweenIters = 120 * time.Millisecond
 )
 
-var killTargetStates = map[string]struct{}{
-	"ESTABLISHED": {},
-	"SYN_RECV":    {},
-}
-
 // KillConvergeOptions controls bounded iterative flow-kill behavior.
 type KillConvergeOptions struct {
 	MaxDuration       time.Duration
@@ -29,8 +24,9 @@ type KillConvergeOptions struct {
 
 // KillConvergeReport captures kill convergence results.
 type KillConvergeReport struct {
-	BeforeTargetCount   int
-	AfterTargetCount    int
+	// Active states count all matching sockets except TIME_WAIT.
+	BeforeActiveCount   int
+	AfterActiveCount    int
 	BeforeTimeWaitCount int
 	AfterTimeWaitCount  int
 
@@ -44,9 +40,9 @@ type KillConvergeReport struct {
 	Converged  bool
 }
 
-// IsPartial returns true when kill sweep ended with target flows still alive.
+// IsPartial returns true when kill sweep ended with active flows still alive.
 func (r KillConvergeReport) IsPartial() bool {
-	return !r.Converged && r.AfterCountErr == nil && r.AfterTargetCount > 0
+	return !r.Converged && r.AfterCountErr == nil && r.AfterActiveCount > 0
 }
 
 // DefaultKillConvergeOptions returns production defaults for bounded kill sweep.
@@ -72,14 +68,14 @@ func (o KillConvergeOptions) normalized() KillConvergeOptions {
 	return n
 }
 
-// KillPeerFlowsConverge performs bounded iterative sweeping for one peer+port:
+// KillPeerFlows performs bounded iterative sweeping for one peer+port:
 // 1) broad ss -K pass
 // 2) exact tuple kill pass
 // 3) conntrack -D pass
-// 4) re-count target states
+// 4) re-count active states
 //
-// Target kill states are ESTABLISHED + SYN_RECV. TIME_WAIT is informational only.
-func KillPeerFlowsConverge(spec PeerBlockSpec, snapshotTuples []SocketTuple, opts KillConvergeOptions) KillConvergeReport {
+// Active states include all matching sockets except TIME_WAIT.
+func KillPeerFlows(spec PeerBlockSpec, snapshotTuples []SocketTuple, opts KillConvergeOptions) KillConvergeReport {
 	ip, peerIP, err := validateSpec(spec)
 	if err != nil {
 		return KillConvergeReport{
@@ -95,12 +91,12 @@ func KillPeerFlowsConverge(spec PeerBlockSpec, snapshotTuples []SocketTuple, opt
 		broadKill: func() {
 			broadKillPeerSockets(peerIP, port)
 		},
-		queryTargetTuples: func() ([]SocketTuple, error) {
+		queryExactTuples: func() ([]SocketTuple, error) {
 			snap, err := queryPeerSocketSnapshot(ip, peerIP, port)
 			if err != nil {
 				return nil, err
 			}
-			return snap.TargetTuples, nil
+			return snap.ExactTuples, nil
 		},
 		killTuples: KillSockets,
 		dropConntrack: func() error {
@@ -111,31 +107,31 @@ func KillPeerFlowsConverge(spec PeerBlockSpec, snapshotTuples []SocketTuple, opt
 			if err != nil {
 				return 0, 0, err
 			}
-			return snap.TargetCount, snap.TimeWaitCount, nil
+			return snap.ActiveCount, snap.TimeWaitCount, nil
 		},
 	}
 
-	return runKillPeerFlowsConverge(snapshotTuples, opts, hooks)
+	return runKillPeerFlows(snapshotTuples, opts, hooks)
 }
 
 type killConvergeHooks struct {
-	now               func() time.Time
-	sleep             func(time.Duration)
-	broadKill         func()
-	queryTargetTuples func() ([]SocketTuple, error)
-	killTuples        func([]SocketTuple) error
-	dropConntrack     func() error
-	countStates       func() (targetCount int, timeWaitCount int, err error)
+	now              func() time.Time
+	sleep            func(time.Duration)
+	broadKill        func()
+	queryExactTuples func() ([]SocketTuple, error)
+	killTuples       func([]SocketTuple) error
+	dropConntrack    func() error
+	countStates      func() (activeCount int, timeWaitCount int, err error)
 }
 
-func runKillPeerFlowsConverge(snapshotTuples []SocketTuple, opts KillConvergeOptions, hooks killConvergeHooks) KillConvergeReport {
+func runKillPeerFlows(snapshotTuples []SocketTuple, opts KillConvergeOptions, hooks killConvergeHooks) KillConvergeReport {
 	o := opts.normalized()
 
 	report := KillConvergeReport{}
-	beforeTarget, beforeTW, beforeErr := hooks.countStates()
-	report.BeforeTargetCount = beforeTarget
+	beforeActive, beforeTW, beforeErr := hooks.countStates()
+	report.BeforeActiveCount = beforeActive
+	report.AfterActiveCount = beforeActive
 	report.BeforeTimeWaitCount = beforeTW
-	report.AfterTargetCount = beforeTarget
 	report.AfterTimeWaitCount = beforeTW
 	report.BeforeCountErr = beforeErr
 	report.AfterCountErr = beforeErr
@@ -151,8 +147,8 @@ func runKillPeerFlowsConverge(snapshotTuples []SocketTuple, opts KillConvergeOpt
 		}
 
 		exactTuples := []SocketTuple(nil)
-		if hooks.queryTargetTuples != nil {
-			tuples, err := hooks.queryTargetTuples()
+		if hooks.queryExactTuples != nil {
+			tuples, err := hooks.queryExactTuples()
 			if err != nil {
 				report.SocketErr = err
 			} else {
@@ -177,14 +173,14 @@ func runKillPeerFlowsConverge(snapshotTuples []SocketTuple, opts KillConvergeOpt
 			}
 		}
 
-		targetCount, timeWaitCount, err := hooks.countStates()
+		activeCount, timeWaitCount, err := hooks.countStates()
 		if err != nil {
 			report.AfterCountErr = err
 		} else {
 			report.AfterCountErr = nil
-			report.AfterTargetCount = targetCount
+			report.AfterActiveCount = activeCount
 			report.AfterTimeWaitCount = timeWaitCount
-			if targetCount == 0 {
+			if activeCount == 0 {
 				report.Converged = true
 				break
 			}
@@ -203,8 +199,8 @@ func runKillPeerFlowsConverge(snapshotTuples []SocketTuple, opts KillConvergeOpt
 }
 
 type peerSocketSnapshot struct {
-	TargetTuples  []SocketTuple
-	TargetCount   int
+	ExactTuples   []SocketTuple
+	ActiveCount   int
 	TimeWaitCount int
 }
 
@@ -221,7 +217,8 @@ func queryPeerSocketSnapshot(_ net.IP, peerIP, localPort string) (peerSocketSnap
 	normalizedPeer := strings.TrimPrefix(peerIP, "::ffff:")
 	lines := strings.Split(string(out), "\n")
 
-	targetSeen := make(map[string]struct{})
+	exactSeen := make(map[string]struct{})
+	activeSeen := make(map[string]struct{})
 	timeWaitSeen := make(map[string]struct{})
 
 	var snapshot peerSocketSnapshot
@@ -264,21 +261,24 @@ func queryPeerSocketSnapshot(_ net.IP, peerIP, localPort string) (peerSocketSnap
 			RemotePort: remotePortInt,
 		}
 		key := socketTupleKey(tuple)
+		if _, exists := exactSeen[key]; !exists {
+			exactSeen[key] = struct{}{}
+			snapshot.ExactTuples = append(snapshot.ExactTuples, tuple)
+		}
 
 		switch {
-		case isKillTargetState(state):
-			if _, exists := targetSeen[key]; exists {
-				continue
-			}
-			targetSeen[key] = struct{}{}
-			snapshot.TargetCount++
-			snapshot.TargetTuples = append(snapshot.TargetTuples, tuple)
 		case state == "TIME_WAIT":
 			if _, exists := timeWaitSeen[key]; exists {
 				continue
 			}
 			timeWaitSeen[key] = struct{}{}
 			snapshot.TimeWaitCount++
+		case isKillActiveState(state):
+			if _, exists := activeSeen[key]; exists {
+				continue
+			}
+			activeSeen[key] = struct{}{}
+			snapshot.ActiveCount++
 		}
 	}
 
@@ -308,9 +308,12 @@ func normalizeSSState(raw string) string {
 	}
 }
 
-func isKillTargetState(state string) bool {
-	_, ok := killTargetStates[state]
-	return ok
+func isKillActiveState(state string) bool {
+	state = strings.TrimSpace(state)
+	if state == "" || state == "TIME_WAIT" {
+		return false
+	}
+	return true
 }
 
 func dedupeSocketTuples(tuples []SocketTuple) []SocketTuple {

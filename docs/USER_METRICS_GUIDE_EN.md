@@ -90,6 +90,17 @@ Common operating thresholds:
   - default `holyf-network replay` loads current day (server local time).
   - use `-f`, `-b`, `-e` to narrow scope.
 
+## Block vs Kill
+
+- `minutes > 0`:
+  - the app inserts a block first
+  - re-scans and kills all connections matching `peer + local port`
+  - keeps the block until expiry
+- `minutes = 0`:
+  - the app only runs the kill sweep, with no block rule
+  - if a conn storm is still in progress, new matching connections can appear during the sweep
+- `TIME_WAIT` does not count as kill failure. If you see `remaining N (storm/race)`, active flows were still present when the bounded sweep ended.
+
 ## Troubleshooting Playbook
 
 ## Case 1: Interface traffic is high but Top is unclear
@@ -133,7 +144,7 @@ Meaning:
 
 1. The app already ran iterative kill sweep (`ss -K` + `conntrack -D`) but stopped at bounded limits.
 2. This is common during conn storms where new flows keep appearing.
-3. `TIME_WAIT` is informational only; kill target states are `ESTABLISHED` + `SYN_RECV`.
+3. `TIME_WAIT` is informational only; the app only treats non-`TIME_WAIT` active states as not-yet-cleared.
 
 Actions:
 

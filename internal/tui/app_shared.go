@@ -109,8 +109,8 @@ func buildKillOnlyActionSummary(
 func buildKillPart(report actions.KillConvergeReport) (killPart string, remainingPart string) {
 	killPart = "killed ?/? flows"
 	if report.BeforeCountErr == nil && report.AfterCountErr == nil {
-		beforeCount := report.BeforeTargetCount
-		afterCount := report.AfterTargetCount
+		beforeCount := report.BeforeActiveCount
+		afterCount := report.AfterActiveCount
 		if beforeCount < 0 {
 			beforeCount = 0
 		}
@@ -125,7 +125,7 @@ func buildKillPart(report actions.KillConvergeReport) (killPart string, remainin
 			remainingPart = fmt.Sprintf("remaining %d (storm/race)", afterCount)
 		}
 	} else if report.BeforeCountErr == nil {
-		beforeCount := report.BeforeTargetCount
+		beforeCount := report.BeforeActiveCount
 		if beforeCount < 0 {
 			beforeCount = 0
 		}

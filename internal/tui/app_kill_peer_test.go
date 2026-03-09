@@ -69,8 +69,8 @@ func TestBuildKillOnlyActionSummaryHasNoExpiryArtifact(t *testing.T) {
 
 	spec := actions.PeerBlockSpec{PeerIP: "203.0.113.10", LocalPort: 443}
 	summary := buildKillOnlyActionSummary(spec, actions.KillConvergeReport{
-		BeforeTargetCount: 3,
-		AfterTargetCount:  1,
+		BeforeActiveCount: 3,
+		AfterActiveCount:  1,
 	})
 
 	if !strings.Contains(summary, "Killed connections for 203.0.113.10:443") {
@@ -89,8 +89,8 @@ func TestBuildBlockActionSummaryIncludesExpiryArtifact(t *testing.T) {
 
 	spec := actions.PeerBlockSpec{PeerIP: "203.0.113.10", LocalPort: 443}
 	summary := buildBlockActionSummary(spec, 5*time.Minute, actions.KillConvergeReport{
-		BeforeTargetCount: 4,
-		AfterTargetCount:  1,
+		BeforeActiveCount: 4,
+		AfterActiveCount:  1,
 	})
 
 	if !strings.Contains(summary, "Blocked 203.0.113.10:443") {
@@ -106,8 +106,8 @@ func TestBuildKillOnlyActionSummaryAddsRemainingOnPartial(t *testing.T) {
 
 	spec := actions.PeerBlockSpec{PeerIP: "203.0.113.10", LocalPort: 443}
 	summary := buildKillOnlyActionSummary(spec, actions.KillConvergeReport{
-		BeforeTargetCount: 5,
-		AfterTargetCount:  2,
+		BeforeActiveCount: 5,
+		AfterActiveCount:  2,
 		Converged:         false,
 	})
 	if !strings.Contains(summary, "killed 3/5 flows") {
@@ -123,8 +123,8 @@ func TestBuildKillOnlyActionSummaryIgnoresTimeWaitAsFailure(t *testing.T) {
 
 	spec := actions.PeerBlockSpec{PeerIP: "203.0.113.10", LocalPort: 443}
 	summary := buildKillOnlyActionSummary(spec, actions.KillConvergeReport{
-		BeforeTargetCount:   1,
-		AfterTargetCount:    0,
+		BeforeActiveCount:   1,
+		AfterActiveCount:    0,
 		BeforeTimeWaitCount: 0,
 		AfterTimeWaitCount:  7,
 		Converged:           true,

@@ -77,6 +77,11 @@ sudo holyf-network -r 5
 # q: quit
 ```
 
+Mitigation behavior:
+- `minutes > 0`: block first, then kill active connections, then auto-unblock when timer expires.
+- `minutes = 0`: kill active connections only (no block rule, no timer).
+- Kill success ignores `TIME_WAIT`; partial results show as `remaining N (storm/race)`.
+
 ## Metrics Guides
 
 - Vietnamese (practical ops): `docs/USER_METRICS_GUIDE_VI.md`
