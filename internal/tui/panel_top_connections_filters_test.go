@@ -74,12 +74,12 @@ func TestRenderPeerGroupPanelPortFilterChipText(t *testing.T) {
 
 	conns := topConnectionFixtures()
 
-	allText := renderPeerGroupPanel(conns, "", "", 20, false, 0, config.DefaultHealthThresholds(), "")
+	allText := renderPeerGroupPanel(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(allText, "Port Filter = ALL") {
 		t.Fatalf("group chip should render Port Filter = ALL, got: %q", allText)
 	}
 
-	selectedText := renderPeerGroupPanel(conns, "443", "", 20, false, 0, config.DefaultHealthThresholds(), "")
+	selectedText := renderPeerGroupPanel(conns, "443", "", 20, false, 0, true, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(selectedText, "Port Filter = 443") {
 		t.Fatalf("group chip should render Port Filter = 443, got: %q", selectedText)
 	}
@@ -183,7 +183,7 @@ func TestRenderPeerGroupPanelSplitsSamePeerByProcess(t *testing.T) {
 		},
 	}
 
-	text := renderPeerGroupPanel(conns, "", "", 20, false, 0, config.DefaultHealthThresholds(), "")
+	text := renderPeerGroupPanel(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(text, "sshd") || !strings.Contains(text, "ct/nat") {
 		t.Fatalf("expected both sshd and ct/nat groups, got: %q", text)
 	}

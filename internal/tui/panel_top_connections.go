@@ -24,8 +24,8 @@ const (
 const (
 	defaultTalkersHintLine  = "  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
 	readOnlyTalkersHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, /=search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i/Shift+I=explain qcols, g=group, L=follow[white]"
-	defaultGroupHintLine    = "  [dim]Use ↑/↓ select, g=connections view, /=search, f=port/clear, i=explain qcols, Shift+I=explain iface[white]"
-	readOnlyGroupHintLine   = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, g=connections view, /=search, f=port/clear, i/Shift+I=explain qcols, L=follow[white]"
+	defaultGroupHintLine    = "  [dim]Use ↑/↓ select, g=connections view, /=search, f=port/clear, Shift+C conns sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
+	readOnlyGroupHintLine   = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, g=connections view, /=search, f=port/clear, Shift+C conns sort (toggle DESC/ASC), i/Shift+I=explain qcols, L=follow[white]"
 )
 
 // Label returns a short display name for the status bar chip.
@@ -498,7 +498,7 @@ type PeerGroup struct {
 }
 
 // buildPeerGroups aggregates connections by remote IP + process.
-func buildPeerGroups(conns []collector.Connection) []PeerGroup {
+func buildPeerGroups(conns []collector.Connection, sortDesc bool) []PeerGroup {
 	byKey := make(map[string]*PeerGroup)
 
 	for _, conn := range conns {
@@ -539,11 +539,11 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 	}
 
 	sort.SliceStable(groups, func(i, j int) bool {
+		if groups[i].Count != groups[j].Count {
+			return compareInt(groups[i].Count, groups[j].Count, sortDesc)
+		}
 		if groups[i].TotalBytesDelta != groups[j].TotalBytesDelta {
 			return groups[i].TotalBytesDelta > groups[j].TotalBytesDelta
-		}
-		if groups[i].Count != groups[j].Count {
-			return groups[i].Count > groups[j].Count
 		}
 		if groups[i].TotalQueue != groups[j].TotalQueue {
 			return groups[i].TotalQueue > groups[j].TotalQueue
@@ -558,15 +558,15 @@ func buildPeerGroups(conns []collector.Connection) []PeerGroup {
 }
 
 // renderPeerGroupPanel renders the per-peer aggregate view.
-func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, thresholds, bandwidthNote, defaultGroupHintLine)
+func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
+	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, defaultGroupHintLine)
 }
 
-func renderPeerGroupPanelReadOnly(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, thresholds, bandwidthNote, readOnlyGroupHintLine)
+func renderPeerGroupPanelReadOnly(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
+	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, readOnlyGroupHintLine)
 }
 
-func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, thresholds config.HealthThresholds, bandwidthNote string, hintLine string) string {
+func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, hintLine string) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -577,11 +577,16 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 	if strings.TrimSpace(textFilter) != "" {
 		searchChip = truncateRight(strings.TrimSpace(textFilter), 20)
 	}
+	sortChip := "CONNS:ASC"
+	if sortDesc {
+		sortChip = "CONNS:DESC"
+	}
 
 	sb.WriteString(fmt.Sprintf(
-		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]Search=%s[white] | [aqua]View=GROUP[white]\n",
+		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white] | [aqua]View=GROUP[white]\n",
 		portChip,
 		searchChip,
+		sortChip,
 	))
 	sb.WriteString(hintLine)
 	if strings.TrimSpace(bandwidthNote) != "" {
@@ -603,7 +608,7 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 		return sb.String()
 	}
 
-	groups := buildPeerGroups(filtered)
+	groups := buildPeerGroups(filtered, sortDesc)
 	if selectedIndex < 0 {
 		selectedIndex = 0
 	}

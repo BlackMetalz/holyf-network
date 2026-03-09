@@ -65,7 +65,7 @@ func (a *App) visiblePeerGroups() []PeerGroup {
 		return nil
 	}
 
-	groups := buildPeerGroups(filtered)
+	groups := buildPeerGroups(filtered, a.sortDesc)
 	limit := a.topConnectionsDisplayLimit()
 	if len(groups) > limit {
 		groups = groups[:limit]
@@ -105,6 +105,7 @@ func (a *App) renderTopConnectionsPanel() {
 			a.topConnectionsDisplayLimit(),
 			a.sensitiveIP,
 			a.selectedTalkerIndex,
+			a.sortDesc,
 			a.healthThresholds,
 			a.topBandwidthNote,
 		))

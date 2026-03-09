@@ -172,6 +172,7 @@ func TestSelectedPeerKillTargetGroupViewUsesSelectedPeerContext(t *testing.T) {
 	a := &App{
 		latestTalkers:       topConnectionFixtures(),
 		groupView:           true,
+		sortDesc:            true,
 		selectedTalkerIndex: 0,
 	}
 
@@ -235,6 +236,58 @@ func TestHandleKeyEventHorizontalArrowsAreDisabled(t *testing.T) {
 	}
 	if a.focusIndex != startFocus {
 		t.Fatalf("focus index should not change on Left arrow: got=%d want=%d", a.focusIndex, startFocus)
+	}
+}
+
+func TestHandleKeyEventMTogglesSensitiveMask(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	if a.sensitiveIP {
+		t.Fatalf("precondition: sensitiveIP should start false")
+	}
+
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'm', 0))
+	if ret != nil {
+		t.Fatalf("m should be handled")
+	}
+	if !a.sensitiveIP {
+		t.Fatalf("m should toggle sensitiveIP on")
+	}
+}
+
+func TestHandleKeyEventSOnConnectionStatesTogglesSortDirection(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.focusIndex = 0
+	a.connStateSortDesc = true
+
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 's', 0))
+	if ret != nil {
+		t.Fatalf("s on Connection States should be handled")
+	}
+	if a.connStateSortDesc {
+		t.Fatalf("s should toggle connStateSortDesc from DESC to ASC")
+	}
+}
+
+func TestHandleKeyEventSOutsideConnectionStatesShowsHintOnly(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.focusIndex = 2
+	a.connStateSortDesc = true
+
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 's', 0))
+	if ret != nil {
+		t.Fatalf("s should be handled with hint when not focused on Connection States")
+	}
+	if !a.connStateSortDesc {
+		t.Fatalf("s outside Connection States should not change state sort direction")
+	}
+	if !strings.Contains(a.statusNote, "focus Connection States") {
+		t.Fatalf("expected focus hint status note, got=%q", a.statusNote)
 	}
 }
 

@@ -55,6 +55,8 @@ type App struct {
 	sortMode SortMode
 	// Sort direction for Top Connections. true=DESC, false=ASC.
 	sortDesc bool
+	// Connection States panel sort direction by count. true=DESC, false=ASC.
+	connStateSortDesc bool
 	// Group view mode: when true, show per-peer aggregates instead of individual connections.
 	groupView bool
 
@@ -122,6 +124,7 @@ func NewApp(
 		actionLogs:        make([]string, 0, 32),
 		actionHistoryPath: defaultActionHistoryPath(),
 		sortDesc:          true,
+		connStateSortDesc: true,
 		bwTracker:         collector.NewBandwidthTracker(),
 		ssBWTracker:       collector.NewSocketBandwidthTracker(),
 	}
@@ -242,7 +245,7 @@ func (a *App) refreshData() {
 	if err != nil {
 		a.panels[0].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
-		a.panels[0].SetText(renderConnectionsPanel(connData, retransRates, conntrackRates, a.healthThresholds))
+		a.panels[0].SetText(renderConnectionsPanelWithStateSort(connData, retransRates, conntrackRates, a.healthThresholds, a.connStateSortDesc))
 	}
 
 	// Panel 1: Interface Stats
@@ -379,6 +382,19 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			a.updateStatusBar()
 			return nil
 		case 's':
+			if a.focusIndex != 0 {
+				a.setStatusNote("s=sort states (focus Connection States)", 4*time.Second)
+				return nil
+			}
+			a.connStateSortDesc = !a.connStateSortDesc
+			dir := "ASC"
+			if a.connStateSortDesc {
+				dir = "DESC"
+			}
+			a.setStatusNote("Connection States sort: count "+dir, 4*time.Second)
+			a.refreshData()
+			return nil
+		case 'm':
 			a.sensitiveIP = !a.sensitiveIP
 			a.refreshData()
 			return nil

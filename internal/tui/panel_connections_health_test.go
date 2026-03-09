@@ -83,3 +83,26 @@ func TestRenderConnectionsPanelShowsLowSampleDetails(t *testing.T) {
 		t.Fatalf("low-sample mode must not show high-loss alert, got: %q", rendered)
 	}
 }
+
+func TestRenderConnectionsPanelWithStateSortToggleDirection(t *testing.T) {
+	t.Parallel()
+
+	data := collector.ConnectionData{
+		States: map[string]int{
+			"ESTABLISHED": 9,
+			"TIME_WAIT":   3,
+			"SYN_RECV":    1,
+		},
+		Total: 13,
+	}
+
+	desc := renderConnectionsPanelWithStateSort(data, nil, nil, config.DefaultHealthThresholds(), true)
+	asc := renderConnectionsPanelWithStateSort(data, nil, nil, config.DefaultHealthThresholds(), false)
+
+	if !(strings.Index(desc, "ESTABLISHED") < strings.Index(desc, "TIME_WAIT")) {
+		t.Fatalf("desc sort should place ESTABLISHED before TIME_WAIT, got: %q", desc)
+	}
+	if !(strings.Index(asc, "SYN_RECV") < strings.Index(asc, "TIME_WAIT")) {
+		t.Fatalf("asc sort should place SYN_RECV before TIME_WAIT, got: %q", asc)
+	}
+}

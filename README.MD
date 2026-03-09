@@ -65,7 +65,8 @@ sudo holyf-network -r 5
 # g: toggle grouped view (peer + process)
 # /: search Top Connections by text (contains match)
 # f: port filter (press f again to clear all filters)
-# s: toggle sensitive IP masking
+# m: toggle sensitive IP masking
+# s: sort Connection States by count (toggle DESC/ASC)
 # b: list active blocks and remove selected peer block
 # h: show action log (latest 20)
 # p: pause/resume auto-refresh
@@ -191,7 +192,7 @@ Replay hotkeys:
 - `Shift+B/C/P`: sort mode (press same key to toggle DESC/ASC)
 - `i`: explain Send-Q / Recv-Q / TX/s / RX/s
 - `Shift+I`: alias of `i` (explain queue/bandwidth columns)
-- `s`: mask IP display
+- `m`: mask IP display
 - `x`: toggle skip-empty snapshot navigation
 - `?`: help
 - `q`: quit

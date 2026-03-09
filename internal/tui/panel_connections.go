@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
@@ -35,7 +36,26 @@ func renderConnectionsPanel(
 	conntrack *collector.ConntrackRates,
 	thresholds config.HealthThresholds,
 ) string {
+	return renderConnectionsPanelWithStateSort(data, retrans, conntrack, thresholds, true)
+}
+
+func renderConnectionsPanelWithStateSort(
+	data collector.ConnectionData,
+	retrans *collector.RetransmitRates,
+	conntrack *collector.ConntrackRates,
+	thresholds config.HealthThresholds,
+	sortDesc bool,
+) string {
 	sorted := data.SortedStates()
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].Count != sorted[j].Count {
+			if sortDesc {
+				return sorted[i].Count > sorted[j].Count
+			}
+			return sorted[i].Count < sorted[j].Count
+		}
+		return sorted[i].Name < sorted[j].Name
+	})
 
 	// Find the maximum count for scaling bars
 	maxCount := 0

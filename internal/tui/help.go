@@ -11,7 +11,8 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]Shift+Tab[white]   Previous panel
 [yellow]r[white]           Refresh now
 [yellow]p[white]           Pause/Resume auto-refresh
-[yellow]s[white]           Toggle sensitive IP mask
+[yellow]m[white]           Toggle sensitive IP mask
+[yellow]s[white]           Sort Connection States by count (toggle DESC/ASC)
 [yellow]f[white]           Port filter / clear all filters
 [yellow]/[white]           Search (contains text in Top Connections)
 [yellow]Up/Down[white]     Select row (Top Connections)
@@ -47,7 +48,7 @@ const historyHelpText = `[yellow]Replay Shortcuts[white]
 [yellow]Shift+P[white]     Sort by Port (press again: DESC/ASC)
 [yellow]i[white]           Explain Send-Q / Recv-Q / TX/s / RX/s
 [yellow]Shift+I[white]     Alias of i (Explain queue/bandwidth columns)
-[yellow]s[white]           Toggle sensitive IP mask
+[yellow]m[white]           Toggle sensitive IP mask
 [yellow]x[white]           Toggle skip-empty snapshots
 [yellow]?[white]           Toggle this help
 [yellow]q[white]           Quit
