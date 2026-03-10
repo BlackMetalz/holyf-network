@@ -175,7 +175,7 @@ func TestLiveStatusBarShowsUpdateSuffixWhenLatestTagAvailable(t *testing.T) {
 	a.updateStatusBar()
 
 	text := a.statusBar.GetText(true)
-	if !strings.Contains(text, "holyf-network test") || !strings.Contains(text, "update:v0.3.33") {
+	if !strings.Contains(text, "holyf-network test") || !strings.Contains(text, "(new v0.3.33)") {
 		t.Fatalf("status bar should include update suffix, got=%q", text)
 	}
 }
@@ -189,7 +189,7 @@ func TestLiveStatusBarKeepsBaseVersionWhenNoUpdateTag(t *testing.T) {
 	a.updateStatusBar()
 
 	text := a.statusBar.GetText(true)
-	if strings.Contains(text, "update:") {
+	if strings.Contains(text, "(new ") {
 		t.Fatalf("status bar should not include update suffix, got=%q", text)
 	}
 	if !strings.Contains(text, "holyf-network test") {

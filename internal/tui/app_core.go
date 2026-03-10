@@ -669,8 +669,8 @@ func (a *App) updateStatusBar() {
 	rightStyled := " [dim]" + versionPlain + "[white]"
 	rightPlain := " " + versionPlain
 	if latest := strings.TrimSpace(a.updateLatestTag); latest != "" {
-		rightStyled += " [yellow]update:" + latest + "[white]"
-		rightPlain += " update:" + latest
+		rightStyled += " [yellow](new " + latest + ")[white]"
+		rightPlain += " (new " + latest + ")"
 	}
 
 	text := leftStyled
