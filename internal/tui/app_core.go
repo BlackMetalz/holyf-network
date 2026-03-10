@@ -261,7 +261,10 @@ func (a *App) refreshData() {
 	}
 
 	// Panel 2: Top Connections
-	talkers, err := collector.CollectTopTalkers(100)
+	// Use full socket set (no collector cap) so group view/counts stay
+	// consistent with large-state scenarios (e.g., CLOSE_WAIT pressure).
+	// Rendering is still capped by panel height.
+	talkers, err := collector.CollectTopTalkers(0)
 	if err != nil {
 		a.latestTalkers = nil
 		a.topSampleSeconds = 0
