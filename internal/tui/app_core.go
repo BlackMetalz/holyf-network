@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,6 +32,8 @@ type App struct {
 	ifaceName  string // Network interface being monitored
 	refreshSec int    // Refresh interval in seconds
 	appVersion string
+	// Non-empty when a newer GitHub release tag is detected at startup.
+	updateLatestTag string
 
 	// Previous snapshots for rate calculation (need 2 readings for delta)
 	prevIfaceStats *collector.InterfaceStats
@@ -158,10 +162,32 @@ func (a *App) Run() error {
 	// Start background goroutines
 	go a.startRefreshLoop()
 	go a.startStatusTicker()
+	a.startUpdateCheck()
 
 	// Start the application (blocks until app.Stop() is called)
 	a.app.SetRoot(a.pages, true)
 	return a.app.Run()
+}
+
+// startUpdateCheck checks GitHub releases once in background and updates footer-right when ready.
+func (a *App) startUpdateCheck() {
+	currentVersion := strings.TrimSpace(a.appVersion)
+
+	go func() {
+		client := &http.Client{Timeout: 5 * time.Second}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		latestTag, ok := checkForUpdate(ctx, client, currentVersion)
+		if !ok {
+			return
+		}
+
+		a.app.QueueUpdateDraw(func() {
+			a.updateLatestTag = latestTag
+			a.updateStatusBar()
+		})
+	}()
 }
 
 // startRefreshLoop runs in a goroutine. It periodically refreshes data
@@ -639,9 +665,13 @@ func (a *App) updateStatusBar() {
 		a.refreshSec,
 		hotkeysPlain,
 	)
-	versionLabel := "holyf-network " + a.appVersion
-	rightStyled := " [dim]" + versionLabel + "[white]"
-	rightPlain := " " + versionLabel
+	versionPlain := "holyf-network " + a.appVersion
+	rightStyled := " [dim]" + versionPlain + "[white]"
+	rightPlain := " " + versionPlain
+	if latest := strings.TrimSpace(a.updateLatestTag); latest != "" {
+		rightStyled += " [yellow]update:" + latest + "[white]"
+		rightPlain += " update:" + latest
+	}
 
 	text := leftStyled
 	_, _, width, _ := a.statusBar.GetInnerRect()

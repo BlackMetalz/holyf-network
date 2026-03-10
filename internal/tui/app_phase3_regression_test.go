@@ -166,6 +166,37 @@ func TestLiveStatusBarKeepsLastMessageAfterTTL(t *testing.T) {
 	}
 }
 
+func TestLiveStatusBarShowsUpdateSuffixWhenLatestTagAvailable(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.statusBar.SetRect(0, 0, 400, 1)
+	a.updateLatestTag = "v0.3.33"
+	a.updateStatusBar()
+
+	text := a.statusBar.GetText(true)
+	if !strings.Contains(text, "holyf-network test") || !strings.Contains(text, "update:v0.3.33") {
+		t.Fatalf("status bar should include update suffix, got=%q", text)
+	}
+}
+
+func TestLiveStatusBarKeepsBaseVersionWhenNoUpdateTag(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.statusBar.SetRect(0, 0, 400, 1)
+	a.updateLatestTag = ""
+	a.updateStatusBar()
+
+	text := a.statusBar.GetText(true)
+	if strings.Contains(text, "update:") {
+		t.Fatalf("status bar should not include update suffix, got=%q", text)
+	}
+	if !strings.Contains(text, "holyf-network test") {
+		t.Fatalf("status bar should keep base version label, got=%q", text)
+	}
+}
+
 func TestSelectedPeerKillTargetGroupViewUsesSelectedPeerContext(t *testing.T) {
 	t.Parallel()
 
