@@ -497,6 +497,25 @@ type PeerGroup struct {
 	States           map[string]int
 }
 
+type stateSummaryEntry struct {
+	Name  string
+	Count int
+}
+
+var peerGroupStateOrder = map[string]int{
+	"ESTABLISHED": 0,
+	"TIME_WAIT":   1,
+	"CLOSE_WAIT":  2,
+	"LISTEN":      3,
+	"SYN_SENT":    4,
+	"SYN_RECV":    5,
+	"FIN_WAIT1":   6,
+	"FIN_WAIT2":   7,
+	"LAST_ACK":    8,
+	"CLOSING":     9,
+	"CLOSE":       10,
+}
+
 // buildPeerGroups aggregates connections by remote IP + process.
 func buildPeerGroups(conns []collector.Connection, sortDesc bool) []PeerGroup {
 	byKey := make(map[string]*PeerGroup)
@@ -617,15 +636,16 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 	}
 
 	const (
-		peerColWidth    = 24
+		peerColWidth    = 22
 		countColWidth   = 6
-		queueColWidth   = 7
-		bwColWidth      = 9
-		processColWidth = 12
-		portsColWidth   = 14
+		queueColWidth   = 6
+		bwColWidth      = 8
+		processColWidth = 10
+		portsColWidth   = 12
+		stateColWidth   = 26
 	)
 
-	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %*s %*s %*s %-*s %-*s[white]\n",
+	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %*s %*s %*s %-*s %-*s %-*s[white]\n",
 		peerColWidth, "PEER",
 		countColWidth, "CONNS",
 		queueColWidth, "SEND-Q",
@@ -634,6 +654,7 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 		bwColWidth, "RX/s",
 		processColWidth, "PROCESS",
 		portsColWidth, "PORTS",
+		stateColWidth, "STATE %",
 	))
 
 	for i, g := range groups {
@@ -685,6 +706,7 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 			portStrs = append(portStrs, fmt.Sprintf("%d", p))
 		}
 		portsDisplay := truncateRight(strings.Join(portStrs, ","), portsColWidth)
+		stateDisplay := truncateRight(formatPeerGroupStatePercent(g.States, g.Count), stateColWidth)
 
 		// Color count by severity.
 		countColor := "white"
@@ -699,7 +721,7 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 			prefix = " [yellow]>[white]"
 		}
 
-		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %s %s %s %s %s %-*s\n",
+		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %s %s %s %s %s %-*s %-*s\n",
 			prefix,
 			peerColWidth, peer,
 			countColor, countColWidth, g.Count,
@@ -709,6 +731,7 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 			rxRateField,
 			procField,
 			portsColWidth, portsDisplay,
+			stateColWidth, stateDisplay,
 		))
 	}
 
@@ -726,4 +749,71 @@ func uniquePeerCount(groups []PeerGroup) int {
 		seen[g.PeerIP] = struct{}{}
 	}
 	return len(seen)
+}
+
+func formatPeerGroupStatePercent(states map[string]int, total int) string {
+	if total <= 0 || len(states) == 0 {
+		return "-"
+	}
+
+	items := make([]stateSummaryEntry, 0, len(states))
+	for name, count := range states {
+		if count <= 0 {
+			continue
+		}
+		items = append(items, stateSummaryEntry{Name: name, Count: count})
+	}
+	if len(items) == 0 {
+		return "-"
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Count != items[j].Count {
+			return items[i].Count > items[j].Count
+		}
+		iRank, iKnown := peerGroupStateOrder[items[i].Name]
+		jRank, jKnown := peerGroupStateOrder[items[j].Name]
+		switch {
+		case iKnown && jKnown && iRank != jRank:
+			return iRank < jRank
+		case iKnown != jKnown:
+			return iKnown
+		default:
+			return items[i].Name < items[j].Name
+		}
+	})
+
+	if len(items) > 3 {
+		items = items[:3]
+	}
+
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		percent := (item.Count*100 + total/2) / total
+		parts = append(parts, fmt.Sprintf("%s %d%%", shortStateName(item.Name), percent))
+	}
+	return strings.Join(parts, " - ")
+}
+
+func shortStateName(state string) string {
+	switch state {
+	case "ESTABLISHED":
+		return "EST"
+	case "TIME_WAIT":
+		return "TW"
+	case "CLOSE_WAIT":
+		return "CW"
+	case "SYN_SENT":
+		return "SYN-S"
+	case "SYN_RECV":
+		return "SYN-R"
+	case "FIN_WAIT1":
+		return "FW1"
+	case "FIN_WAIT2":
+		return "FW2"
+	case "LAST_ACK":
+		return "LACK"
+	default:
+		return state
+	}
 }
