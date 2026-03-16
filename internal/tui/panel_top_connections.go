@@ -806,8 +806,8 @@ func formatStatePercent(count, total int) string {
 		return "<1%"
 	}
 	percent := (count*100 + total/2) / total
-	if percent > 100 {
-		percent = 100
+	if percent >= 100 {
+		percent = 99
 	}
 	return fmt.Sprintf("%d%%", percent)
 }

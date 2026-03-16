@@ -256,3 +256,14 @@ func TestRenderPeerGroupPanelShowsSmallStatePercentAsLessThanOne(t *testing.T) {
 		t.Fatalf("expected grouped panel to avoid rounding tiny states down to 0%%, got: %q", text)
 	}
 }
+
+func TestFormatStatePercentDoesNotRoundPartialShareUpToHundred(t *testing.T) {
+	t.Parallel()
+
+	if got := formatStatePercent(10584, 10585); got != "99%" {
+		t.Fatalf("expected near-total share to clamp below 100%%, got: %q", got)
+	}
+	if got := formatStatePercent(109, 109); got != "100%" {
+		t.Fatalf("expected exact total share to remain 100%%, got: %q", got)
+	}
+}
