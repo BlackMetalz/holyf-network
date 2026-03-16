@@ -72,8 +72,12 @@ Cách đối chiếu:
 Đây là mức dùng bảng state tracking của kernel (`nf_conntrack`), không phải “số port outbound mở”.
 
 - `Used / Max`: số entry đang track trên tổng capacity.
-- `New/sec`: tốc độ tạo flow mới.
 - `Drops`: số flow không insert được (thường do bảng đầy hoặc lỗi).
+
+Panel live ưu tiên nhìn áp lực bảng state:
+
+- tập trung vào `Used / Max` và `Conntrack%`
+- chỉ cần đặc biệt chú ý `Drops` nếu khác `0`
 
 Mốc vận hành thường dùng:
 

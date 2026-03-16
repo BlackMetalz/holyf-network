@@ -72,8 +72,12 @@ How to correlate:
 This panel shows kernel state-table usage (`nf_conntrack`), not “how many outbound ports are open”.
 
 - `Used / Max`: tracked entries vs capacity.
-- `New/sec`: new flow creation rate.
 - `Drops`: failed inserts (often table pressure/full conditions).
+
+In the live panel, focus on state-table pressure:
+
+- prioritize `Used / Max` and `Conntrack%`
+- pay special attention to `Drops` only when it is non-zero
 
 Common operating thresholds:
 

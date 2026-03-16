@@ -8,7 +8,7 @@ import (
 )
 
 // panel_conntrack.go — Renders the Conntrack panel content.
-// Combines Stories 6.1 (usage), 6.2 (bar), 6.3 (rates), 6.4 (warning).
+// Focuses on usage pressure, drops, and warning thresholds.
 
 // renderConntrackPanel formats conntrack data for the TUI panel.
 func renderConntrackPanel(rates collector.ConntrackRates) string {
@@ -50,8 +50,6 @@ func renderConntrackPanel(rates collector.ConntrackRates) string {
 	} else if rates.TotalDrops > 0 {
 		sb.WriteString(fmt.Sprintf("\n  [red]Drops: %s ⚠ (lost since boot)[white]",
 			formatNumber(int(rates.TotalDrops))))
-	} else {
-		sb.WriteString("\n  [green]Drops: 0[white]")
 	}
 
 	return sb.String()
