@@ -2,6 +2,10 @@
 
 This guide explains how to read `holyf-network` metrics in practical operations.
 
+If you are still new to TCP states / queues / conntrack, read this first:
+
+- `docs/NETWORK_FOUNDATIONS_FOR_SRE_EN.md`
+
 ## 30-second incident scan
 
 1. Check `Connection States`:
@@ -32,6 +36,9 @@ Core columns:
 - `STATE`: TCP state (`ESTABLISHED`, `TIME_WAIT`, ...).
 - `Send-Q`, `Recv-Q`: queue backlog snapshot at sample time.
 - `TX/s`, `RX/s`: throughput computed from conntrack byte deltas in current interval.
+- In `View=GROUP`, rows also summarize:
+  - `PORTS`: local ports currently represented in the group.
+  - `STATE %`: top TCP states in that group (for example `EST 70% - TW 20% - CW 10%`).
 
 `View=CONN` vs `View=GROUP`:
 
@@ -46,6 +53,8 @@ Quick interpretation:
 - `TX/s`,`RX/s` at `0B/s`: idle flow or not enough baseline yet.
 - `Diagnosis`: a rule-based live summary of the host's most prominent condition.
   - In v1 it is host-global, so it does not narrow itself to the current filter/search slice.
+- `Selected Detail`: in live mode, the footer preview explains the currently selected row and what `Enter` / `k` would target.
+  - In `GROUP`, this is especially useful because the action still resolves to one concrete `peer + local port` target.
 
 ## 2) Connection States
 
@@ -80,6 +89,7 @@ In the live panel, focus on state-table pressure:
 
 - prioritize `Used / Max` and `Conntrack%`
 - pay special attention to `Drops` only when it is non-zero
+  - `Drops: 0` is intentionally hidden in the panel to keep noise down
 
 Common operating thresholds:
 

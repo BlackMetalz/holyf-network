@@ -84,6 +84,10 @@ Mitigation behavior:
 
 ## Metrics Guides
 
+- Beginner TCP/network foundation (English, operator-first): `docs/NETWORK_FOUNDATIONS_FOR_SRE_EN.md`
+- Beginner TCP/network foundation (Vietnamese, operator-first): `docs/NETWORK_FOUNDATIONS_FOR_SRE_VI.md`
+- Incident mental checklist (English, 1-page quick reference): `docs/INCIDENT_MENTAL_CHECKLIST_EN.md`
+- Incident mental checklist (Vietnamese, 1-page quick reference): `docs/INCIDENT_MENTAL_CHECKLIST_VI.md`
 - Vietnamese (practical ops): `docs/USER_METRICS_GUIDE_VI.md`
 - English (practical ops): `docs/USER_METRICS_GUIDE_EN.md`
 - Daemon snapshot file spec: `docs/SNAPSHOT_FORMAT.md`

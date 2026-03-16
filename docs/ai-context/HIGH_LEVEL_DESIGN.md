@@ -30,9 +30,20 @@ flowchart TD
 7. Compute conntrack byte deltas and per-row throughput metrics (`TX/s`, `RX/s`).
 8. Fallback collect socket counters from `ss` and overlay missing bandwidth.
 9. Enrich top talkers with throughput metrics and internal total-delta fields for ranking/sort.
-10. Render panels and status bar.
+10. Build live Top Connections diagnosis from:
+   - connection states
+   - retrans health/sample gate
+   - conntrack pressure/drops
+   - top talker culprit extraction for dominant TCP-state patterns
+11. Render panels and status bar.
 
 `ct/nat` in live Top Connections means the row is conntrack/NAT-derived visibility (not direct host PID ownership).
+
+Live Top Connections also has a few important presentation behaviors:
+
+- `View=GROUP` groups by `(peer, process)` and shows a compact `STATE %` breakdown per row.
+- The selected row gets an inline footer preview (`Selected Detail`) explaining the row and the effective `Enter`/`k` target.
+- The diagnosis note is host-global in v1; it is not scoped to the current filter/search slice.
 
 Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).
 
@@ -75,7 +86,7 @@ All per-second metrics in app use the same pattern:
 
 If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows baseline/first-reading semantics.
 
-1. Conntrack usage + churn (`internal/collector/conntrack.go`)
+1. Conntrack table pressure + counters (`internal/collector/conntrack.go`)
    - Source:
      - `/proc/sys/net/netfilter/nf_conntrack_count`
      - `/proc/sys/net/netfilter/nf_conntrack_max`
@@ -84,6 +95,9 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
      - `usage_percent = current / max * 100`
      - `inserts_per_sec = (curr_insert - prev_insert) / elapsed`
      - `drops_per_sec = (curr_drop - prev_drop) / elapsed`
+   - UI emphasis:
+     - live panel focuses on `Used / Max`, `Conntrack%`, and non-zero `Drops`
+     - `inserts_per_sec` is still collected but is not shown in the main panel anymore
    - Commands:
      - `cat /proc/sys/net/netfilter/nf_conntrack_count`
      - `cat /proc/sys/net/netfilter/nf_conntrack_max`
@@ -316,6 +330,10 @@ Behavior constraints:
 - Right stack: `Connection States`, `Interface Stats`, `Conntrack`
 - Bottom: status bar
 - Live `GROUP` view groups by `(peer, process)` for clarity under mixed ownership (`sshd` + `ct/nat`, etc.)
+- Top Connections can render up to two live note lines above the table:
+  - diagnosis note
+  - bandwidth note
+- Top Connections can also render a footer preview for the selected row when panel height allows.
 
 ### Replay mode (`history_layout.go`)
 

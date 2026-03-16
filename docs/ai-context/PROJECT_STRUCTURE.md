@@ -37,6 +37,7 @@ This is the current high-signal layout (non-essential folders omitted):
 │   └── tui/
 │       ├── app_core.go
 │       ├── app_top_connections.go
+│       ├── top_diagnosis.go
 │       ├── app_history.go
 │       ├── app_shared.go
 │       ├── app_blocking_state.go
@@ -102,12 +103,13 @@ This is the current high-signal layout (non-essential folders omitted):
   - App state machine, keyboard handling, modal flows, rendering panels.
   - Grouped by concern:
     - `app_core.go`: lifecycle, refresh loop, global key handling, status bar.
-    - `app_top_connections.go`: top-connection selection/filter/sort/search orchestration.
+    - `app_top_connections.go`: top-connection selection/filter/sort/search orchestration + panel layout for notes/preview.
+    - `top_diagnosis.go`: rule-based live diagnosis synthesis for Top Connections.
     - `app_blocking_*.go`: block/kill flows and blocked peers modal.
     - `app_history.go`: action log modal + persistence (`~/.holyf-network/history.log`).
     - `history_*.go`: read-only replay mode UI and key handling.
     - `panel_*.go`: pure rendering text for each panel.
-      - live `View=GROUP` in `panel_top_connections.go` groups by `(peer, process)` (not peer-only).
+      - `panel_top_connections.go` renders live `View=GROUP` by `(peer, process)`, row `STATE %`, diagnosis notes, and selected-row preview.
     - `layout.go`: grid composition.
 
 ## Test Map

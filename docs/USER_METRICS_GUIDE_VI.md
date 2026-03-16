@@ -2,6 +2,10 @@
 
 Tài liệu này giải thích nhanh cách đọc số trong `holyf-network` theo góc nhìn vận hành thực tế.
 
+Nếu bạn còn mới với TCP state / queue / conntrack, nên đọc trước:
+
+- `docs/NETWORK_FOUNDATIONS_FOR_SRE_VI.md`
+
 ## Đọc nhanh 30 giây khi có alert
 
 1. Nhìn `Connection States`:
@@ -32,6 +36,9 @@ Các cột chính:
 - `STATE`: TCP state (`ESTABLISHED`, `TIME_WAIT`, ...).
 - `Send-Q`, `Recv-Q`: backlog queue snapshot ở thời điểm lấy mẫu.
 - `TX/s`, `RX/s`: throughput theo byte delta conntrack trong chu kỳ refresh hiện tại.
+- Trong `View=GROUP`, mỗi dòng còn tóm tắt thêm:
+  - `PORTS`: các local port hiện có trong group đó.
+  - `STATE %`: các state TCP nổi bật nhất trong group (ví dụ `EST 70% - TW 20% - CW 10%`).
 
 `View=CONN` vs `View=GROUP`:
 
@@ -46,6 +53,8 @@ Diễn giải nhanh:
 - `TX/s`,`RX/s` đều `0B/s`: có thể flow idle hoặc chưa đủ baseline mẫu đầu.
 - `Diagnosis`: câu tóm tắt rule-based cho trạng thái nổi bật nhất của host ở live mode.
   - Đây là summary mức host, không bị thu hẹp theo filter/search hiện tại trong v1.
+- `Selected Detail`: phần preview ở cuối panel live giải thích row đang chọn và nếu bấm `Enter` / `k` thì app sẽ target gì.
+  - Ở `GROUP`, phần này đặc biệt hữu ích vì action thực tế vẫn resolve về một `peer + local port` cụ thể.
 
 ## 2) Connection States
 
@@ -80,6 +89,7 @@ Panel live ưu tiên nhìn áp lực bảng state:
 
 - tập trung vào `Used / Max` và `Conntrack%`
 - chỉ cần đặc biệt chú ý `Drops` nếu khác `0`
+  - `Drops: 0` được ẩn đi chủ đích để panel đỡ nhiễu
 
 Mốc vận hành thường dùng:
 
