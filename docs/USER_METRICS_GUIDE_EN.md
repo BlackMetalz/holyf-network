@@ -44,6 +44,8 @@ Quick interpretation:
 - High `Send-Q` + low `TX/s`: sender is likely blocked by downstream path.
 - High `Recv-Q`: application is reading too slowly.
 - `TX/s`,`RX/s` at `0B/s`: idle flow or not enough baseline yet.
+- `Diagnosis`: a rule-based live summary of the host's most prominent condition.
+  - In v1 it is host-global, so it does not narrow itself to the current filter/search slice.
 
 ## 2) Connection States
 
@@ -93,6 +95,7 @@ Common operating thresholds:
   - read-only timeline from snapshots.
   - default `holyf-network replay` loads current day (server local time).
   - use `-f`, `-b`, `-e` to narrow scope.
+  - `Diagnosis` is not rendered in this phase.
 
 ## Block vs Kill
 

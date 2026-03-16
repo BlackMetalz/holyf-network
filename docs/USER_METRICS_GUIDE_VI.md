@@ -44,6 +44,8 @@ Diễn giải nhanh:
 - `Send-Q` cao kéo dài + `TX/s` thấp: app gửi ra chậm/tắc downstream.
 - `Recv-Q` cao kéo dài: app đọc chậm, queue đang backlog phía receive.
 - `TX/s`,`RX/s` đều `0B/s`: có thể flow idle hoặc chưa đủ baseline mẫu đầu.
+- `Diagnosis`: câu tóm tắt rule-based cho trạng thái nổi bật nhất của host ở live mode.
+  - Đây là summary mức host, không bị thu hẹp theo filter/search hiện tại trong v1.
 
 ## 2) Connection States
 
@@ -93,6 +95,7 @@ Mốc vận hành thường dùng:
   - read-only theo snapshot timeline.
   - mặc định `holyf-network replay` sẽ lấy snapshot của **ngày hiện tại** theo giờ local server.
   - dùng `-f`, `-b`, `-e` để bó hẹp phạm vi.
+  - không render `Diagnosis` ở phase hiện tại.
 
 ## Block vs Kill
 

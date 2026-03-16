@@ -53,6 +53,7 @@ type App struct {
 	// Current top-connection bandwidth sample metadata.
 	topSampleSeconds float64
 	topBandwidthNote string
+	topDiagnosis     *topDiagnosis
 	// Selected row in Top Connections (within currently visible rows).
 	selectedTalkerIndex int
 	// Sort mode for Top Connections. Default: SortByBandwidth.
@@ -262,6 +263,8 @@ func (a *App) refreshData() {
 
 	// Panel 0: Connection States + Retransmits
 	var retransRates *collector.RetransmitRates
+	var connData collector.ConnectionData
+	connDataAvailable := false
 	retransData, retransErr := collector.CollectRetransmits()
 	if retransErr == nil {
 		r := collector.CalculateRetransmitRates(retransData, a.prevRetransmit)
@@ -269,10 +272,11 @@ func (a *App) refreshData() {
 		a.prevRetransmit = &retransData
 	}
 
-	connData, err := collector.CollectConnections()
+	connData, err = collector.CollectConnections()
 	if err != nil {
 		a.panels[0].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
+		connDataAvailable = true
 		a.panels[0].SetText(renderConnectionsPanelWithStateSort(connData, retransRates, conntrackRates, a.healthThresholds, a.connStateSortDesc))
 	}
 
@@ -295,6 +299,7 @@ func (a *App) refreshData() {
 		a.latestTalkers = nil
 		a.topSampleSeconds = 0
 		a.topBandwidthNote = ""
+		a.topDiagnosis = nil
 		a.selectedTalkerIndex = 0
 		a.panels[2].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
@@ -327,6 +332,11 @@ func (a *App) refreshData() {
 		a.topSampleSeconds = bwSample.SampleSeconds
 
 		a.latestTalkers = talkers
+		if connDataAvailable {
+			a.topDiagnosis = a.buildTopDiagnosis(connData, retransRates, conntrackRates)
+		} else {
+			a.topDiagnosis = nil
+		}
 		a.renderTopConnectionsPanel()
 	}
 
