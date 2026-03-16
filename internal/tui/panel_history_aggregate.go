@@ -124,10 +124,7 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		txRateField := fmt.Sprintf("[%s]%*s[white]", bandwidthColor(row.TxBytesPerSec, thresholds.BandwidthPerSec), bwColWidth, txRate)
 		rxRateField := fmt.Sprintf("[%s]%*s[white]", bandwidthColor(row.RxBytesPerSec, thresholds.BandwidthPerSec), bwColWidth, rxRate)
 
-		prefix := "  "
-		if i == selectedIndex {
-			prefix = " [yellow]>[white]"
-		}
+		prefix := rowSelectionPrefix(i == selectedIndex)
 
 		sb.WriteString(fmt.Sprintf(
 			"%s[aqua]%-*s[white] %*s %-*s %*s %s %s %s %s [green]%s[white]\n",

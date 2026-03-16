@@ -50,6 +50,13 @@ func sortLabelWithDirection(mode SortMode, desc bool) string {
 	return mode.Label() + ":" + dir
 }
 
+func rowSelectionPrefix(selected bool) string {
+	if selected {
+		return "[yellow]>[white] "
+	}
+	return "  "
+}
+
 func compareInt(a, b int, desc bool) bool {
 	if desc {
 		return a > b
@@ -248,10 +255,7 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 		txRateField := fmt.Sprintf("[%s]%*s[white]", txRateColor, bwColWidth, formatBytesRateCompact(conn.TxBytesPerSec))
 		rxRateField := fmt.Sprintf("[%s]%*s[white]", rxRateColor, bwColWidth, formatBytesRateCompact(conn.RxBytesPerSec))
 
-		prefix := "  "
-		if i == selectedIndex {
-			prefix = " [yellow]>[white]"
-		}
+		prefix := rowSelectionPrefix(i == selectedIndex)
 
 		sb.WriteString(fmt.Sprintf("%s[aqua]%-*s[white] %-*s %-*s [%s]%-*s[white] %s %s %s %s\n",
 			prefix,
@@ -636,13 +640,13 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 	}
 
 	const (
-		peerColWidth    = 22
+		peerColWidth    = 20
 		countColWidth   = 6
 		queueColWidth   = 6
 		bwColWidth      = 8
-		processColWidth = 10
-		portsColWidth   = 12
-		stateColWidth   = 26
+		processColWidth = 9
+		portsColWidth   = 10
+		stateColWidth   = 31
 	)
 
 	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %*s %*s %*s %-*s %-*s %-*s[white]\n",
@@ -716,10 +720,7 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 			countColor = "yellow"
 		}
 
-		prefix := "  "
-		if i == selectedIndex {
-			prefix = " [yellow]>[white]"
-		}
+		prefix := rowSelectionPrefix(i == selectedIndex)
 
 		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %s %s %s %s %s %-*s %-*s\n",
 			prefix,
@@ -789,10 +790,26 @@ func formatPeerGroupStatePercent(states map[string]int, total int) string {
 
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
-		percent := (item.Count*100 + total/2) / total
-		parts = append(parts, fmt.Sprintf("%s %d%%", shortStateName(item.Name), percent))
+		parts = append(parts, fmt.Sprintf("%s %s", shortStateName(item.Name), formatStatePercent(item.Count, total)))
 	}
 	return strings.Join(parts, " - ")
+}
+
+func formatStatePercent(count, total int) string {
+	if total <= 0 || count <= 0 {
+		return "0%"
+	}
+	if count == total {
+		return "100%"
+	}
+	if count*100 < total {
+		return "<1%"
+	}
+	percent := (count*100 + total/2) / total
+	if percent > 100 {
+		percent = 100
+	}
+	return fmt.Sprintf("%d%%", percent)
 }
 
 func shortStateName(state string) string {
@@ -803,16 +820,22 @@ func shortStateName(state string) string {
 		return "TW"
 	case "CLOSE_WAIT":
 		return "CW"
+	case "LISTEN":
+		return "LS"
 	case "SYN_SENT":
-		return "SYN-S"
+		return "SS"
 	case "SYN_RECV":
-		return "SYN-R"
+		return "SR"
 	case "FIN_WAIT1":
 		return "FW1"
 	case "FIN_WAIT2":
 		return "FW2"
 	case "LAST_ACK":
-		return "LACK"
+		return "LA"
+	case "CLOSING":
+		return "CLG"
+	case "CLOSE":
+		return "CLS"
 	default:
 		return state
 	}

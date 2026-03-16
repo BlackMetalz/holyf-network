@@ -224,7 +224,35 @@ func TestRenderPeerGroupPanelShowsTopThreeStatePercents(t *testing.T) {
 	if !strings.Contains(text, "EST 70% - TW 10% - CW 10%") {
 		t.Fatalf("expected top three state shares in grouped panel, got: %q", text)
 	}
-	if strings.Contains(text, "SYN-S 10%") {
+	if strings.Contains(text, "SS 10%") {
 		t.Fatalf("expected grouped panel to limit state summary to top three entries, got: %q", text)
+	}
+}
+
+func TestRenderPeerGroupPanelShowsSmallStatePercentAsLessThanOne(t *testing.T) {
+	t.Parallel()
+
+	conns := make([]collector.Connection, 0, 102)
+	for i := 0; i < 100; i++ {
+		conns = append(conns, collector.Connection{
+			LocalIP:    "10.0.0.10",
+			LocalPort:  8080,
+			RemoteIP:   "198.51.100.50",
+			RemotePort: 52000 + i,
+			State:      "TIME_WAIT",
+			ProcName:   "server",
+		})
+	}
+	conns = append(conns,
+		collector.Connection{LocalIP: "10.0.0.10", LocalPort: 8080, RemoteIP: "198.51.100.50", RemotePort: 52101, State: "ESTABLISHED", ProcName: "server"},
+		collector.Connection{LocalIP: "10.0.0.10", LocalPort: 8080, RemoteIP: "198.51.100.50", RemotePort: 52102, State: "SYN_SENT", ProcName: "server"},
+	)
+
+	text := renderPeerGroupPanel(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "")
+	if !strings.Contains(text, "TW 98% - EST <1% - SS <1%") {
+		t.Fatalf("expected grouped panel to preserve tiny non-zero states, got: %q", text)
+	}
+	if strings.Contains(text, "EST 0%") || strings.Contains(text, "SS 0%") {
+		t.Fatalf("expected grouped panel to avoid rounding tiny states down to 0%%, got: %q", text)
 	}
 }
