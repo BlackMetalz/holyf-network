@@ -37,14 +37,11 @@ func renderConntrackPanel(rates collector.ConntrackRates) string {
 		sb.WriteString("  [yellow]Conntrack usage above 50%[white]\n\n")
 	}
 
-	// New rate and drops
+	// Stats availability
 	if !rates.StatsAvailable {
 		sb.WriteString("  [dim]Stats unavailable (install conntrack-tools, run with sudo)[white]\n")
 	} else if rates.FirstReading {
 		sb.WriteString("  [dim]Rates available after next refresh[white]\n")
-	} else {
-		sb.WriteString(fmt.Sprintf("  [bold]New/sec:[white]       %s\n",
-			formatRate(rates.InsertsPerSec)))
 	}
 
 	// Drops — any drops are BAD
@@ -89,15 +86,4 @@ func renderUsageBar(percent float64) string {
 	)
 
 	return bar
-}
-
-// formatRate formats a per-second rate value.
-func formatRate(rate float64) string {
-	if rate >= 1_000_000 {
-		return fmt.Sprintf("%.1fM", rate/1_000_000)
-	}
-	if rate >= 1_000 {
-		return fmt.Sprintf("%.1fk", rate/1_000)
-	}
-	return fmt.Sprintf("%.0f", rate)
 }
