@@ -71,6 +71,11 @@ func compareInt64(a, b int64, desc bool) bool {
 	return a < b
 }
 
+type selectedRowPreview struct {
+	Title string
+	Lines []string
+}
+
 // sortConnections sorts a slice in-place according to the given mode.
 func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
 	switch mode {
@@ -130,14 +135,18 @@ func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
 // If portFilter is set, only connections matching that port are shown.
 // maxRows controls how many connections to display (use more when zoomed).
 func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, defaultTalkersHintLine)
+	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, defaultTalkersHintLine, defaultTopConnectionsPanelWidth, nil)
+}
+
+func renderTalkersPanelWithPreview(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, panelWidth int, preview *selectedRowPreview) string {
+	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, defaultTalkersHintLine, panelWidth, preview)
 }
 
 func renderTalkersPanelReadOnly(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderTalkersPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, readOnlyTalkersHintLine)
+	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, readOnlyTalkersHintLine, defaultTopConnectionsPanelWidth, nil)
 }
 
-func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, hintLine string) string {
+func renderTalkersPanelWithHintAndPreview(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, hintLine string, panelWidth int, preview *selectedRowPreview) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -269,6 +278,8 @@ func renderTalkersPanelWithHint(conns []collector.Connection, portFilter string,
 			rxRateField,
 		))
 	}
+
+	renderSelectedRowPreview(&sb, preview, panelWidth)
 
 	// Show total count
 	sb.WriteString(fmt.Sprintf("\n  [dim]Showing %d of %d connections[white]", min(len(filtered), maxRows), len(filtered)))
@@ -407,16 +418,23 @@ func bandwidthColor(value float64, band config.ThresholdBand) string {
 
 // formatEndpoint normalizes, masks (optional), and truncates endpoint text.
 func formatEndpoint(ip string, port int, width int, sensitiveIP bool) string {
+	return truncateEndpoint(formatPreviewEndpoint(ip, port, sensitiveIP), width)
+}
+
+func formatPreviewEndpoint(ip string, port int, sensitiveIP bool) string {
+	displayIP := formatPreviewIP(ip, sensitiveIP)
+	if strings.Contains(displayIP, ":") && !strings.Contains(displayIP, ".") {
+		return fmt.Sprintf("[%s]:%d", displayIP, port)
+	}
+	return fmt.Sprintf("%s:%d", displayIP, port)
+}
+
+func formatPreviewIP(ip string, sensitiveIP bool) string {
 	displayIP := normalizeIP(ip)
 	if sensitiveIP {
 		displayIP = maskIP(displayIP)
 	}
-
-	if strings.Contains(displayIP, ":") && !strings.Contains(displayIP, ".") {
-		return truncateEndpoint(fmt.Sprintf("[%s]:%d", displayIP, port), width)
-	}
-
-	return truncateEndpoint(fmt.Sprintf("%s:%d", displayIP, port), width)
+	return displayIP
 }
 
 // normalizeIP removes noisy IPv4-mapped IPv6 prefix for readability.
@@ -520,6 +538,67 @@ var peerGroupStateOrder = map[string]int{
 	"CLOSE":       10,
 }
 
+func sortedStateSummaryEntries(states map[string]int) []stateSummaryEntry {
+	items := make([]stateSummaryEntry, 0, len(states))
+	for name, count := range states {
+		if count <= 0 {
+			continue
+		}
+		items = append(items, stateSummaryEntry{Name: name, Count: count})
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Count != items[j].Count {
+			return items[i].Count > items[j].Count
+		}
+		iRank, iKnown := peerGroupStateOrder[items[i].Name]
+		jRank, jKnown := peerGroupStateOrder[items[j].Name]
+		switch {
+		case iKnown && jKnown && iRank != jRank:
+			return iRank < jRank
+		case iKnown != jKnown:
+			return iKnown
+		default:
+			return items[i].Name < items[j].Name
+		}
+	})
+	return items
+}
+
+func sortedPeerGroupPorts(localPorts map[int]struct{}) []int {
+	portList := make([]int, 0, len(localPorts))
+	for p := range localPorts {
+		portList = append(portList, p)
+	}
+	sort.Ints(portList)
+	return portList
+}
+
+func formatPeerGroupPorts(localPorts map[int]struct{}, maxItems int) string {
+	portList := sortedPeerGroupPorts(localPorts)
+	if len(portList) == 0 {
+		return "-"
+	}
+
+	limit := len(portList)
+	if maxItems >= 0 && maxItems < limit {
+		limit = maxItems
+	}
+
+	portStrs := make([]string, 0, limit+1)
+	for i, port := range portList {
+		if i >= limit {
+			portStrs = append(portStrs, fmt.Sprintf("+%d", len(portList)-limit))
+			break
+		}
+		portStrs = append(portStrs, fmt.Sprintf("%d", port))
+	}
+	return strings.Join(portStrs, ",")
+}
+
+func formatAllPeerGroupPorts(localPorts map[int]struct{}) string {
+	return formatPeerGroupPorts(localPorts, -1)
+}
+
 // buildPeerGroups aggregates connections by remote IP + process.
 func buildPeerGroups(conns []collector.Connection, sortDesc bool) []PeerGroup {
 	byKey := make(map[string]*PeerGroup)
@@ -582,14 +661,18 @@ func buildPeerGroups(conns []collector.Connection, sortDesc bool) []PeerGroup {
 
 // renderPeerGroupPanel renders the per-peer aggregate view.
 func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, defaultGroupHintLine)
+	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, defaultGroupHintLine, defaultTopConnectionsPanelWidth, nil)
+}
+
+func renderPeerGroupPanelWithPreview(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, panelWidth int, preview *selectedRowPreview) string {
+	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, defaultGroupHintLine, panelWidth, preview)
 }
 
 func renderPeerGroupPanelReadOnly(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderPeerGroupPanelWithHint(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, readOnlyGroupHintLine)
+	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, readOnlyGroupHintLine, defaultTopConnectionsPanelWidth, nil)
 }
 
-func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, hintLine string) string {
+func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, hintLine string, panelWidth int, preview *selectedRowPreview) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -695,21 +778,7 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 		}
 		procField := fmt.Sprintf("[%s]%-*s[white]", procColor, processColWidth, procText)
 
-		// Show up to 4 unique local ports.
-		portList := make([]int, 0, len(g.LocalPorts))
-		for p := range g.LocalPorts {
-			portList = append(portList, p)
-		}
-		sort.Ints(portList)
-		portStrs := make([]string, 0, 4)
-		for j, p := range portList {
-			if j >= 4 {
-				portStrs = append(portStrs, fmt.Sprintf("+%d", len(portList)-4))
-				break
-			}
-			portStrs = append(portStrs, fmt.Sprintf("%d", p))
-		}
-		portsDisplay := truncateRight(strings.Join(portStrs, ","), portsColWidth)
+		portsDisplay := truncateRight(formatPeerGroupPorts(g.LocalPorts, 4), portsColWidth)
 		stateDisplay := truncateRight(formatPeerGroupStatePercent(g.States, g.Count), stateColWidth)
 
 		// Color count by severity.
@@ -736,6 +805,8 @@ func renderPeerGroupPanelWithHint(conns []collector.Connection, portFilter, text
 		))
 	}
 
+	renderSelectedRowPreview(&sb, preview, panelWidth)
+
 	sb.WriteString(fmt.Sprintf("\n  [dim]%d groups, %d peers, %d total connections[white]", len(groups), uniquePeerCount(groups), len(filtered)))
 
 	return sb.String()
@@ -757,32 +828,10 @@ func formatPeerGroupStatePercent(states map[string]int, total int) string {
 		return "-"
 	}
 
-	items := make([]stateSummaryEntry, 0, len(states))
-	for name, count := range states {
-		if count <= 0 {
-			continue
-		}
-		items = append(items, stateSummaryEntry{Name: name, Count: count})
-	}
+	items := sortedStateSummaryEntries(states)
 	if len(items) == 0 {
 		return "-"
 	}
-
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].Count != items[j].Count {
-			return items[i].Count > items[j].Count
-		}
-		iRank, iKnown := peerGroupStateOrder[items[i].Name]
-		jRank, jKnown := peerGroupStateOrder[items[j].Name]
-		switch {
-		case iKnown && jKnown && iRank != jRank:
-			return iRank < jRank
-		case iKnown != jKnown:
-			return iKnown
-		default:
-			return items[i].Name < items[j].Name
-		}
-	})
 
 	if len(items) > 3 {
 		items = items[:3]
@@ -791,6 +840,23 @@ func formatPeerGroupStatePercent(states map[string]int, total int) string {
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
 		parts = append(parts, fmt.Sprintf("%s %s", shortStateName(item.Name), formatStatePercent(item.Count, total)))
+	}
+	return strings.Join(parts, " - ")
+}
+
+func formatPeerGroupStatePreview(states map[string]int, total int) string {
+	if total <= 0 || len(states) == 0 {
+		return "-"
+	}
+
+	items := sortedStateSummaryEntries(states)
+	if len(items) == 0 {
+		return "-"
+	}
+
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		parts = append(parts, fmt.Sprintf("%s %s (%d)", shortStateName(item.Name), formatStatePercent(item.Count, total), item.Count))
 	}
 	return strings.Join(parts, " - ")
 }
@@ -839,4 +905,38 @@ func shortStateName(state string) string {
 	default:
 		return state
 	}
+}
+
+func renderSelectedRowPreview(sb *strings.Builder, preview *selectedRowPreview, panelWidth int) {
+	if preview == nil || len(preview.Lines) == 0 {
+		return
+	}
+
+	contentWidth := previewContentWidth(panelWidth)
+	title := strings.TrimSpace(preview.Title)
+	if title == "" {
+		title = "Selected Detail"
+	}
+
+	sb.WriteString("\n\n  [bold]")
+	sb.WriteString(truncateRight("── "+title+" ──", contentWidth))
+	sb.WriteString("[white]\n")
+
+	for i, line := range preview.Lines {
+		sb.WriteString("  ")
+		sb.WriteString(truncateRight(strings.TrimSpace(line), contentWidth))
+		if i < len(preview.Lines)-1 {
+			sb.WriteString("\n")
+		}
+	}
+}
+
+func previewContentWidth(panelWidth int) int {
+	if panelWidth <= 0 {
+		panelWidth = defaultTopConnectionsPanelWidth
+	}
+	if panelWidth <= 4 {
+		return panelWidth
+	}
+	return panelWidth - 2
 }

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -9,33 +10,76 @@ import (
 	"github.com/rivo/tview"
 )
 
-func (a *App) topConnectionsDisplayLimit() int {
-	if a.zoomed {
-		return 100
-	}
+const (
+	defaultTopConnectionsPanelWidth  = 120
+	defaultTopConnectionsPanelHeight = 27
+	topConnectionsBaseReservedLines  = 7
+	topConnectionsNoteReservedLines  = 1
+	topConnectionsPreviewLines       = 5
+	topConnectionsMinRows            = 5
+	topConnectionsMinRowsWithPreview = 3
+)
 
-	// Use panel height so Top Connections (normal + group view) scales with layout.
-	if len(a.panels) <= 2 || a.panels[2] == nil {
-		return 20
-	}
-
-	_, _, _, height := a.panels[2].GetInnerRect()
-	if height <= 0 {
-		return 20
-	}
-
-	// Reserve lines for chips/help text, table headers, and footer.
-	limit := height - 7
-	if limit < 5 {
-		return 5
-	}
-	if limit > 100 {
-		return 100
-	}
-	return limit
+type topConnectionsPanelLayout struct {
+	PanelWidth  int
+	PanelHeight int
+	RowLimit    int
+	ShowPreview bool
 }
 
-func (a *App) visibleTopConnections() []collector.Connection {
+func calculateTopConnectionsDisplayLimit(panelHeight int, hasBandwidthNote bool, wantsPreview bool) (int, bool) {
+	reservedLines := topConnectionsBaseReservedLines
+	if hasBandwidthNote {
+		reservedLines += topConnectionsNoteReservedLines
+	}
+	if wantsPreview {
+		previewLimit := panelHeight - reservedLines - topConnectionsPreviewLines
+		if previewLimit >= topConnectionsMinRowsWithPreview {
+			return min(previewLimit, 100), true
+		}
+	}
+
+	limit := panelHeight - reservedLines
+	if limit < topConnectionsMinRows {
+		limit = topConnectionsMinRows
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	return limit, false
+}
+
+func (a *App) topConnectionsPanelSize() (int, int) {
+	if len(a.panels) <= 2 || a.panels[2] == nil {
+		return defaultTopConnectionsPanelWidth, defaultTopConnectionsPanelHeight
+	}
+
+	_, _, width, height := a.panels[2].GetInnerRect()
+	if width <= 0 {
+		width = defaultTopConnectionsPanelWidth
+	}
+	if height <= 0 {
+		height = defaultTopConnectionsPanelHeight
+	}
+	return width, height
+}
+
+func (a *App) topConnectionsPanelLayout(hasRows bool) topConnectionsPanelLayout {
+	width, height := a.topConnectionsPanelSize()
+	rowLimit, showPreview := calculateTopConnectionsDisplayLimit(
+		height,
+		strings.TrimSpace(a.topBandwidthNote) != "",
+		hasRows,
+	)
+	return topConnectionsPanelLayout{
+		PanelWidth:  width,
+		PanelHeight: height,
+		RowLimit:    rowLimit,
+		ShowPreview: showPreview,
+	}
+}
+
+func (a *App) filteredTopConnections() []collector.Connection {
 	if len(a.latestTalkers) == 0 {
 		return nil
 	}
@@ -44,18 +88,13 @@ func (a *App) visibleTopConnections() []collector.Connection {
 	if len(filtered) == 0 {
 		return nil
 	}
-	// Copy before sorting to avoid mutating latestTalkers backing array.
+
 	items := append([]collector.Connection(nil), filtered...)
 	sortConnections(items, a.sortMode, a.sortDesc)
-
-	limit := a.topConnectionsDisplayLimit()
-	if len(items) > limit {
-		items = items[:limit]
-	}
 	return items
 }
 
-func (a *App) visiblePeerGroups() []PeerGroup {
+func (a *App) filteredPeerGroups() []PeerGroup {
 	if len(a.latestTalkers) == 0 {
 		return nil
 	}
@@ -65,8 +104,29 @@ func (a *App) visiblePeerGroups() []PeerGroup {
 		return nil
 	}
 
-	groups := buildPeerGroups(filtered, a.sortDesc)
-	limit := a.topConnectionsDisplayLimit()
+	return buildPeerGroups(filtered, a.sortDesc)
+}
+
+func (a *App) visibleTopConnections() []collector.Connection {
+	items := a.filteredTopConnections()
+	if len(items) == 0 {
+		return nil
+	}
+
+	limit := a.topConnectionsPanelLayout(true).RowLimit
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	return items
+}
+
+func (a *App) visiblePeerGroups() []PeerGroup {
+	groups := a.filteredPeerGroups()
+	if len(groups) == 0 {
+		return nil
+	}
+
+	limit := a.topConnectionsPanelLayout(true).RowLimit
 	if len(groups) > limit {
 		groups = groups[:limit]
 	}
@@ -96,32 +156,66 @@ func (a *App) clampTopConnectionSelection() {
 }
 
 func (a *App) renderTopConnectionsPanel() {
-	a.clampTopConnectionSelection()
 	if a.groupView {
-		a.panels[2].SetText(renderPeerGroupPanel(
+		groups := a.filteredPeerGroups()
+		layout := a.topConnectionsPanelLayout(len(groups) > 0)
+		if count := min(len(groups), layout.RowLimit); count == 0 {
+			a.selectedTalkerIndex = 0
+		} else if a.selectedTalkerIndex >= count {
+			a.selectedTalkerIndex = count - 1
+		} else if a.selectedTalkerIndex < 0 {
+			a.selectedTalkerIndex = 0
+		}
+
+		var preview *selectedRowPreview
+		if layout.ShowPreview {
+			preview = a.buildSelectedPeerGroupPreview(groups)
+		}
+
+		a.panels[2].SetText(renderPeerGroupPanelWithPreview(
 			a.latestTalkers,
 			a.portFilter,
 			a.textFilter,
-			a.topConnectionsDisplayLimit(),
+			layout.RowLimit,
 			a.sensitiveIP,
 			a.selectedTalkerIndex,
 			a.sortDesc,
 			a.healthThresholds,
 			a.topBandwidthNote,
+			layout.PanelWidth,
+			preview,
 		))
 		return
 	}
-	a.panels[2].SetText(renderTalkersPanel(
+
+	items := a.filteredTopConnections()
+	layout := a.topConnectionsPanelLayout(len(items) > 0)
+	if count := min(len(items), layout.RowLimit); count == 0 {
+		a.selectedTalkerIndex = 0
+	} else if a.selectedTalkerIndex >= count {
+		a.selectedTalkerIndex = count - 1
+	} else if a.selectedTalkerIndex < 0 {
+		a.selectedTalkerIndex = 0
+	}
+
+	var preview *selectedRowPreview
+	if layout.ShowPreview {
+		preview = a.buildSelectedConnectionPreview(items)
+	}
+
+	a.panels[2].SetText(renderTalkersPanelWithPreview(
 		a.latestTalkers,
 		a.portFilter,
 		a.textFilter,
-		a.topConnectionsDisplayLimit(),
+		layout.RowLimit,
 		a.sensitiveIP,
 		a.selectedTalkerIndex,
 		a.sortMode,
 		a.sortDesc,
 		a.healthThresholds,
 		a.topBandwidthNote,
+		layout.PanelWidth,
+		preview,
 	))
 }
 
@@ -158,6 +252,80 @@ func (a *App) applyTopConnectionFilters(conns []collector.Connection) []collecto
 		filtered = filterByText(filtered, a.textFilter)
 	}
 	return filtered
+}
+
+func (a *App) buildSelectedConnectionPreview(conns []collector.Connection) *selectedRowPreview {
+	if len(conns) == 0 || a.selectedTalkerIndex < 0 || a.selectedTalkerIndex >= len(conns) {
+		return nil
+	}
+
+	conn := conns[a.selectedTalkerIndex]
+	peerIP := normalizeIP(conn.RemoteIP)
+	target := peerKillTarget{
+		PeerIP:    peerIP,
+		LocalPort: conn.LocalPort,
+		Count:     a.countPeerMatches(peerIP, conn.LocalPort),
+	}
+
+	return &selectedRowPreview{
+		Title: "Selected Detail",
+		Lines: []string{
+			fmt.Sprintf(
+				"Local: %s -> Peer: %s | State: %s",
+				formatPreviewEndpoint(conn.LocalIP, conn.LocalPort, a.sensitiveIP),
+				formatPreviewEndpoint(conn.RemoteIP, conn.RemotePort, a.sensitiveIP),
+				conn.State,
+			),
+			fmt.Sprintf(
+				"Proc: %s | Queue: send %s recv %s | BW: tx %s rx %s",
+				formatProcessInfo(conn),
+				formatBytes(conn.TxQueue),
+				formatBytes(conn.RxQueue),
+				formatBytesRateCompact(conn.TxBytesPerSec),
+				formatBytesRateCompact(conn.RxBytesPerSec),
+			),
+			fmt.Sprintf(
+				"Action: Enter/k => peer %s -> local %d (%d matches; peer+port scope)",
+				formatPreviewIP(target.PeerIP, a.sensitiveIP),
+				target.LocalPort,
+				target.Count,
+			),
+		},
+	}
+}
+
+func (a *App) buildSelectedPeerGroupPreview(groups []PeerGroup) *selectedRowPreview {
+	if len(groups) == 0 || a.selectedTalkerIndex < 0 || a.selectedTalkerIndex >= len(groups) {
+		return nil
+	}
+
+	group := groups[a.selectedTalkerIndex]
+	target, ok := a.selectedPeerPortTarget(group.PeerIP)
+	if !ok {
+		target = peerKillTarget{PeerIP: group.PeerIP}
+	}
+
+	return &selectedRowPreview{
+		Title: "Selected Detail",
+		Lines: []string{
+			fmt.Sprintf(
+				"Peer: %s | Proc: %s | Conns: %d",
+				formatPreviewIP(group.PeerIP, a.sensitiveIP),
+				group.ProcName,
+				group.Count,
+			),
+			fmt.Sprintf(
+				"States: %s",
+				formatPeerGroupStatePreview(group.States, group.Count),
+			),
+			fmt.Sprintf(
+				"Ports: %s | Action: Enter/k => local %d (%d matches)",
+				formatAllPeerGroupPorts(group.LocalPorts),
+				target.LocalPort,
+				target.Count,
+			),
+		},
+	}
 }
 
 // promptPortFilter shows a simple input dialog for port filtering.
