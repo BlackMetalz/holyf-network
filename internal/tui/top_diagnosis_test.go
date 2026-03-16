@@ -49,7 +49,7 @@ func TestBuildTopDiagnosisRequiresReadySampleForRetrans(t *testing.T) {
 	if diagnosis == nil {
 		t.Fatalf("expected diagnosis")
 	}
-	if diagnosis.Headline == "High TCP retrans with enough sample" {
+	if diagnosis.Headline == "TCP retrans is high" {
 		t.Fatalf("did not expect retrans diagnosis with low sample, got: %+v", diagnosis)
 	}
 	if !strings.Contains(diagnosis.Reason, "LOW SAMPLE") {
@@ -73,7 +73,7 @@ func TestBuildTopDiagnosisDoesNotPickTimeWaitWhenConntrackWarns(t *testing.T) {
 	if diagnosis == nil {
 		t.Fatalf("expected diagnosis")
 	}
-	if diagnosis.Headline != "Conntrack pressure near limit" {
+	if diagnosis.Headline != "Conntrack pressure high" {
 		t.Fatalf("expected conntrack pressure to outrank TIME_WAIT churn, got: %+v", diagnosis)
 	}
 }
@@ -98,7 +98,7 @@ func TestBuildTopDiagnosisCloseWaitShowsAppSideLeakWordingAndMasking(t *testing.
 	if !strings.Contains(diagnosis.Headline, "CLOSE_WAIT pressure on :8080 from xxx.xxx.100.10") {
 		t.Fatalf("expected masked CLOSE_WAIT headline, got: %q", diagnosis.Headline)
 	}
-	if !strings.Contains(diagnosis.Reason, "local app likely is not closing sockets") {
+	if !strings.Contains(diagnosis.Reason, "local app has not closed these sockets yet") {
 		t.Fatalf("expected app-side socket leak wording, got: %q", diagnosis.Reason)
 	}
 }

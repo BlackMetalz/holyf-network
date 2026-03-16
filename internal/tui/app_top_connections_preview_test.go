@@ -180,7 +180,7 @@ func TestRenderTalkersPanelWithDiagnosisShowsDiagnosisBeforeBandwidthNote(t *tes
 	diagnosis := &topDiagnosis{
 		Severity: healthWarn,
 		Headline: "TIME_WAIT churn on :443 from 198.51.100.10",
-		Reason:   "Short-lived connection churn is dominating more than a current path-quality issue.",
+		Reason:   "Short-lived connections are dominating more than a current path-quality issue.",
 	}
 
 	text := renderTalkersPanelWithPreview(
@@ -217,15 +217,15 @@ func TestRenderTopConnectionsPanelKeepsDiagnosisAndPreviewWhenHeightAllows(t *te
 	}
 	a.topDiagnosis = &topDiagnosis{
 		Severity: healthOK,
-		Headline: "No dominant issue",
-		Reason:   "State mix looks normal; retrans LOW SAMPLE, conntrack 4%, and no warning-level TCP states are dominating.",
+		Headline: "No dominant network issue",
+		Reason:   "Retrans is LOW SAMPLE, conntrack is 4%, and no warning-level TCP state dominates.",
 	}
 	a.topBandwidthNote = "Bandwidth baseline is warming up."
 	a.panels[2].SetRect(0, 0, 120, 27)
 
 	a.renderTopConnectionsPanel()
 	text := a.panels[2].GetText(true)
-	if !strings.Contains(text, "Diagnosis: No dominant issue") {
+	if !strings.Contains(text, "Diagnosis: No dominant network issue") {
 		t.Fatalf("expected diagnosis line, got: %q", text)
 	}
 	if !strings.Contains(text, "Selected Detail") {
@@ -242,15 +242,15 @@ func TestRenderTopConnectionsPanelDropsPreviewBeforeNotes(t *testing.T) {
 	}
 	a.topDiagnosis = &topDiagnosis{
 		Severity: healthOK,
-		Headline: "No dominant issue",
-		Reason:   "State mix looks normal; retrans LOW SAMPLE, conntrack 4%, and no warning-level TCP states are dominating.",
+		Headline: "No dominant network issue",
+		Reason:   "Retrans is LOW SAMPLE, conntrack is 4%, and no warning-level TCP state dominates.",
 	}
 	a.topBandwidthNote = "Bandwidth baseline is warming up."
 	a.panels[2].SetRect(0, 0, 120, 16)
 
 	a.renderTopConnectionsPanel()
 	text := a.panels[2].GetText(true)
-	if !strings.Contains(text, "Diagnosis: No dominant issue") {
+	if !strings.Contains(text, "Diagnosis: No dominant network issue") {
 		t.Fatalf("expected diagnosis line, got: %q", text)
 	}
 	if strings.Contains(text, "Selected Detail") {
@@ -269,14 +269,14 @@ func TestRenderTopConnectionsPanelUpdatesPreviewOnSelectionAndGroupToggle(t *tes
 	}
 	a.topDiagnosis = &topDiagnosis{
 		Severity: healthOK,
-		Headline: "No dominant issue",
-		Reason:   "State mix looks normal; retrans LOW SAMPLE, conntrack 4%, and no warning-level TCP states are dominating.",
+		Headline: "No dominant network issue",
+		Reason:   "Retrans is LOW SAMPLE, conntrack is 4%, and no warning-level TCP state dominates.",
 	}
 	a.panels[2].SetRect(0, 0, 120, 27)
 
 	a.renderTopConnectionsPanel()
 	first := a.panels[2].GetText(true)
-	if !strings.Contains(first, "Diagnosis: No dominant issue") {
+	if !strings.Contains(first, "Diagnosis: No dominant network issue") {
 		t.Fatalf("expected diagnosis in initial render, got: %q", first)
 	}
 	if !strings.Contains(first, "peer 198.51.100.10 -> local 80") {
@@ -296,7 +296,7 @@ func TestRenderTopConnectionsPanelUpdatesPreviewOnSelectionAndGroupToggle(t *tes
 		t.Fatalf("g should be handled")
 	}
 	groupText := a.panels[2].GetText(true)
-	if !strings.Contains(groupText, "Diagnosis: No dominant issue") {
+	if !strings.Contains(groupText, "Diagnosis: No dominant network issue") {
 		t.Fatalf("expected diagnosis to persist across group toggle, got: %q", groupText)
 	}
 	if !strings.Contains(groupText, "Ports: 80 | Action: Enter/k => local 80 (1 matches)") &&

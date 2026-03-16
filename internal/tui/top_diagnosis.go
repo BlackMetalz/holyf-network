@@ -45,7 +45,7 @@ func (a *App) buildTopDiagnosis(
 			Severity: level,
 			Headline: "Conntrack drops active",
 			Reason: fmt.Sprintf(
-				"Kernel is dropping tracked flows at %.0f/s; inspect conntrack pressure, NAT churn, or nf_conntrack_max.",
+				"Kernel is dropping new tracked flows at %.0f/s; check conntrack pressure, NAT churn, or nf_conntrack_max.",
 				conntrack.DropsPerSec,
 			),
 		}
@@ -54,9 +54,9 @@ func (a *App) buildTopDiagnosis(
 	if conntrackLevel >= healthWarn && conntrack != nil {
 		return &topDiagnosis{
 			Severity: conntrackLevel,
-			Headline: "Conntrack pressure near limit",
+			Headline: "Conntrack pressure high",
 			Reason: fmt.Sprintf(
-				"Usage is %.0f%% of max tracked entries; investigate churn and capacity before inserts start failing.",
+				"Table usage is %.0f%% of max; capacity is getting tight before inserts start failing.",
 				conntrack.UsagePercent,
 			),
 		}
@@ -65,9 +65,9 @@ func (a *App) buildTopDiagnosis(
 	if retransLevel >= healthWarn && retrans != nil {
 		return &topDiagnosis{
 			Severity: retransLevel,
-			Headline: "High TCP retrans with enough sample",
+			Headline: "TCP retrans is high",
 			Reason: fmt.Sprintf(
-				"Retrans is %.2f%% at %.1f out seg/s with %d ESTABLISHED; inspect loss, RTT, or NIC/path issues.",
+				"Retrans is %.2f%% with enough traffic sample (%.1f out seg/s, %d ESTABLISHED); check packet loss, RTT, NIC errors, or path congestion.",
 				retrans.RetransPercent,
 				retrans.OutSegsPerSec,
 				sample.Established,
@@ -101,9 +101,9 @@ func (a *App) buildTopDiagnosis(
 
 	return &topDiagnosis{
 		Severity: healthOK,
-		Headline: "No dominant issue",
+		Headline: "No dominant network issue",
 		Reason: fmt.Sprintf(
-			"State mix looks normal; retrans %s, conntrack %s, and no warning-level TCP states are dominating.",
+			"Retrans is %s, conntrack is %s, and no warning-level TCP state dominates.",
 			retransText,
 			conntrackText,
 		),
@@ -227,13 +227,13 @@ func stateDiagnosisHeadline(state string, culprit stateDiagnosisCulprit, found b
 func stateDiagnosisReason(state string, totalCount int) string {
 	switch state {
 	case "SYN_RECV":
-		return fmt.Sprintf("%d SYN_RECV sockets; half-open handshakes are piling up and may indicate backlog pressure or a SYN flood.", totalCount)
+		return fmt.Sprintf("%d SYN_RECV sockets; half-open handshakes are piling up; check backlog pressure, SYN flood, or clients not completing handshakes.", totalCount)
 	case "CLOSE_WAIT":
-		return fmt.Sprintf("%d CLOSE_WAIT sockets; peers already closed and the local app likely is not closing sockets.", totalCount)
+		return fmt.Sprintf("%d CLOSE_WAIT sockets; peers already closed, but the local app has not closed these sockets yet.", totalCount)
 	case "TIME_WAIT":
-		return fmt.Sprintf("%d TIME_WAIT sockets; short-lived connection churn is dominating more than a current path-quality issue.", totalCount)
+		return fmt.Sprintf("%d TIME_WAIT sockets; short-lived connections are dominating more than a current path-quality issue.", totalCount)
 	case "FIN_WAIT1":
-		return fmt.Sprintf("%d FIN_WAIT1 sockets; close handshakes are stalling and cleanup may be lagging.", totalCount)
+		return fmt.Sprintf("%d FIN_WAIT1 sockets; close handshakes are stalling; check remote ACK behavior or socket cleanup lag.", totalCount)
 	default:
 		return fmt.Sprintf("%d %s sockets exceed the warning threshold.", totalCount, state)
 	}
