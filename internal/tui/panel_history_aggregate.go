@@ -10,7 +10,7 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/history"
 )
 
-func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, skipEmpty bool, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
+func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, direction topConnectionDirection, skipEmpty bool, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -31,12 +31,13 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 	}
 
 	sb.WriteString(fmt.Sprintf(
-		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white] | [yellow]SkipEmpty=%s[white] | [aqua]View=AGG[white]\n",
+		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white] | [yellow]SkipEmpty=%s[white] | [aqua]Dir=%s[white] | [aqua]View=AGG[white]\n",
 		portChip,
 		maskChip,
 		searchChip,
 		sortLabelWithDirection(sortMode, sortDesc),
 		skipChip,
+		direction.Label(),
 	))
 	sb.WriteString(historyAggregateHintLine(skipEmpty))
 	if !bandwidthAvailable {
@@ -79,10 +80,14 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		queueColWidth = 7
 		bwColWidth    = 9
 	)
+	portHeader := "LPORT"
+	if direction == topConnectionOutgoing {
+		portHeader = "RPORT"
+	}
 	sb.WriteString(fmt.Sprintf(
 		"  [dim]%-*s %*s %-*s %*s %*s %*s %*s %*s %s[white]\n",
 		peerColWidth, "PEER",
-		portColWidth, "PORT",
+		portColWidth, portHeader,
 		procColWidth, "PROC",
 		connsColWidth, "CONNS",
 		queueColWidth, "SEND-Q",
@@ -103,7 +108,7 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 			peer = maskIP(peer)
 		}
 		peer = truncateRight(peer, peerColWidth)
-		port := strconv.Itoa(row.LocalPort)
+		port := strconv.Itoa(row.Port)
 		proc := truncateRight(row.ProcName, procColWidth)
 		conns := strconv.Itoa(row.ConnCount)
 		sendQ := formatBytes(row.TxQueue)
@@ -146,7 +151,7 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 }
 
 func historyAggregateHintLine(skipEmpty bool) string {
-	base := "  [dim]Use ↑/↓ select, t=jump-time, /=snapshot search, Shift+S=timeline search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i/Shift+I=explain qcols, L=follow, "
+	base := "  [dim]Use ↑/↓ select, o=toggle IN/OUT, t=jump-time, /=snapshot search, Shift+S=timeline search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i/Shift+I=explain qcols, L=follow, "
 	if skipEmpty {
 		return base + "]=next active snapshot, [=previous active snapshot, x=show all snapshots[white]"
 	}
@@ -163,8 +168,8 @@ func sortHistoryGroups(rows []history.SnapshotGroup, mode SortMode, desc bool) {
 			if rows[i].ConnCount != rows[j].ConnCount {
 				return compareInt(rows[i].ConnCount, rows[j].ConnCount, desc)
 			}
-			if rows[i].LocalPort != rows[j].LocalPort {
-				return compareInt(rows[i].LocalPort, rows[j].LocalPort, desc)
+			if rows[i].Port != rows[j].Port {
+				return compareInt(rows[i].Port, rows[j].Port, desc)
 			}
 			if rows[i].PeerIP != rows[j].PeerIP {
 				return rows[i].PeerIP < rows[j].PeerIP
@@ -179,8 +184,8 @@ func sortHistoryGroups(rows []history.SnapshotGroup, mode SortMode, desc bool) {
 			if rows[i].TotalBytesDelta != rows[j].TotalBytesDelta {
 				return compareInt64(rows[i].TotalBytesDelta, rows[j].TotalBytesDelta, desc)
 			}
-			if rows[i].LocalPort != rows[j].LocalPort {
-				return compareInt(rows[i].LocalPort, rows[j].LocalPort, desc)
+			if rows[i].Port != rows[j].Port {
+				return compareInt(rows[i].Port, rows[j].Port, desc)
 			}
 			if rows[i].PeerIP != rows[j].PeerIP {
 				return rows[i].PeerIP < rows[j].PeerIP
@@ -189,8 +194,8 @@ func sortHistoryGroups(rows []history.SnapshotGroup, mode SortMode, desc bool) {
 		})
 	case SortByPort:
 		sort.SliceStable(rows, func(i, j int) bool {
-			if rows[i].LocalPort != rows[j].LocalPort {
-				return compareInt(rows[i].LocalPort, rows[j].LocalPort, desc)
+			if rows[i].Port != rows[j].Port {
+				return compareInt(rows[i].Port, rows[j].Port, desc)
 			}
 			if rows[i].ConnCount != rows[j].ConnCount {
 				return compareInt(rows[i].ConnCount, rows[j].ConnCount, desc)
@@ -214,7 +219,7 @@ func filterHistoryGroupsByPort(rows []history.SnapshotGroup, portFilter string) 
 
 	result := make([]history.SnapshotGroup, 0, len(rows))
 	for _, row := range rows {
-		if row.LocalPort == port {
+		if row.Port == port {
 			result = append(result, row)
 		}
 	}
@@ -231,7 +236,7 @@ func filterHistoryGroupsByText(rows []history.SnapshotGroup, query string) []his
 	for _, row := range rows {
 		haystack := strings.ToLower(strings.Join([]string{
 			row.PeerIP,
-			strconv.Itoa(row.LocalPort),
+			strconv.Itoa(row.Port),
 			row.ProcName,
 			strconv.Itoa(row.ConnCount),
 			formatBytes(row.TxQueue),

@@ -7,15 +7,28 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 )
 
+type AggregateDirection int
+
+const (
+	AggregateIncoming AggregateDirection = iota
+	AggregateOutgoing
+)
+
 type aggregateKey struct {
-	peerIP    string
-	localPort int
-	procName  string
+	peerIP   string
+	port     int
+	procName string
 }
 
 // AggregateConnections groups raw connections by peer_ip + local_port + proc_name,
 // sorts deterministically, and applies an optional row cap.
 func AggregateConnections(conns []collector.Connection, limit int) []SnapshotGroup {
+	return AggregateConnectionsByDirection(conns, AggregateIncoming, limit)
+}
+
+// AggregateConnectionsByDirection groups raw connections by peer_ip + service_port + proc_name,
+// where service_port means local service port for incoming and remote service port for outgoing.
+func AggregateConnectionsByDirection(conns []collector.Connection, direction AggregateDirection, limit int) []SnapshotGroup {
 	if len(conns) == 0 {
 		return nil
 	}
@@ -27,17 +40,19 @@ func AggregateConnections(conns []collector.Connection, limit int) []SnapshotGro
 		if procName == "" {
 			procName = "unknown"
 		}
+		servicePort := aggregateServicePort(conn, direction)
 		key := aggregateKey{
-			peerIP:    peerIP,
-			localPort: conn.LocalPort,
-			procName:  procName,
+			peerIP:   peerIP,
+			port:     servicePort,
+			procName: procName,
 		}
 
 		group, ok := byKey[key]
 		if !ok {
 			group = &SnapshotGroup{
 				PeerIP:    peerIP,
-				LocalPort: conn.LocalPort,
+				Port:      servicePort,
+				LocalPort: servicePort,
 				ProcName:  procName,
 				States:    make(map[string]int),
 			}
@@ -79,8 +94,8 @@ func AggregateConnections(conns []collector.Connection, limit int) []SnapshotGro
 		if rows[i].PeerIP != rows[j].PeerIP {
 			return rows[i].PeerIP < rows[j].PeerIP
 		}
-		if rows[i].LocalPort != rows[j].LocalPort {
-			return rows[i].LocalPort < rows[j].LocalPort
+		if rows[i].Port != rows[j].Port {
+			return rows[i].Port < rows[j].Port
 		}
 		return rows[i].ProcName < rows[j].ProcName
 	})
@@ -93,4 +108,31 @@ func AggregateConnections(conns []collector.Connection, limit int) []SnapshotGro
 
 func normalizePeerIP(ip string) string {
 	return strings.TrimPrefix(strings.TrimSpace(ip), "::ffff:")
+}
+
+func aggregateServicePort(conn collector.Connection, direction AggregateDirection) int {
+	if direction == AggregateOutgoing {
+		return conn.RemotePort
+	}
+	return conn.LocalPort
+}
+
+func SplitConnectionsByDirection(conns []collector.Connection, listenPorts map[int]struct{}, selfPID int) ([]collector.Connection, []collector.Connection) {
+	if len(conns) == 0 {
+		return nil, nil
+	}
+
+	incoming := make([]collector.Connection, 0, len(conns))
+	outgoing := make([]collector.Connection, 0, len(conns))
+	for _, conn := range conns {
+		if selfPID > 0 && conn.PID == selfPID {
+			continue
+		}
+		if _, ok := listenPorts[conn.LocalPort]; ok {
+			incoming = append(incoming, conn)
+			continue
+		}
+		outgoing = append(outgoing, conn)
+	}
+	return incoming, outgoing
 }

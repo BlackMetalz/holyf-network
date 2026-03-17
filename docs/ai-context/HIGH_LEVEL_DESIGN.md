@@ -194,20 +194,24 @@ Package: `internal/history` + `cmd/daemon.go`
 2. Worker resolves interface (`--interface`) and starts `SnapshotWriter` with lock file (`.daemon.lock`) under `--data-dir`.
 3. Every `--interval` seconds:
    - call `collector.CollectTopTalkers(0)` to sample current connections
+   - call `collector.CollectListenPorts()` to classify connections into `IN` vs `OUT` using listener-backed local ports
    - call `collector.CollectConntrackFlowsTCP()` and merge host-facing conntrack NAT tuples into live sample
    - synthetic NAT tuples are persisted as `proc_name=ct/nat` when host PID ownership is unavailable
    - compute byte deltas from previous sample
    - enrich connections with bandwidth fields
-   - aggregate by `peer_ip + local_port + proc_name` with sums:
+   - drop self-traffic from the current `holyf-network` PID before snapshot aggregation
+   - aggregate per direction with sums:
+     - `IN`: `peer_ip + local service port + proc_name`
+     - `OUT`: `peer_ip + remote service port + proc_name`
      - `conn_count = count(rows)`
      - `tx_queue = sum(TxQueue)`, `rx_queue = sum(RxQueue)`, `total_queue = sum(Activity)`
      - `tx_bytes_delta = sum(TxBytesDelta)`, `rx_bytes_delta = sum(RxBytesDelta)`, `total_bytes_delta = sum(TotalBytesDelta)`
      - `tx_bytes_per_sec = sum(TxBytesPerSec)`, `rx_bytes_per_sec = sum(RxBytesPerSec)`
-   - sort + cap (`--top-limit`) by:
+   - sort + cap (`--top-limit`) independently per side by:
      - `total_bytes_delta DESC`
      - `conn_count DESC`
      - `total_queue DESC`
-     - then deterministic tie-break: `peer_ip`, `local_port`, `proc_name`
+     - then deterministic tie-break: `peer_ip`, `port`, `proc_name`
    - write one aggregate `SnapshotRecord` as JSON Lines record (one JSON object per line)
 4. Segment file naming by server local day: `connections-YYYYMMDD.jsonl`.
 5. Retention:
@@ -254,10 +258,11 @@ Single format policy:
 - `SnapshotRecord`
   - `CapturedAt`
   - `Interface`
-  - `TopLimit` (max aggregate rows)
+  - `TopLimitPerSide` (max aggregate rows for `IN` and `OUT` independently)
   - `SampleSeconds`
   - `BandwidthAvailable`
-  - `Groups []SnapshotGroup`
+  - `IncomingGroups []SnapshotGroup`
+  - `OutgoingGroups []SnapshotGroup`
   - `Version`
 
 - `SnapshotGroup`
@@ -268,12 +273,14 @@ Single format policy:
   - `FilePath`
   - `Offset`
   - `CapturedAt`
-  - `ConnCount`
+  - `IncomingCount`
+  - `OutgoingCount`
+  - `TotalCount`
 
 ### On-disk example (`.jsonl` one line)
 
 ```json
-{"captured_at":"2026-03-08T12:56:30.196962352+07:00","interface":"eth0","top_limit":500,"sample_seconds":29.999999695,"bandwidth_available":true,"groups":[{"peer_ip":"172.25.110.116","local_port":22,"proc_name":"sshd","conn_count":2,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":377892,"rx_bytes_delta":41164,"total_bytes_delta":419056,"tx_bytes_per_sec":12596.400128063402,"rx_bytes_per_sec":1372.1333472833558,"total_bytes_per_sec":13968.533475346758,"states":{"ESTABLISHED":2}}],"version":"v0.3.16"}
+{"captured_at":"2026-03-08T12:56:30.196962352+07:00","interface":"eth0","top_limit_per_side":500,"sample_seconds":29.999999695,"bandwidth_available":true,"incoming_groups":[{"peer_ip":"172.25.110.116","port":22,"proc_name":"sshd","conn_count":2,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":377892,"rx_bytes_delta":41164,"total_bytes_delta":419056,"tx_bytes_per_sec":12596.400128063402,"rx_bytes_per_sec":1372.1333472833558,"total_bytes_per_sec":13968.533475346758,"states":{"ESTABLISHED":2}}],"outgoing_groups":[{"peer_ip":"20.205.243.168","port":443,"proc_name":"curl","conn_count":1,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":0,"rx_bytes_delta":0,"total_bytes_delta":0,"tx_bytes_per_sec":0,"rx_bytes_per_sec":0,"total_bytes_per_sec":0,"states":{"ESTABLISHED":1}}],"version":"v0.3.46"}
 ```
 
 ### Reader model (`internal/history/reader.go`)
@@ -318,11 +325,14 @@ Behavior constraints:
   - `-b` only => end bound auto-completes to end-of-day
   - `-e` only => begin bound auto-completes to start-of-day
 - replay renders aggregate rows only
+- replay toggles aggregate `IN/OUT` via `o`
+- replay keeps all stored rows for the selected direction; it does not inherit the live top-20 group cap
 - kill/block hotkeys (`Enter`, `k`, `b`) are explicitly blocked with status note
 - `/` search/filter applies only to current snapshot
 - `Shift+S` timeline search scans all loaded snapshots in current replay scope
 - replay renders queue + bandwidth columns from aggregate rows
 - replay rows keep `proc_name` exactly as persisted (including `ct/nat` synthetic NAT label)
+- replay `skip-empty`, active timeline position, and idle streak are all direction-aware
 - replay data source resolution:
   - explicit hidden `--data-dir` override
   - else active daemon state `data_dir`

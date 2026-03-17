@@ -34,14 +34,30 @@ func newHistoryTestAppWithRange(dataDir string, begin, end *time.Time) *HistoryA
 func appendSnapshotFixture(t *testing.T, writer *history.SnapshotWriter, capturedAt time.Time, rows []history.SnapshotGroup) {
 	t.Helper()
 	_, err := writer.Append(history.SnapshotRecord{
-		CapturedAt: capturedAt,
-		Interface:  "eth0",
-		TopLimit:   500,
-		Groups:     rows,
-		Version:    "test",
+		CapturedAt:      capturedAt,
+		Interface:       "eth0",
+		TopLimitPerSide: 500,
+		IncomingGroups:  rows,
+		OutgoingGroups:  []history.SnapshotGroup{},
+		Version:         "test",
 	})
 	if err != nil {
 		t.Fatalf("append snapshot fixture: %v", err)
+	}
+}
+
+func appendDirectionalSnapshotFixture(t *testing.T, writer *history.SnapshotWriter, capturedAt time.Time, incomingRows, outgoingRows []history.SnapshotGroup) {
+	t.Helper()
+	_, err := writer.Append(history.SnapshotRecord{
+		CapturedAt:      capturedAt,
+		Interface:       "eth0",
+		TopLimitPerSide: 500,
+		IncomingGroups:  incomingRows,
+		OutgoingGroups:  outgoingRows,
+		Version:         "test",
+	})
+	if err != nil {
+		t.Fatalf("append directional snapshot fixture: %v", err)
 	}
 }
 
@@ -181,6 +197,34 @@ func TestHistoryHandleKeyEventShiftSShowsTimelineSearchModal(t *testing.T) {
 	name, _ := h.pages.GetFrontPage()
 	if name != "history-timeline-search" {
 		t.Fatalf("expected timeline-search modal, got front page=%q", name)
+	}
+}
+
+func TestHistoryHandleKeyEventOTogglesDirectionAndUsesOutgoingRows(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir())
+	h.refs = []history.SnapshotRef{{IncomingCount: 1, OutgoingCount: 1, TotalCount: 2}}
+	h.currentIndex = 0
+	h.currentRecord = history.SnapshotRecord{
+		IncomingGroups: []history.SnapshotGroup{{PeerIP: "198.51.100.10", Port: 22, ProcName: "sshd", ConnCount: 1}},
+		OutgoingGroups: []history.SnapshotGroup{{PeerIP: "20.205.243.168", Port: 443, ProcName: "curl", ConnCount: 1}},
+	}
+
+	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'o', 0))
+	if ret != nil {
+		t.Fatalf("o should be handled in replay mode")
+	}
+	if h.topDirection != topConnectionOutgoing {
+		t.Fatalf("expected replay direction to switch to OUT, got=%v", h.topDirection)
+	}
+	rows := h.visibleRows()
+	if len(rows) != 1 || rows[0].Port != 443 {
+		t.Fatalf("expected outgoing rows after toggle, got=%+v", rows)
+	}
+	text := h.panel.GetText(true)
+	if !strings.Contains(text, "Dir=OUT") || !strings.Contains(text, "RPORT") {
+		t.Fatalf("expected outgoing replay panel render, got=%q", text)
 	}
 }
 
@@ -427,6 +471,36 @@ func TestHistoryTimelineSearchMatchesAcrossLoadedSnapshots(t *testing.T) {
 	}
 }
 
+func TestHistoryTimelineSearchRespectsCurrentDirection(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
+	if err != nil {
+		t.Fatalf("new snapshot writer: %v", err)
+	}
+	defer writer.Close()
+
+	base := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
+	appendDirectionalSnapshotFixture(t, writer, base,
+		[]history.SnapshotGroup{{PeerIP: "198.51.100.10", Port: 443, ProcName: "curl", ConnCount: 1}},
+		nil,
+	)
+	appendDirectionalSnapshotFixture(t, writer, base.Add(1*time.Minute),
+		nil,
+		[]history.SnapshotGroup{{PeerIP: "20.205.243.168", Port: 443, ProcName: "curl", ConnCount: 1}},
+	)
+
+	h := newHistoryTestApp(dir)
+	h.reloadIndex(true)
+	h.topDirection = topConnectionOutgoing
+
+	results := h.scanTimelineMatches("curl", h.refs)
+	if len(results) != 1 || results[0].SnapshotIndex != 1 {
+		t.Fatalf("expected only outgoing snapshot to match, got=%+v", results)
+	}
+}
+
 func TestHistoryTimelineSearchJumpKeepsCurrentTextFilter(t *testing.T) {
 	t.Parallel()
 
@@ -529,6 +603,26 @@ func TestHistoryToggleSkipEmptyWithX(t *testing.T) {
 	}
 	if !h.skipEmpty {
 		t.Fatalf("expected skip-empty to be enabled after second x")
+	}
+}
+
+func TestHistoryToggleDirectionWithSkipEmptyJumpsToNearestActiveSnapshot(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir())
+	h.skipEmpty = true
+	h.refs = []history.SnapshotRef{
+		{IncomingCount: 1, OutgoingCount: 0, TotalCount: 1},
+		{IncomingCount: 0, OutgoingCount: 1, TotalCount: 1},
+	}
+	h.currentIndex = 0
+	h.currentRecord = history.SnapshotRecord{
+		IncomingGroups: []history.SnapshotGroup{{PeerIP: "198.51.100.10", Port: 22, ProcName: "sshd", ConnCount: 1}},
+	}
+
+	h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'o', 0))
+	if h.currentIndex != 1 {
+		t.Fatalf("expected skip-empty direction toggle to jump to outgoing-active snapshot, got=%d", h.currentIndex)
 	}
 }
 
@@ -655,12 +749,12 @@ func TestHistoryAggregateHintLineChangesWithSkipEmpty(t *testing.T) {
 	}
 	thresholds := config.DefaultHealthThresholds()
 
-	withSkip := renderHistoryAggregatePanel(rows, "", "", 20, false, 0, SortByBandwidth, true, true, thresholds, true)
+	withSkip := renderHistoryAggregatePanel(rows, "", "", 20, false, 0, SortByBandwidth, true, topConnectionIncoming, true, thresholds, true)
 	if !strings.Contains(withSkip, "]=next active snapshot") || !strings.Contains(withSkip, "x=show all snapshots") {
 		t.Fatalf("expected active hint line when skip-empty on, got=%q", withSkip)
 	}
 
-	withoutSkip := renderHistoryAggregatePanel(rows, "", "", 20, false, 0, SortByBandwidth, true, false, thresholds, true)
+	withoutSkip := renderHistoryAggregatePanel(rows, "", "", 20, false, 0, SortByBandwidth, true, topConnectionIncoming, false, thresholds, true)
 	if !strings.Contains(withoutSkip, "]=next snapshot") || !strings.Contains(withoutSkip, "x=skip empty snapshots") {
 		t.Fatalf("expected raw hint line when skip-empty off, got=%q", withoutSkip)
 	}

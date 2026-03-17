@@ -12,10 +12,10 @@ func TestLoadIndexOrdersSnapshotsAcrossFiles(t *testing.T) {
 
 	dir := t.TempDir()
 	linesA := []string{
-		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit":100,"groups":[],"version":"test"}`,
+		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit_per_side":100,"incoming_groups":[],"outgoing_groups":[],"version":"test"}`,
 	}
 	linesB := []string{
-		`{"captured_at":"2026-03-04T11:00:00Z","interface":"eth0","top_limit":100,"groups":[],"version":"test"}`,
+		`{"captured_at":"2026-03-04T11:00:00Z","interface":"eth0","top_limit_per_side":100,"incoming_groups":[],"outgoing_groups":[],"version":"test"}`,
 	}
 	writeSegmentLines(t, dir, "connections-20260304.jsonl", linesA)
 	writeSegmentLines(t, dir, "connections-20260305.jsonl", linesB)
@@ -41,8 +41,8 @@ func TestReadSnapshotByOffset(t *testing.T) {
 	dir := t.TempDir()
 	name := "connections-20260304.jsonl"
 	lines := []string{
-		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit":100,"groups":[{"peer_ip":"198.51.100.1","local_port":22,"proc_name":"sshd","conn_count":1,"tx_queue":10,"rx_queue":0,"total_queue":10,"states":{"ESTABLISHED":1}}],"version":"test"}`,
-		`{"captured_at":"2026-03-04T10:01:00Z","interface":"eth0","top_limit":100,"groups":[],"version":"test"}`,
+		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit_per_side":100,"incoming_groups":[{"peer_ip":"198.51.100.1","port":22,"proc_name":"sshd","conn_count":1,"tx_queue":10,"rx_queue":0,"total_queue":10,"states":{"ESTABLISHED":1}}],"outgoing_groups":[],"version":"test"}`,
+		`{"captured_at":"2026-03-04T10:01:00Z","interface":"eth0","top_limit_per_side":100,"incoming_groups":[],"outgoing_groups":[],"version":"test"}`,
 	}
 	writeSegmentLines(t, dir, name, lines)
 
@@ -71,9 +71,9 @@ func TestLoadIndexSkipsCorruptLines(t *testing.T) {
 
 	dir := t.TempDir()
 	writeSegmentLines(t, dir, "connections-20260304.jsonl", []string{
-		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit":100,"groups":[],"version":"test"}`,
+		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit_per_side":100,"incoming_groups":[],"outgoing_groups":[],"version":"test"}`,
 		`{not-json}`,
-		`{"captured_at":"2026-03-04T10:02:00Z","interface":"eth0","top_limit":100,"groups":[],"version":"test"}`,
+		`{"captured_at":"2026-03-04T10:02:00Z","interface":"eth0","top_limit_per_side":100,"incoming_groups":[],"outgoing_groups":[],"version":"test"}`,
 	})
 
 	refs, stats, err := LoadIndex(dir)
@@ -88,16 +88,36 @@ func TestLoadIndexSkipsCorruptLines(t *testing.T) {
 	}
 }
 
+func TestLoadIndexTracksIncomingOutgoingCounts(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeSegmentLines(t, dir, "connections-20260304.jsonl", []string{
+		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit_per_side":100,"incoming_groups":[{"peer_ip":"198.51.100.1","port":22,"proc_name":"sshd","conn_count":1,"states":{"ESTABLISHED":1}}],"outgoing_groups":[{"peer_ip":"20.205.243.168","port":443,"proc_name":"curl","conn_count":1,"states":{"ESTABLISHED":1}},{"peer_ip":"20.205.243.168","port":8443,"proc_name":"curl","conn_count":1,"states":{"ESTABLISHED":1}}],"version":"test"}`,
+	})
+
+	refs, _, err := LoadIndex(dir)
+	if err != nil {
+		t.Fatalf("load index: %v", err)
+	}
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 ref, got=%d", len(refs))
+	}
+	if refs[0].IncomingCount != 1 || refs[0].OutgoingCount != 2 || refs[0].TotalCount != 3 {
+		t.Fatalf("direction counts mismatch: %+v", refs[0])
+	}
+}
+
 func TestLoadIndexFromFileReadsOnlyTargetSegment(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	writeSegmentLines(t, dir, "connections-20260304.jsonl", []string{
-		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit":100,"groups":[],"version":"test"}`,
+		`{"captured_at":"2026-03-04T10:00:00Z","interface":"eth0","top_limit_per_side":100,"incoming_groups":[],"outgoing_groups":[],"version":"test"}`,
 	})
 	writeSegmentLines(t, dir, "connections-20260305.jsonl", []string{
-		`{"captured_at":"2026-03-04T11:00:00Z","interface":"eth0","top_limit":100,"groups":[],"version":"test"}`,
-		`{"captured_at":"2026-03-04T11:01:00Z","interface":"eth0","top_limit":100,"groups":[],"version":"test"}`,
+		`{"captured_at":"2026-03-04T11:00:00Z","interface":"eth0","top_limit_per_side":100,"incoming_groups":[],"outgoing_groups":[],"version":"test"}`,
+		`{"captured_at":"2026-03-04T11:01:00Z","interface":"eth0","top_limit_per_side":100,"incoming_groups":[],"outgoing_groups":[],"version":"test"}`,
 	})
 
 	refs, stats, err := LoadIndexFromFile(dir, "connections-20260305.jsonl")
@@ -131,7 +151,7 @@ func TestLoadIndexFromFilePrefersCurrentWorkingDir(t *testing.T) {
 
 	segmentName := "connections-20260307.jsonl"
 	writeSegmentLines(t, cwdDir, segmentName, []string{
-		`{"captured_at":"2026-03-07T10:00:00Z","interface":"eth0","top_limit":100,"groups":[],"version":"test"}`,
+		`{"captured_at":"2026-03-07T10:00:00Z","interface":"eth0","top_limit_per_side":100,"incoming_groups":[],"outgoing_groups":[],"version":"test"}`,
 	})
 
 	oldWD, err := os.Getwd()

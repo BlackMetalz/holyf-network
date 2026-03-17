@@ -128,9 +128,12 @@ Daemon notes:
 - Storage format: daily **JSON Lines** (`.jsonl`, one JSON object per line) by server local time (`connections-YYYYMMDD.jsonl`).
   - Spec: https://jsonlines.org/
   - Full format contract: `docs/SNAPSHOT_FORMAT.md`
-- Snapshot payload stores aggregate rows by `peer_ip + local_port + proc_name` (no raw connection list).
+- Snapshot payload stores aggregate-only rows in two arrays:
+  - `incoming_groups`: grouped by `peer_ip + local service port + proc_name`
+  - `outgoing_groups`: grouped by `peer_ip + remote service port + proc_name`
+- No raw connection list is persisted in history.
 - For Docker/NAT traffic, daemon snapshots can persist `proc_name=ct/nat` rows (same semantics as live view).
-- `--top-limit` is the max aggregate rows stored per snapshot.
+- `--top-limit` is the max aggregate rows stored **per side** per snapshot (`IN` cap + `OUT` cap).
 - Retention policy: remove old segments beyond `--retention-hours`.
   - In daemon runtime, prune runs once at startup and then daily at local `00:00`.
   - Use `holyf-network daemon prune` for immediate manual prune.
@@ -162,7 +165,7 @@ tail -n 3 /var/lib/holyf-network/snapshots/connections-YYYYMMDD.jsonl
 One line = one snapshot record (JSON object), for example:
 
 ```json
-{"captured_at":"2026-03-08T12:56:30.196962352+07:00","interface":"eth0","top_limit":500,"sample_seconds":29.999999695,"bandwidth_available":true,"groups":[{"peer_ip":"172.25.110.116","local_port":22,"proc_name":"sshd","conn_count":2,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":377892,"rx_bytes_delta":41164,"total_bytes_delta":419056,"tx_bytes_per_sec":12596.400128063402,"rx_bytes_per_sec":1372.1333472833558,"total_bytes_per_sec":13968.533475346758,"states":{"ESTABLISHED":2}}],"version":"v0.3.16"}
+{"captured_at":"2026-03-08T12:56:30.196962352+07:00","interface":"eth0","top_limit_per_side":500,"sample_seconds":29.999999695,"bandwidth_available":true,"incoming_groups":[{"peer_ip":"172.25.110.116","port":22,"proc_name":"sshd","conn_count":2,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":377892,"rx_bytes_delta":41164,"total_bytes_delta":419056,"tx_bytes_per_sec":12596.400128063402,"rx_bytes_per_sec":1372.1333472833558,"total_bytes_per_sec":13968.533475346758,"states":{"ESTABLISHED":2}}],"outgoing_groups":[{"peer_ip":"20.205.243.168","port":443,"proc_name":"curl","conn_count":1,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":0,"rx_bytes_delta":0,"total_bytes_delta":0,"tx_bytes_per_sec":0,"rx_bytes_per_sec":0,"total_bytes_per_sec":0,"states":{"ESTABLISHED":1}}],"version":"v0.3.46"}
 ```
 
 ## Replay (History) Mode
@@ -198,6 +201,7 @@ Replay hotkeys:
 - `a` / `e`: oldest/latest snapshot
 - `t`: jump to specific timestamp
 - `L`: follow latest snapshots (tail-like)
+- `o`: toggle replay `IN/OUT`
 - `Up` / `Down`: select row
 - `f`: port filter (press again to clear filters)
 - `/`: grep-like contains filter for current snapshot
@@ -217,7 +221,10 @@ If only `-e` is provided, replay auto-sets `-b` to start-of-day of `-e`.
 Time-window filtering is inclusive (`captured_at >= begin` and `captured_at <= end`).
 
 Replay mode is read-only: no block/kill actions are executed.
-Replay view is aggregate-only: rows are grouped by `peer_ip + local_port + proc_name`.
+Replay view is aggregate-only:
+- `IN`: rows are grouped by `peer_ip + local service port + proc_name`
+- `OUT`: rows are grouped by `peer_ip + remote service port + proc_name`
+- replay does not inherit the live top-20 group cap; it shows all stored rows in the snapshot, limited only by panel height
 History reader accepts only this aggregate snapshot format.
 For metric semantics (`Send-Q`, `Recv-Q`, `TX/s`, `RX/s`, `Conntrack Used/Max`, `ct/nat`) and troubleshooting,
 see `docs/USER_METRICS_GUIDE_EN.md` (or Vietnamese version: `docs/USER_METRICS_GUIDE_VI.md`).

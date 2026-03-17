@@ -114,3 +114,44 @@ func TestAggregateConnectionsPrefersHigherBandwidthForCap(t *testing.T) {
 		t.Fatalf("expected higher bandwidth row to be kept, got=%+v", rows[0])
 	}
 }
+
+func TestAggregateConnectionsByDirectionOutgoingUsesRemotePort(t *testing.T) {
+	t.Parallel()
+
+	rows := AggregateConnectionsByDirection([]collector.Connection{
+		{RemoteIP: "198.51.100.10", LocalPort: 52001, RemotePort: 443, ProcName: "curl", State: "ESTABLISHED", TotalBytesDelta: 100},
+		{RemoteIP: "198.51.100.10", LocalPort: 52002, RemotePort: 443, ProcName: "curl", State: "ESTABLISHED", TotalBytesDelta: 50},
+		{RemoteIP: "198.51.100.10", LocalPort: 52003, RemotePort: 8443, ProcName: "curl", State: "ESTABLISHED", TotalBytesDelta: 30},
+	}, AggregateOutgoing, 0)
+
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 outgoing groups, got=%d", len(rows))
+	}
+	if rows[0].Port != 443 || rows[0].ConnCount != 2 {
+		t.Fatalf("expected remote port 443 group with 2 conns, got=%+v", rows[0])
+	}
+	if rows[1].Port != 8443 || rows[1].ConnCount != 1 {
+		t.Fatalf("expected remote port 8443 group with 1 conn, got=%+v", rows[1])
+	}
+}
+
+func TestSplitConnectionsByDirectionFiltersSelfAndUsesListenerPorts(t *testing.T) {
+	t.Parallel()
+
+	listenPorts := map[int]struct{}{
+		18080: {},
+	}
+	conns := []collector.Connection{
+		{PID: 2001, LocalPort: 18080, RemotePort: 52001},
+		{PID: 2002, LocalPort: 52246, RemotePort: 443},
+		{PID: 4242, LocalPort: 52247, RemotePort: 8443},
+	}
+
+	incoming, outgoing := SplitConnectionsByDirection(conns, listenPorts, 4242)
+	if len(incoming) != 1 || incoming[0].LocalPort != 18080 {
+		t.Fatalf("expected one incoming listener-backed connection, got=%+v", incoming)
+	}
+	if len(outgoing) != 1 || outgoing[0].RemotePort != 443 {
+		t.Fatalf("expected one outgoing non-self connection, got=%+v", outgoing)
+	}
+}

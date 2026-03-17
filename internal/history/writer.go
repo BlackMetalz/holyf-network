@@ -66,9 +66,7 @@ func (w *SnapshotWriter) Append(record SnapshotRecord) (AppendResult, error) {
 	}
 	// Persist timestamps in server local time for operator-friendly replay.
 	record.CapturedAt = record.CapturedAt.Local()
-	if record.Groups == nil {
-		record.Groups = make([]SnapshotGroup, 0)
-	}
+	normalizeSnapshotRecord(&record)
 
 	segment := segmentFileName(record.CapturedAt)
 	segmentPath := filepath.Join(w.cfg.DataDir, segment)

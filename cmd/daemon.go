@@ -486,6 +486,11 @@ func newDaemonRunCmd() *cobra.Command {
 					fmt.Printf("[%s] capture failed: %v\n", ts.Format(time.RFC3339), err)
 					return
 				}
+				listenPorts, err := collector.CollectListenPorts()
+				if err != nil {
+					fmt.Printf("[%s] capture failed: collect listen ports: %v\n", ts.Format(time.RFC3339), err)
+					return
+				}
 
 				bwSample := collector.BandwidthSnapshot{}
 				flows, flowErr := collector.CollectConntrackFlowsTCP()
@@ -508,18 +513,24 @@ func newDaemonRunCmd() *cobra.Command {
 					}
 				}
 
-				groups := history.AggregateConnections(conns, opts.topLimit)
+				incomingConns, outgoingConns := history.SplitConnectionsByDirection(conns, listenPorts, os.Getpid())
+				incomingGroups := history.AggregateConnectionsByDirection(incomingConns, history.AggregateIncoming, opts.topLimit)
+				outgoingGroups := history.AggregateConnectionsByDirection(outgoingConns, history.AggregateOutgoing, opts.topLimit)
 				totalDelta := int64(0)
-				for _, row := range groups {
+				for _, row := range incomingGroups {
+					totalDelta += row.TotalBytesDelta
+				}
+				for _, row := range outgoingGroups {
 					totalDelta += row.TotalBytesDelta
 				}
 				result, err := writer.Append(history.SnapshotRecord{
 					CapturedAt:         ts.Local(),
 					Interface:          opts.ifaceName,
-					TopLimit:           opts.topLimit,
+					TopLimitPerSide:    opts.topLimit,
 					SampleSeconds:      bwSample.SampleSeconds,
 					BandwidthAvailable: bwSample.Available,
-					Groups:             groups,
+					IncomingGroups:     incomingGroups,
+					OutgoingGroups:     outgoingGroups,
 					Version:            version,
 				})
 				if err != nil {
@@ -527,10 +538,11 @@ func newDaemonRunCmd() *cobra.Command {
 					return
 				}
 
-				fmt.Printf("[%s] captured %d connections -> %d aggregate rows (cap=%d) | bw_available=%t | total_delta=%s -> %s\n",
+				fmt.Printf("[%s] captured %d connections -> in=%d rows out=%d rows (cap=%d/side) | bw_available=%t | total_delta=%s -> %s\n",
 					ts.Format(time.RFC3339),
 					len(conns),
-					len(groups),
+					len(incomingGroups),
+					len(outgoingGroups),
 					opts.topLimit,
 					bwSample.Available,
 					humanBytes(totalDelta),
@@ -580,7 +592,7 @@ func newDaemonRunCmd() *cobra.Command {
 func addCaptureFlags(cmd *cobra.Command, opts *daemonCaptureOptions) {
 	cmd.Flags().StringVarP(&opts.ifaceName, "interface", "i", "", "Network interface to monitor (default: auto-detect)")
 	cmd.Flags().IntVar(&opts.intervalSec, "interval", history.DefaultIntervalSeconds(), "Capture interval in seconds (1-300)")
-	cmd.Flags().IntVar(&opts.topLimit, "top-limit", history.DefaultTopLimit(), "Max aggregate rows stored per snapshot")
+	cmd.Flags().IntVar(&opts.topLimit, "top-limit", history.DefaultTopLimit(), "Max aggregate rows stored per side per snapshot")
 	cmd.Flags().StringVar(&opts.dataDir, "data-dir", history.DefaultDataDir(), "Snapshot data directory")
 	cmd.Flags().IntVar(&opts.retentionHours, "retention-hours", history.DefaultRetentionHours(), "Retention window in hours")
 }

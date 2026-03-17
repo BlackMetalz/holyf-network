@@ -123,7 +123,7 @@ func (h *HistoryApp) scanTimelineMatches(query string, refs []history.SnapshotRe
 		if err != nil {
 			continue
 		}
-		matchCount := len(filterHistoryGroupsByText(record.Groups, query))
+		matchCount := len(filterHistoryGroupsByText(h.rowsForDirection(record, h.topDirection), query))
 		if matchCount == 0 {
 			continue
 		}

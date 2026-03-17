@@ -24,13 +24,13 @@ func TestSnapshotWriterAppendWritesNDJSON(t *testing.T) {
 
 	ts := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
 	_, err = writer.Append(SnapshotRecord{
-		CapturedAt: ts,
-		Interface:  "eth0",
-		TopLimit:   100,
-		Groups: []SnapshotGroup{
+		CapturedAt:      ts,
+		Interface:       "eth0",
+		TopLimitPerSide: 100,
+		IncomingGroups: []SnapshotGroup{
 			{
 				PeerIP:     "198.51.100.1",
-				LocalPort:  22,
+				Port:       22,
 				ProcName:   "sshd",
 				ConnCount:  1,
 				TxQueue:    10,
@@ -58,7 +58,7 @@ func TestSnapshotWriterAppendWritesNDJSON(t *testing.T) {
 	if err := json.Unmarshal(data[:len(data)-1], &got); err != nil {
 		t.Fatalf("decode ndjson line: %v", err)
 	}
-	if got.Interface != "eth0" || len(got.Groups) != 1 {
+	if got.Interface != "eth0" || got.TopLimitPerSide != 100 || len(got.IncomingGroups) != 1 || len(got.OutgoingGroups) != 0 {
 		t.Fatalf("unexpected record content: %#v", got)
 	}
 }

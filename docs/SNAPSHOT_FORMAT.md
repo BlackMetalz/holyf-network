@@ -34,16 +34,19 @@ This document defines the on-disk snapshot format used by daemon/replay.
 
 - `captured_at` (RFC3339 timestamp with zone)
 - `interface` (network interface name, for example `eth0`)
-- `top_limit` (max aggregate rows stored in this snapshot)
+- `top_limit_per_side` (max aggregate rows stored for `incoming_groups` and for `outgoing_groups`)
 - `sample_seconds` (elapsed sampling interval used for rate calculations)
 - `bandwidth_available` (whether conntrack bandwidth enrichment was available)
-- `groups` (array of aggregate rows)
+- `incoming_groups` (array of aggregate rows for listener-backed traffic)
+- `outgoing_groups` (array of aggregate rows for dial-out traffic)
 - `version` (application version string at write time)
 
-`groups[]` row fields:
+`incoming_groups[]` and `outgoing_groups[]` row fields:
 
 - `peer_ip`
-- `local_port`
+- `port`
+  - for `incoming_groups`: local service/listener port
+  - for `outgoing_groups`: remote service/destination port
 - `proc_name` (for example `sshd`, `ct/nat`)
 - `conn_count`
 - `tx_queue`
@@ -60,13 +63,13 @@ This document defines the on-disk snapshot format used by daemon/replay.
 ## Example (one line)
 
 ```json
-{"captured_at":"2026-03-08T12:56:30.196962352+07:00","interface":"eth0","top_limit":500,"sample_seconds":29.999999695,"bandwidth_available":true,"groups":[{"peer_ip":"172.25.110.116","local_port":22,"proc_name":"sshd","conn_count":2,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":377892,"rx_bytes_delta":41164,"total_bytes_delta":419056,"tx_bytes_per_sec":12596.400128063402,"rx_bytes_per_sec":1372.1333472833558,"total_bytes_per_sec":13968.533475346758,"states":{"ESTABLISHED":2}}],"version":"v0.3.16"}
+{"captured_at":"2026-03-08T12:56:30.196962352+07:00","interface":"eth0","top_limit_per_side":500,"sample_seconds":29.999999695,"bandwidth_available":true,"incoming_groups":[{"peer_ip":"172.25.110.116","port":22,"proc_name":"sshd","conn_count":2,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":377892,"rx_bytes_delta":41164,"total_bytes_delta":419056,"tx_bytes_per_sec":12596.400128063402,"rx_bytes_per_sec":1372.1333472833558,"total_bytes_per_sec":13968.533475346758,"states":{"ESTABLISHED":2}}],"outgoing_groups":[{"peer_ip":"20.205.243.168","port":443,"proc_name":"curl","conn_count":1,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":0,"rx_bytes_delta":0,"total_bytes_delta":0,"tx_bytes_per_sec":0,"rx_bytes_per_sec":0,"total_bytes_per_sec":0,"states":{"ESTABLISHED":1}}],"version":"v0.3.46"}
 ```
 
 ## Compatibility Policy
 
 - Current policy: single active format only (no legacy schema reader).
-- Replay expects this aggregate snapshot shape.
+- Replay expects this aggregate `incoming_groups/outgoing_groups` snapshot shape.
 - Corrupt/non-parseable lines are skipped by reader/indexer.
 
 ## Quick Verification Commands

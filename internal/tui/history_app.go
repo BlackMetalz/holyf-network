@@ -40,6 +40,7 @@ type HistoryApp struct {
 	textFilter    string
 	sortMode      SortMode
 	sortDesc      bool
+	topDirection  topConnectionDirection
 	skipEmpty     bool
 	selectedIndex int
 	followLatest  bool
@@ -74,6 +75,7 @@ func NewHistoryApp(dataDir, segmentFile string, sensitiveIP bool, appVersion str
 		appVersion:       version,
 		sortMode:         SortByBandwidth,
 		sortDesc:         true,
+		topDirection:     topConnectionIncoming,
 		skipEmpty:        true,
 		currentIndex:     -1,
 		stopChan:         make(chan struct{}),
@@ -240,11 +242,41 @@ func (h *HistoryApp) topDisplayLimit() int {
 	return limit
 }
 
+func (h *HistoryApp) rowsForDirection(record history.SnapshotRecord, direction topConnectionDirection) []history.SnapshotGroup {
+	history.NormalizeSnapshotRecord(&record)
+	if len(record.IncomingGroups) == 0 && len(record.OutgoingGroups) == 0 && len(record.Groups) > 0 {
+		return record.Groups
+	}
+	if direction == topConnectionOutgoing {
+		return record.OutgoingGroups
+	}
+	return record.IncomingGroups
+}
+
+func (h *HistoryApp) currentRows() []history.SnapshotGroup {
+	return h.rowsForDirection(h.currentRecord, h.topDirection)
+}
+
+func (h *HistoryApp) refCountForDirection(ref history.SnapshotRef, direction topConnectionDirection) int {
+	if ref.IncomingCount == 0 && ref.OutgoingCount == 0 && ref.ConnCount > 0 {
+		return ref.ConnCount
+	}
+	if direction == topConnectionOutgoing {
+		return ref.OutgoingCount
+	}
+	return ref.IncomingCount
+}
+
+func (h *HistoryApp) currentRefCount(ref history.SnapshotRef) int {
+	return h.refCountForDirection(ref, h.topDirection)
+}
+
 func (h *HistoryApp) visibleRows() []history.SnapshotGroup {
-	if len(h.currentRecord.Groups) == 0 {
+	rows := h.currentRows()
+	if len(rows) == 0 {
 		return nil
 	}
-	filtered := h.currentRecord.Groups
+	filtered := rows
 	if strings.TrimSpace(h.portFilter) != "" {
 		filtered = filterHistoryGroupsByPort(filtered, h.portFilter)
 	}
@@ -333,6 +365,7 @@ func (h *HistoryApp) renderPanel() {
 	h.clampSelection()
 
 	rec := h.currentRecord
+	history.NormalizeSnapshotRecord(&rec)
 	captured := rec.CapturedAt.Local().Format("2006-01-02 15:04:05 -07")
 	iface := rec.Interface
 	if strings.TrimSpace(iface) == "" {
@@ -340,11 +373,13 @@ func (h *HistoryApp) renderPanel() {
 	}
 
 	header := fmt.Sprintf(
-		"  [dim]%s | %s | %s | rows=%d | scope=%s | range=%s[white]\n",
+		"  [dim]%s | %s | %s | rows=in:%d out:%d | dir=%s | scope=%s | range=%s[white]\n",
 		h.headerSnapshotLabel(),
 		captured,
 		iface,
-		len(rec.Groups),
+		len(rec.IncomingGroups),
+		len(rec.OutgoingGroups),
+		h.topDirection.Label(),
 		h.replayScopeLabel(),
 		h.replayRangeLabel(),
 	)
@@ -357,7 +392,7 @@ func (h *HistoryApp) renderPanel() {
 		header += fmt.Sprintf("  [yellow]%s[white]\n", shortStatus(h.snapshotMessage, 160))
 	}
 
-	if len(rec.Groups) == 0 {
+	if len(h.currentRows()) == 0 {
 		start, end, count, approx := h.idleStreak()
 		idleLine := fmt.Sprintf("  [dim]Idle streak: %d snapshots[white]", count)
 		if approx > 0 {
@@ -372,7 +407,8 @@ func (h *HistoryApp) renderPanel() {
 			)
 		}
 		emptyBody := fmt.Sprintf(
-			"  [yellow]No active connections at this snapshot[white]\n\n%s%s\n\n  [dim]Use left/right bracket to move active snapshots | x=toggle skip-empty[white]",
+			"  [yellow]No active %s groups at this snapshot[white]\n\n%s%s\n\n  [dim]Use left/right bracket to move active snapshots | x=toggle skip-empty[white]",
+			h.topDirection.Label(),
 			idleLine,
 			rangeLine,
 		)
@@ -381,7 +417,7 @@ func (h *HistoryApp) renderPanel() {
 	}
 
 	body := renderHistoryAggregatePanel(
-		rec.Groups,
+		h.currentRows(),
 		h.portFilter,
 		h.textFilter,
 		h.topDisplayLimit(),
@@ -389,6 +425,7 @@ func (h *HistoryApp) renderPanel() {
 		h.selectedIndex,
 		h.sortMode,
 		h.sortDesc,
+		h.topDirection,
 		h.skipEmpty,
 		h.healthThresholds,
 		rec.BandwidthAvailable,
@@ -485,6 +522,7 @@ func (h *HistoryApp) updateStatusBar() {
 	if h.sensitiveIP {
 		stateText += " [yellow]IP MASK[white] |"
 	}
+	stateText += fmt.Sprintf(" [aqua]DIR-%s[white] |", h.topDirection.Label())
 	if h.skipEmpty {
 		stateText += " [aqua]SKIP-EMPTY[white] |"
 	}
@@ -571,7 +609,7 @@ func (h *HistoryApp) activeTimelinePosition() (int, int) {
 	total := 0
 	pos := 0
 	for i, ref := range h.refs {
-		if ref.ConnCount <= 0 {
+		if h.currentRefCount(ref) <= 0 {
 			continue
 		}
 		total++
@@ -623,7 +661,7 @@ func (h *HistoryApp) adjustStartIndexForSkipEmpty(target int) int {
 	if target < 0 || target >= len(h.refs) {
 		return target
 	}
-	if h.refs[target].ConnCount > 0 {
+	if h.currentRefCount(h.refs[target]) > 0 {
 		return target
 	}
 
@@ -650,7 +688,7 @@ func (h *HistoryApp) adjustLatestIndexForSkipEmpty(target int) int {
 	if target < 0 || target >= len(h.refs) {
 		return target
 	}
-	if h.refs[target].ConnCount > 0 {
+	if h.currentRefCount(h.refs[target]) > 0 {
 		return target
 	}
 	if idx, _, ok := h.findPrevNonEmptyIndex(target); ok {
@@ -666,7 +704,7 @@ func (h *HistoryApp) adjustGenericIndexForSkipEmpty(target int) int {
 	if target < 0 || target >= len(h.refs) {
 		return target
 	}
-	if h.refs[target].ConnCount > 0 {
+	if h.currentRefCount(h.refs[target]) > 0 {
 		return target
 	}
 	if idx, ok := h.findNearestNonEmptyIndex(target); ok {
@@ -684,7 +722,7 @@ func (h *HistoryApp) findPrevNonEmptyIndex(from int) (int, int, bool) {
 	}
 	skipped := 0
 	for i := from; i >= 0; i-- {
-		if h.refs[i].ConnCount > 0 {
+		if h.currentRefCount(h.refs[i]) > 0 {
 			return i, skipped, true
 		}
 		skipped++
@@ -701,7 +739,7 @@ func (h *HistoryApp) findNextNonEmptyIndex(from int) (int, int, bool) {
 	}
 	skipped := 0
 	for i := from; i < len(h.refs); i++ {
-		if h.refs[i].ConnCount > 0 {
+		if h.currentRefCount(h.refs[i]) > 0 {
 			return i, skipped, true
 		}
 		skipped++
@@ -716,16 +754,16 @@ func (h *HistoryApp) findNearestNonEmptyIndex(target int) (int, bool) {
 	if target < 0 || target >= len(h.refs) {
 		return -1, false
 	}
-	if h.refs[target].ConnCount > 0 {
+	if h.currentRefCount(h.refs[target]) > 0 {
 		return target, true
 	}
 
 	left, right := target-1, target+1
 	for left >= 0 || right < len(h.refs) {
-		if left >= 0 && h.refs[left].ConnCount > 0 {
+		if left >= 0 && h.currentRefCount(h.refs[left]) > 0 {
 			return left, true
 		}
-		if right < len(h.refs) && h.refs[right].ConnCount > 0 {
+		if right < len(h.refs) && h.currentRefCount(h.refs[right]) > 0 {
 			return right, true
 		}
 		left--
@@ -738,15 +776,15 @@ func (h *HistoryApp) idleStreak() (start, end, count int, approx time.Duration) 
 	if len(h.refs) == 0 || h.currentIndex < 0 || h.currentIndex >= len(h.refs) {
 		return -1, -1, 0, 0
 	}
-	if h.refs[h.currentIndex].ConnCount > 0 {
+	if h.currentRefCount(h.refs[h.currentIndex]) > 0 {
 		return h.currentIndex, h.currentIndex, 0, 0
 	}
 
 	start, end = h.currentIndex, h.currentIndex
-	for start > 0 && h.refs[start-1].ConnCount == 0 {
+	for start > 0 && h.currentRefCount(h.refs[start-1]) == 0 {
 		start--
 	}
-	for end+1 < len(h.refs) && h.refs[end+1].ConnCount == 0 {
+	for end+1 < len(h.refs) && h.currentRefCount(h.refs[end+1]) == 0 {
 		end++
 	}
 

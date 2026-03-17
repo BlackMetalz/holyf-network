@@ -129,6 +129,9 @@ Mốc vận hành thường dùng:
   - read-only theo snapshot timeline.
   - mặc định `holyf-network replay` sẽ lấy snapshot của **ngày hiện tại** theo giờ local server.
   - dùng `-f`, `-b`, `-e` để bó hẹp phạm vi.
+  - bấm `o` để toggle replay giữa aggregate `IN` và aggregate `OUT`.
+  - replay ở v1 vẫn chỉ có aggregate view, không có raw conn view.
+  - khác với `GROUP` ở live, replay không áp business cap top-20; nó hiển thị toàn bộ row đã lưu cho direction đang chọn.
   - không render `Diagnosis` ở phase hiện tại.
 
 ## Block vs Kill

@@ -12,7 +12,11 @@ import (
 	"strings"
 )
 
-var errMissingGroupsField = errors.New("missing required groups field")
+var (
+	errMissingIncomingGroupsField = errors.New("missing required incoming_groups field")
+	errMissingOutgoingGroupsField = errors.New("missing required outgoing_groups field")
+	errMissingTopLimitField       = errors.New("missing required top_limit_per_side field")
+)
 
 // LoadIndex scans segment files and returns ordered snapshot refs (oldest -> latest).
 // Corrupt lines are skipped and counted in IndexStats.Corrupt.
@@ -119,10 +123,13 @@ func indexSegmentFile(path string) ([]SnapshotRef, int, error) {
 					corrupt++
 				} else {
 					refs = append(refs, SnapshotRef{
-						FilePath:   path,
-						Offset:     offset,
-						CapturedAt: record.CapturedAt,
-						ConnCount:  len(record.Groups),
+						FilePath:      path,
+						Offset:        offset,
+						CapturedAt:    record.CapturedAt,
+						IncomingCount: len(record.IncomingGroups),
+						OutgoingCount: len(record.OutgoingGroups),
+						TotalCount:    len(record.IncomingGroups) + len(record.OutgoingGroups),
+						ConnCount:     len(record.IncomingGroups) + len(record.OutgoingGroups),
 					})
 				}
 			}
@@ -166,21 +173,27 @@ func ReadSnapshot(ref SnapshotRef) (SnapshotRecord, error) {
 
 func decodeSnapshotRecordLine(line []byte) (SnapshotRecord, error) {
 	var probe struct {
-		Groups json.RawMessage `json:"groups"`
+		TopLimitPerSide json.RawMessage `json:"top_limit_per_side"`
+		IncomingGroups  json.RawMessage `json:"incoming_groups"`
+		OutgoingGroups  json.RawMessage `json:"outgoing_groups"`
 	}
 	if err := json.Unmarshal(line, &probe); err != nil {
 		return SnapshotRecord{}, err
 	}
-	if probe.Groups == nil {
-		return SnapshotRecord{}, errMissingGroupsField
+	if probe.TopLimitPerSide == nil {
+		return SnapshotRecord{}, errMissingTopLimitField
+	}
+	if probe.IncomingGroups == nil {
+		return SnapshotRecord{}, errMissingIncomingGroupsField
+	}
+	if probe.OutgoingGroups == nil {
+		return SnapshotRecord{}, errMissingOutgoingGroupsField
 	}
 
 	var record SnapshotRecord
 	if err := json.Unmarshal(line, &record); err != nil {
 		return SnapshotRecord{}, err
 	}
-	if record.Groups == nil {
-		record.Groups = make([]SnapshotGroup, 0)
-	}
+	normalizeSnapshotRecord(&record)
 	return record, nil
 }

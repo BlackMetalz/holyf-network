@@ -69,6 +69,20 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case '/':
 			h.promptTextFilter()
 			return nil
+		case 'o':
+			if h.topDirection == topConnectionIncoming {
+				h.topDirection = topConnectionOutgoing
+			} else {
+				h.topDirection = topConnectionIncoming
+			}
+			if h.skipEmpty {
+				h.currentIndex = h.adjustGenericIndexForSkipEmpty(h.currentIndex)
+			}
+			h.selectedIndex = 0
+			h.setStatusNote(fmt.Sprintf("Replay direction: %s", h.topDirection.Label()), 4*time.Second)
+			h.renderPanel()
+			h.updateStatusBar()
+			return nil
 		case 't', 'T':
 			h.promptJumpToTime()
 			return nil
@@ -232,10 +246,15 @@ func (h *HistoryApp) promptPortFilter() {
 	}
 
 	input := tview.NewInputField()
-	input.SetLabel("Filter by port: ")
+	if h.topDirection == topConnectionOutgoing {
+		input.SetLabel("Filter by remote port: ")
+		input.SetTitle(" Remote Port Filter ")
+	} else {
+		input.SetLabel("Filter by local port: ")
+		input.SetTitle(" Local Port Filter ")
+	}
 	input.SetFieldWidth(10)
 	input.SetBorder(true)
-	input.SetTitle(" Port Filter ")
 	input.SetAcceptanceFunc(tview.InputFieldInteger)
 
 	input.SetDoneFunc(func(key tcell.Key) {
@@ -423,7 +442,7 @@ func historyStatusHotkeysForPage(page string) (styled string, plain string) {
 	case "history-socket-queue-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim][=prev ]=next a e t f / Shift+S Shift+B/C/P m i Shift+I x z L ? q[white]", "[=prev ]=next a e t f / Shift+S Shift+B/C/P m i Shift+I x z L ? q"
+		return "[dim][=prev ]=next a e t f / Shift+S Shift+B/C/P o m i Shift+I x z L ? q[white]", "[=prev ]=next a e t f / Shift+S Shift+B/C/P o m i Shift+I x z L ? q"
 	}
 }
 
@@ -489,7 +508,7 @@ func (h *HistoryApp) emptyCountAfter(index int) int {
 	}
 	count := 0
 	for i := index + 1; i < len(h.refs); i++ {
-		if h.refs[i].ConnCount <= 0 {
+		if h.currentRefCount(h.refs[i]) <= 0 {
 			count++
 		}
 	}
@@ -505,7 +524,7 @@ func (h *HistoryApp) emptyCountBefore(index int) int {
 	}
 	count := 0
 	for i := 0; i < index; i++ {
-		if h.refs[i].ConnCount <= 0 {
+		if h.currentRefCount(h.refs[i]) <= 0 {
 			count++
 		}
 	}
