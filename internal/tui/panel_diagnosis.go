@@ -7,6 +7,7 @@ import (
 const (
 	defaultDiagnosisPanelWidth = 56
 	diagnosisCompactThreshold  = 62
+	diagnosisMinPanelWidth     = 24
 )
 
 func (a *App) renderDiagnosisPanel() {
@@ -248,7 +249,7 @@ func compactDiagnosisChecks(nextChecks []string) string {
 }
 
 func diagnosisContentWidth(panelWidth int) int {
-	if panelWidth <= 0 {
+	if panelWidth <= 0 || panelWidth < diagnosisMinPanelWidth {
 		panelWidth = defaultDiagnosisPanelWidth
 	}
 	if panelWidth <= 4 {

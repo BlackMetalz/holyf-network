@@ -112,6 +112,30 @@ func TestRenderDiagnosisPanelShowsPlaceholderWhenNil(t *testing.T) {
 	}
 }
 
+func TestRenderDiagnosisPanelIgnoresBogusStartupWidth(t *testing.T) {
+	t.Parallel()
+
+	text := stripTviewTags(renderDiagnosisPanel(&topDiagnosis{
+		Severity: healthOK,
+		Headline: "No dominant network issue",
+		Reason:   "Retrans is LOW SAMPLE, conntrack is 0%, and no warning-level TCP state dominates.",
+		Evidence: []string{
+			"Retrans: waiting for the next refresh.",
+			"Conntrack: 0% used; no warning-level TCP state dominates.",
+		},
+		NextChecks: []string{
+			"Keep watching Top Connections and Connection States for a dominant peer or state shift.",
+		},
+	}, 10))
+
+	if strings.Contains(text, "Issue: No\n") {
+		t.Fatalf("expected startup width fallback to avoid one-word wrapping, got: %q", text)
+	}
+	if !strings.Contains(text, "Issue: No dominant network issue") {
+		t.Fatalf("expected sane compact issue line with fallback width, got: %q", text)
+	}
+}
+
 var tviewTagPattern = regexp.MustCompile(`\[[^\]]*\]`)
 
 func stripTviewTags(s string) string {
