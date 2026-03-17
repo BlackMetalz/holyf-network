@@ -364,13 +364,13 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		if a.focusIndex == 2 && a.moveTopConnectionSelection(-1) {
 			return nil
 		}
-		return event
+		return nil
 
 	case tcell.KeyDown:
 		if a.focusIndex == 2 && a.moveTopConnectionSelection(1) {
 			return nil
 		}
-		return event
+		return nil
 
 	case tcell.KeyLeft, tcell.KeyRight:
 		// Disable horizontal panning in panel text views to keep layout stable.

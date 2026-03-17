@@ -404,6 +404,43 @@ func TestHandleKeyEventZoomOnlyForTopConnections(t *testing.T) {
 	}
 }
 
+func TestHandleKeyEventArrowKeysAreBlockedOutsideTopConnections(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.focusIndex = 4 // Diagnosis
+	a.selectedTalkerIndex = 1
+
+	up := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyUp, 0, 0))
+	down := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyDown, 0, 0))
+	if up != nil || down != nil {
+		t.Fatalf("arrow keys should be consumed outside Top Connections")
+	}
+	if a.selectedTalkerIndex != 1 {
+		t.Fatalf("arrow keys outside Top Connections should not change selection, got=%d", a.selectedTalkerIndex)
+	}
+}
+
+func TestHandleKeyEventArrowKeysStillMoveTopConnectionSelection(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.focusIndex = 2
+	a.latestTalkers = []collector.Connection{
+		{LocalIP: "10.0.0.10", LocalPort: 80, RemoteIP: "198.51.100.10", RemotePort: 52001, State: "ESTABLISHED", ProcName: "nginx"},
+		{LocalIP: "10.0.0.10", LocalPort: 81, RemoteIP: "198.51.100.20", RemotePort: 52002, State: "ESTABLISHED", ProcName: "api"},
+	}
+	a.selectedTalkerIndex = 0
+
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyDown, 0, 0))
+	if ret != nil {
+		t.Fatalf("down arrow should be consumed in Top Connections")
+	}
+	if a.selectedTalkerIndex != 1 {
+		t.Fatalf("expected selection to move in Top Connections, got=%d", a.selectedTalkerIndex)
+	}
+}
+
 func TestSelectedPeerKillTargetGroupViewRespectsLocalPortFilter(t *testing.T) {
 	t.Parallel()
 
