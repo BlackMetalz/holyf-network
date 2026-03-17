@@ -191,8 +191,15 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
 Package: `internal/history` + `cmd/daemon.go`
 
 1. `daemon start` launches internal worker in background and writes PID/log/runtime state paths.
-2. Worker resolves interface (`--interface`) and starts `SnapshotWriter` with lock file (`.daemon.lock`) under `--data-dir`.
-3. Every `--interval` seconds:
+2. Optional daemon defaults file: `/etc/holyf-network/daemon.json`
+   - file is optional; missing file means built-in defaults
+   - partial overrides are allowed (`data-dir`, `interface`, `interval`, `top-limit`, `retention-hours`)
+   - precedence:
+     - `daemon start/run`: CLI flags -> config file -> built-in defaults
+     - `replay`: explicit `--data-dir/--file` -> active daemon state -> config file -> built-in defaults
+     - `daemon status/stop/prune`: explicit target flags -> active daemon state -> config file -> built-in defaults
+3. Worker resolves interface (`--interface`) and starts `SnapshotWriter` with lock file (`.daemon.lock`) under `--data-dir`.
+4. Every `--interval` seconds:
    - call `collector.CollectTopTalkers(0)` to sample current connections
    - call `collector.CollectListenPorts()` to classify connections into `IN` vs `OUT` using listener-backed local ports
    - call `collector.CollectConntrackFlowsTCP()` and merge host-facing conntrack NAT tuples into live sample
@@ -213,25 +220,25 @@ Package: `internal/history` + `cmd/daemon.go`
      - `total_queue DESC`
      - then deterministic tie-break: `peer_ip`, `port`, `proc_name`
    - write one aggregate `SnapshotRecord` as JSON Lines record (one JSON object per line)
-4. Segment file naming by server local day: `connections-YYYYMMDD.jsonl`.
-5. Retention:
+5. Segment file naming by server local day: `connections-YYYYMMDD.jsonl`.
+6. Retention:
    - remove segments older than `--retention-hours`
    - daemon runtime prune schedule:
      - once at startup
      - daily at local `00:00`
    - manual prune command:
      - `holyf-network daemon prune`
-6. Active daemon state file (`daemon.state`) is the default source of truth for `status/stop/prune` without explicit targeting flags.
+7. Active daemon state file (`daemon.state`) is the default source of truth for `status/stop/prune` without explicit targeting flags.
    - includes runtime metadata such as `retention_hours` for prune default resolution
-7. `daemon prune` without explicit target flags uses active-state target resolution.
-8. `daemon stop` sends `SIGTERM` (fallback `SIGKILL`) and removes PID file + active state.
-9. `daemon status` reports running/stopped from active-state or explicit flags.
-10. Default Linux root paths:
+8. `daemon prune` without explicit target flags uses active-state target resolution; if daemon is not running, it falls back to config file defaults and then built-ins.
+9. `daemon stop` sends `SIGTERM` (fallback `SIGKILL`) and removes PID file + active state.
+10. `daemon status` reports running/stopped from active-state or explicit flags.
+11. Default Linux root paths:
    - snapshots: `/var/lib/holyf-network/snapshots`
    - daemon log: `/var/log/holyf-network/daemon.log`
    - active-state: `/run/holyf-network/daemon.state`
-11. Worker handles `SIGINT/SIGTERM` and closes cleanly.
-12. Interval guidance:
+12. Worker handles `SIGINT/SIGTERM` and closes cleanly.
+13. Interval guidance:
    - bandwidth-focused monitoring: `5-10s`
    - connection trend monitoring: `30s` default
    - large intervals can miss short-lived flows in snapshots/replay

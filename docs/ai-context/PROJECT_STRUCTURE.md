@@ -67,6 +67,7 @@ This is the current high-signal layout (non-essential folders omitted):
 - `cmd`
   - CLI flags, version resolution, startup wiring.
   - Entry points for live mode (`root`), daemon mode (`daemon start/stop/status/prune`), and replay mode (`replay`).
+  - Optional daemon defaults loader lives in `cmd/daemon_config.go` (`/etc/holyf-network/daemon.json` merge over built-ins).
 
 - `internal/network`
   - Interface detection/listing helpers used by CLI.

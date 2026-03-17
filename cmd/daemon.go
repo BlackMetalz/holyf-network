@@ -88,6 +88,11 @@ func newDaemonStartCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Start connection snapshot daemon in background",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			effectiveOpts, configUsed, err := resolveDaemonCaptureOptionsForCommand(cmd, opts.daemonCaptureOptions)
+			if err != nil {
+				return err
+			}
+			opts.daemonCaptureOptions = effectiveOpts
 			if err := validateCaptureOptions(opts.daemonCaptureOptions); err != nil {
 				return err
 			}
@@ -190,6 +195,9 @@ func newDaemonStartCmd() *cobra.Command {
 			fmt.Printf("pid-file: %s\n", paths.pidFile)
 			fmt.Printf("log-file: %s\n", paths.logFile)
 			fmt.Printf("state-file: %s\n", paths.stateFile)
+			if configUsed {
+				fmt.Printf("config-file: %s\n", defaultDaemonConfigPathValue())
+			}
 			fmt.Printf("interval=%ds top-limit=%d retention=%dh\n",
 				opts.intervalSec,
 				opts.topLimit,
@@ -212,7 +220,39 @@ func newDaemonStopCmd() *cobra.Command {
 		Short: "Stop running snapshot daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			explicit := cmd.Flags().Changed("data-dir") || cmd.Flags().Changed("pid-file")
-			paths, err := resolveDaemonPaths(opts.dataDir, opts.pidFile, "")
+			dataDir := opts.dataDir
+			if !cmd.Flags().Changed("data-dir") {
+				stateFile := defaultDaemonStatePath()
+				stateExists, state, stateRunning, err := readActiveStateStatus(stateFile)
+				if err != nil {
+					return err
+				}
+				if stateExists && stateRunning {
+					statePaths := daemonRuntimePaths{
+						dataDir:   state.DataDir,
+						pidFile:   state.PIDFile,
+						logFile:   state.LogFile,
+						lockFile:  state.LockFile,
+						stateFile: stateFile,
+					}
+					if err := stopDaemonByPID(state.PID, statePaths, true); err != nil {
+						return err
+					}
+					_ = removeActiveState(stateFile)
+					return nil
+				}
+				if stateExists && !stateRunning {
+					_ = cleanupStaleActiveState(stateFile, state)
+					fmt.Printf("daemon not running (stale active-state cleaned, pid=%d)\n", state.PID)
+					fmt.Printf("state-file: %s\n", stateFile)
+					return nil
+				}
+				dataDir, err = resolveConfiguredDefaultDataDir()
+				if err != nil {
+					return err
+				}
+			}
+			paths, err := resolveDaemonPaths(dataDir, opts.pidFile, "")
 			if err != nil {
 				return err
 			}
@@ -220,34 +260,8 @@ func newDaemonStopCmd() *cobra.Command {
 			if explicit {
 				return stopDaemonFromPIDFile(paths, false)
 			}
-
-			stateExists, state, stateRunning, err := readActiveStateStatus(paths.stateFile)
-			if err != nil {
-				return err
-			}
-			if !stateExists {
-				fmt.Println("daemon not running (no active-state)")
-				fmt.Printf("state-file: %s\n", paths.stateFile)
-				return nil
-			}
-			if !stateRunning {
-				_ = cleanupStaleActiveState(paths.stateFile, state)
-				fmt.Printf("daemon not running (stale active-state cleaned, pid=%d)\n", state.PID)
-				fmt.Printf("state-file: %s\n", paths.stateFile)
-				return nil
-			}
-
-			statePaths := daemonRuntimePaths{
-				dataDir:   state.DataDir,
-				pidFile:   state.PIDFile,
-				logFile:   state.LogFile,
-				lockFile:  state.LockFile,
-				stateFile: paths.stateFile,
-			}
-			if err := stopDaemonByPID(state.PID, statePaths, true); err != nil {
-				return err
-			}
-			_ = removeActiveState(paths.stateFile)
+			fmt.Println("daemon not running (no active-state)")
+			fmt.Printf("state-file: %s\n", paths.stateFile)
 			return nil
 		},
 	}
@@ -263,12 +277,19 @@ func newDaemonStatusCmd() *cobra.Command {
 		Short: "Show snapshot daemon status",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			explicit := cmd.Flags().Changed("data-dir") || cmd.Flags().Changed("pid-file")
-			paths, err := resolveDaemonPaths(opts.dataDir, opts.pidFile, "")
-			if err != nil {
-				return err
-			}
-
 			if explicit {
+				dataDir := opts.dataDir
+				if !cmd.Flags().Changed("data-dir") {
+					var err error
+					dataDir, err = resolveConfiguredDefaultDataDir()
+					if err != nil {
+						return err
+					}
+				}
+				paths, err := resolveDaemonPaths(dataDir, opts.pidFile, "")
+				if err != nil {
+					return err
+				}
 				running, pid, err := readDaemonStatus(paths.pidFile)
 				if err != nil {
 					return err
@@ -295,11 +316,23 @@ func newDaemonStatusCmd() *cobra.Command {
 				return nil
 			}
 
-			stateExists, state, stateRunning, err := readActiveStateStatus(paths.stateFile)
+			stateFile := defaultDaemonStatePath()
+			if strings.TrimSpace(stateFile) == "" {
+				return fmt.Errorf("cannot determine daemon state file path")
+			}
+			stateExists, state, stateRunning, err := readActiveStateStatus(stateFile)
 			if err != nil {
 				return err
 			}
 			if !stateExists {
+				dataDir, err := resolveConfiguredDefaultDataDir()
+				if err != nil {
+					return err
+				}
+				paths, err := resolveDaemonPaths(dataDir, opts.pidFile, "")
+				if err != nil {
+					return err
+				}
 				fmt.Println("daemon status: stopped")
 				fmt.Printf("data-dir: %s\n", paths.dataDir)
 				fmt.Printf("pid-file: %s\n", paths.pidFile)
@@ -308,12 +341,12 @@ func newDaemonStatusCmd() *cobra.Command {
 				return nil
 			}
 			if !stateRunning {
-				_ = cleanupStaleActiveState(paths.stateFile, state)
+				_ = cleanupStaleActiveState(stateFile, state)
 				fmt.Printf("daemon status: stopped (stale active-state pid=%d cleaned)\n", state.PID)
 				fmt.Printf("data-dir: %s\n", state.DataDir)
 				fmt.Printf("pid-file: %s\n", state.PIDFile)
 				fmt.Printf("log-file: %s\n", state.LogFile)
-				fmt.Printf("state-file: %s\n", paths.stateFile)
+				fmt.Printf("state-file: %s\n", stateFile)
 				return nil
 			}
 
@@ -322,7 +355,7 @@ func newDaemonStatusCmd() *cobra.Command {
 			fmt.Printf("pid-file: %s\n", state.PIDFile)
 			fmt.Printf("log-file: %s\n", state.LogFile)
 			fmt.Printf("lock-file: %s\n", state.LockFile)
-			fmt.Printf("state-file: %s\n", paths.stateFile)
+			fmt.Printf("state-file: %s\n", stateFile)
 			return nil
 		},
 	}
@@ -343,33 +376,52 @@ func newDaemonPruneCmd() *cobra.Command {
 				return fmt.Errorf("retention-hours must be >= 1, got %d", opts.retentionHours)
 			}
 
-			paths, err := resolveDaemonPaths(opts.dataDir, opts.pidFile, "")
-			if err != nil {
-				return err
+			stateFile := defaultDaemonStatePath()
+			if strings.TrimSpace(stateFile) == "" {
+				return fmt.Errorf("cannot determine daemon state file path")
 			}
-
-			stateExists, state, stateRunning, err := readActiveStateStatus(paths.stateFile)
+			stateExists, state, stateRunning, err := readActiveStateStatus(stateFile)
 			if err != nil {
 				return err
 			}
 			if stateExists && !stateRunning {
-				_ = cleanupStaleActiveState(paths.stateFile, state)
+				_ = cleanupStaleActiveState(stateFile, state)
 				fmt.Printf("daemon prune: stale active-state pid=%d cleaned\n", state.PID)
 				stateExists = false
 				state = daemonActiveState{}
 				stateRunning = false
 			}
 
-			targetDataDir := paths.dataDir
+			targetDataDir := ""
 			targetSource := "default"
 			if explicitTarget {
+				dataDir := opts.dataDir
+				if !cmd.Flags().Changed("data-dir") {
+					dataDir, err = resolveConfiguredDefaultDataDir()
+					if err != nil {
+						return err
+					}
+				}
+				paths, err := resolveDaemonPaths(dataDir, opts.pidFile, "")
+				if err != nil {
+					return err
+				}
+				targetDataDir = paths.dataDir
 				targetSource = "explicit-flags"
 			} else if stateExists {
 				targetDataDir = state.DataDir
 				targetSource = "active-state"
+			} else {
+				targetDataDir, err = resolveConfiguredDefaultDataDir()
+				if err != nil {
+					return err
+				}
 			}
 
-			retention := history.DefaultRetentionHours()
+			retention, err := resolveConfiguredDefaultRetentionHours()
+			if err != nil {
+				return err
+			}
 			retentionSource := "default"
 			if explicitRetention {
 				retention = opts.retentionHours
@@ -415,6 +467,11 @@ func newDaemonRunCmd() *cobra.Command {
 			if !internal {
 				return fmt.Errorf("use `daemon start` instead")
 			}
+			effectiveOpts, _, err := resolveDaemonCaptureOptionsForCommand(cmd, opts)
+			if err != nil {
+				return err
+			}
+			opts = effectiveOpts
 			if err := validateCaptureOptions(opts); err != nil {
 				return err
 			}

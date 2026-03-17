@@ -142,11 +142,27 @@ Daemon notes:
   - snapshots: `/var/lib/holyf-network/snapshots`
   - daemon log: `/var/log/holyf-network/daemon.log`
   - active state: `/run/holyf-network/daemon.state`
+- Optional daemon defaults file: `/etc/holyf-network/daemon.json`
+  - file is optional; if absent, built-in defaults are used
+  - partial config is allowed, for example only overriding `data-dir`
+  - precedence:
+    - `daemon start/run`: CLI flags -> `daemon.json` -> built-in defaults
+    - `replay`: explicit `--data-dir/--file` -> active daemon state -> `daemon.json` -> built-in defaults
+    - `daemon status/stop/prune`: explicit target flags -> active daemon state -> `daemon.json` -> built-in defaults
+  - example:
+
+```json
+{
+  "data-dir": "/var/lib/holyf-network/snapshots"
+}
+```
+
 - `daemon status/stop` without explicit `--data-dir/--pid-file` uses active-state targeting.
 - `daemon prune` without explicit `--data-dir/--pid-file` also uses active-state targeting.
 - `daemon prune` retention source precedence:
   - `--retention-hours` flag
   - active-state `retention_hours` (if present)
+  - `daemon.json` `retention-hours` (if present)
   - default `168h`
 - Explicit flags (`--data-dir` or `--pid-file`) force `status/stop/prune` to target that explicit location.
 - For bandwidth monitoring, use shorter interval (`--interval 5..10`) to capture bursts better.

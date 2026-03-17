@@ -89,7 +89,11 @@ func resolveReplayDataDir(raw string, explicit bool) (string, error) {
 		}
 	}
 
-	dataDir := strings.TrimSpace(history.ExpandPath(history.DefaultDataDir()))
+	dataDir, err := resolveConfiguredDefaultDataDir()
+	if err != nil {
+		return "", err
+	}
+	dataDir = strings.TrimSpace(history.ExpandPath(dataDir))
 	if dataDir == "" {
 		return "", fmt.Errorf("cannot determine default data dir")
 	}
