@@ -52,6 +52,7 @@ Core columns:
 - `CONN`: per-connection view (best for detailed flow debugging).
 - `GROUP`: grouped by `(peer, process)` to see ownership split and heavier groups.
   - Example: same peer with `sshd` and `ct/nat` appears as separate rows.
+  - Live `GROUP` view is capped to the top `20` groups by `CONNS` so the panel stays operator-readable.
 - `IN` vs `OUT`:
   - `IN`: port filter and grouped `PORTS` refer to local service ports.
   - `OUT`: port filter and grouped `RPORTS` refer to remote destination ports; mitigation is disabled and the panel is read-only for visibility.
@@ -117,6 +118,7 @@ Common operating thresholds:
   - `Check`: the next thing to inspect
 - It stays host-global in v1, so filter/search/group selection in `Top Connections` does not narrow it.
 - It is meant to connect the other panels quickly, not replace them.
+- `d` opens `Diagnosis History`, an in-memory modal of the latest diagnosis changes in the current live session.
 
 ## Live vs Replay
 

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -200,5 +201,60 @@ func TestFormatStatePercentDoesNotRoundPartialShareUpToHundred(t *testing.T) {
 	}
 	if got := formatStatePercent(109, 109); got != "100%" {
 		t.Fatalf("expected exact total share to remain 100%%, got: %q", got)
+	}
+}
+
+func TestLimitPeerGroupsKeepsTopTwentyByCountEvenWhenDisplayIsAscending(t *testing.T) {
+	t.Parallel()
+
+	conns := make([]collector.Connection, 0, 400)
+	for count := 1; count <= 25; count++ {
+		peer := "198.51.100." + strconv.Itoa(count)
+		for n := 0; n < count; n++ {
+			conns = append(conns, collector.Connection{
+				LocalIP:    "10.0.0.10",
+				LocalPort:  8080,
+				RemoteIP:   peer,
+				RemotePort: 50000 + n,
+				State:      "ESTABLISHED",
+				ProcName:   "api",
+			})
+		}
+	}
+
+	groups := buildPeerGroups(conns, true)
+	limited := limitPeerGroups(groups, topConnectionsGroupCap, false)
+	if len(limited) != topConnectionsGroupCap {
+		t.Fatalf("expected capped group count=%d, got=%d", topConnectionsGroupCap, len(limited))
+	}
+	if limited[0].Count != 6 {
+		t.Fatalf("expected ascending view to start at lowest count inside top-20 set, got=%d", limited[0].Count)
+	}
+	if limited[len(limited)-1].Count != 25 {
+		t.Fatalf("expected top-20 set to retain highest count, got tail=%d", limited[len(limited)-1].Count)
+	}
+}
+
+func TestRenderPeerGroupPanelShowsShownOverTotalWhenCapped(t *testing.T) {
+	t.Parallel()
+
+	conns := make([]collector.Connection, 0, 400)
+	for count := 1; count <= 25; count++ {
+		peer := "198.51.100." + strconv.Itoa(count)
+		for n := 0; n < count; n++ {
+			conns = append(conns, collector.Connection{
+				LocalIP:    "10.0.0.10",
+				LocalPort:  8080,
+				RemoteIP:   peer,
+				RemotePort: 50000 + n,
+				State:      "ESTABLISHED",
+				ProcName:   "api",
+			})
+		}
+	}
+
+	text := renderPeerGroupPanel(conns, "", "", 30, false, 0, true, config.DefaultHealthThresholds(), "")
+	if !strings.Contains(text, "20 shown / 25 groups") {
+		t.Fatalf("expected capped footer to mention shown/total groups, got: %q", text)
 	}
 }

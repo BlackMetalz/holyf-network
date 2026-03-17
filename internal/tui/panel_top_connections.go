@@ -751,6 +751,11 @@ func buildPeerGroupsWithDirection(conns []collector.Connection, sortDesc bool, d
 		groups = append(groups, *g)
 	}
 
+	sortPeerGroups(groups, sortDesc)
+	return groups
+}
+
+func sortPeerGroups(groups []PeerGroup, sortDesc bool) {
 	sort.SliceStable(groups, func(i, j int) bool {
 		if groups[i].Count != groups[j].Count {
 			return compareInt(groups[i].Count, groups[j].Count, sortDesc)
@@ -766,8 +771,18 @@ func buildPeerGroupsWithDirection(conns []collector.Connection, sortDesc bool, d
 		}
 		return groups[i].ProcName < groups[j].ProcName
 	})
+}
 
-	return groups
+func limitPeerGroups(groups []PeerGroup, maxGroups int, displayDesc bool) []PeerGroup {
+	if maxGroups <= 0 || len(groups) <= maxGroups {
+		return groups
+	}
+
+	ranked := append([]PeerGroup(nil), groups...)
+	sortPeerGroups(ranked, true)
+	ranked = append([]PeerGroup(nil), ranked[:maxGroups]...)
+	sortPeerGroups(ranked, displayDesc)
+	return ranked
 }
 
 // renderPeerGroupPanel renders the per-peer aggregate view.
@@ -825,7 +840,8 @@ func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFi
 		return sb.String()
 	}
 
-	groups := buildPeerGroupsWithDirection(filtered, sortDesc, direction)
+	allGroups := buildPeerGroupsWithDirection(filtered, sortDesc, direction)
+	groups := limitPeerGroups(allGroups, topConnectionsGroupCap, sortDesc)
 	if selectedIndex < 0 {
 		selectedIndex = 0
 	}
@@ -918,7 +934,17 @@ func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFi
 
 	renderSelectedRowPreview(&sb, preview, panelWidth)
 
-	sb.WriteString(fmt.Sprintf("\n  [dim]%d groups, %d peers, %d total connections[white]", len(groups), uniquePeerCount(groups), len(filtered)))
+	if len(allGroups) > len(groups) {
+		sb.WriteString(fmt.Sprintf(
+			"\n  [dim]%d shown / %d groups, %d peers, %d total connections[white]",
+			len(groups),
+			len(allGroups),
+			uniquePeerCount(allGroups),
+			len(filtered),
+		))
+	} else {
+		sb.WriteString(fmt.Sprintf("\n  [dim]%d groups, %d peers, %d total connections[white]", len(groups), uniquePeerCount(groups), len(filtered)))
+	}
 
 	return sb.String()
 }

@@ -20,6 +20,7 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]o[white]           Toggle Top Connections IN/OUT mode
 [yellow]Enter[white]       Block selected row (IN mode only)
 [yellow]k[white]           Block peer (selected/default, IN mode only)
+[yellow]d[white]           Show Diagnosis History
 [yellow]Shift+B[white]     Sort by Bandwidth (press again: DESC/ASC)
 [yellow]Shift+C[white]     Sort by Conns (press again: DESC/ASC)
 [yellow]Shift+P[white]     Sort by Port (press again: DESC/ASC)

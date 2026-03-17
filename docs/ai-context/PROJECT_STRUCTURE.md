@@ -17,6 +17,7 @@ This is the current high-signal layout (non-essential folders omitted):
 │   ├── collector/
 │   │   ├── connections.go
 │   │   ├── top_connections.go
+│   │   ├── listen_ports.go
 │   │   ├── conntrack_flows.go
 │   │   ├── conntrack_merge.go
 │   │   ├── bandwidth_tracker.go
@@ -38,6 +39,7 @@ This is the current high-signal layout (non-essential folders omitted):
 │       ├── app_core.go
 │       ├── app_top_connections.go
 │       ├── top_diagnosis.go
+│       ├── app_diagnosis_history.go
 │       ├── app_history.go
 │       ├── app_shared.go
 │       ├── app_blocking_state.go
@@ -105,11 +107,12 @@ This is the current high-signal layout (non-essential folders omitted):
     - `app_core.go`: lifecycle, refresh loop, global key handling, status bar.
     - `app_top_connections.go`: top-connection selection/filter/sort/search orchestration + panel layout for note/preview.
     - `top_diagnosis.go`: rule-based live diagnosis synthesis for the dedicated Diagnosis panel.
+    - `app_diagnosis_history.go`: in-memory diagnosis change history + modal (`d`).
     - `app_blocking_*.go`: block/kill flows and blocked peers modal.
     - `app_history.go`: action log modal + persistence (`~/.holyf-network/history.log`).
     - `history_*.go`: read-only replay mode UI and key handling.
     - `panel_*.go`: pure rendering text for each panel.
-      - `panel_top_connections.go` renders live `View=GROUP` by `(peer, process)`, bandwidth note, and selected-row preview (including grouped state breakdown in the footer preview).
+      - `panel_top_connections.go` renders live `View=GROUP` by `(peer, process)`, applies the top-20 group cap, bandwidth note, and selected-row preview (including grouped state breakdown in the footer preview).
       - `panel_diagnosis.go` renders the live Diagnosis panel as a fixed decision card (`Issue`, `Scope`, `Signal`, `Likely`, `Check`).
     - `layout.go`: grid composition.
 

@@ -64,12 +64,13 @@ sudo holyf-network -r 5
 # Shift+P: sort by Port (press again toggles DESC/ASC)
 # i: explain Send-Q / Recv-Q / TX/s / RX/s
 # Shift+I: explain Interface Stats (RX/TX, Packets, Errors, Drops)
-# g: toggle grouped view (peer + process)
+# g: toggle grouped view (peer + process, capped to top 20 groups by CONNS)
 # /: search Top Connections by text (contains match)
 # f: port filter (local port in IN mode, remote port in OUT mode; press f again to clear all filters)
 # m: toggle sensitive IP masking
 # s: sort Connection States by count (toggle DESC/ASC)
 # b: list active blocks and remove selected peer block
+# d: show Diagnosis History (latest 20 changes in current live session)
 # h: show action log (latest 20)
 # p: pause/resume auto-refresh
 # r: refresh now

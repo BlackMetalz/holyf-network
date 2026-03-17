@@ -52,6 +52,7 @@ Các cột chính:
 - `CONN`: xem từng connection, tốt để debug cụ thể từng flow.
 - `GROUP`: gom theo `(peer, process)` để thấy ai đang chiếm nhiều connection/bandwidth.
   - Ví dụ cùng peer nhưng `sshd` và `ct/nat` sẽ là 2 dòng tách biệt.
+  - `GROUP` ở live bị cap còn top `20` group theo `CONNS` để panel vẫn dễ đọc.
 - `IN` vs `OUT`:
   - `IN`: port filter và `PORTS` trong group là local service port.
   - `OUT`: port filter và `RPORTS` trong group là remote destination port; panel chỉ để quan sát, không kill/block.
@@ -117,6 +118,7 @@ Mốc vận hành thường dùng:
   - `Check`: hướng kiểm tra tiếp theo
 - Trong v1, panel này vẫn là host-global nên không bị bó hẹp theo filter/search/group selection ở `Top Connections`.
 - Mục đích là nối nhanh tín hiệu giữa các panel, không thay thế việc đọc panel gốc.
+- Bấm `d` để mở `Diagnosis History`, là modal lưu các lần diagnosis đổi trong live session hiện tại.
 
 ## Live vs Replay
 

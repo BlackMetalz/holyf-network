@@ -19,6 +19,7 @@ const (
 	topConnectionsPreviewLines       = 5
 	topConnectionsMinRows            = 5
 	topConnectionsMinRowsWithPreview = 3
+	topConnectionsGroupCap           = 20
 )
 
 type topConnectionsPanelLayout struct {
@@ -114,7 +115,8 @@ func (a *App) filteredPeerGroups() []PeerGroup {
 		return nil
 	}
 
-	return buildPeerGroupsWithDirection(filtered, a.sortDesc, a.topDirection)
+	groups := buildPeerGroupsWithDirection(filtered, a.sortDesc, a.topDirection)
+	return limitPeerGroups(groups, topConnectionsGroupCap, a.sortDesc)
 }
 
 func (a *App) visibleTopConnections() []collector.Connection {

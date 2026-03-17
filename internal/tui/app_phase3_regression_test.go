@@ -163,6 +163,7 @@ func TestStatusHotkeysForModalPages(t *testing.T) {
 		{page: "kill-peer", wantPlain: "<-/->=choose Enter=confirm Esc=cancel"},
 		{page: "blocked-peers", wantPlain: "Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"},
 		{page: "action-log", wantPlain: "Enter=close Esc=close"},
+		{page: "diagnosis-history", wantPlain: "Enter=close Esc=close"},
 		{page: "socket-queue-explain", wantPlain: "Enter=close Esc=close"},
 		{page: "interface-stats-explain", wantPlain: "Enter=close Esc=close"},
 		{page: "blocked-peers-remove-result", wantPlain: "Enter=close Esc=close"},

@@ -58,6 +58,7 @@ type App struct {
 	topSampleSeconds float64
 	topBandwidthNote string
 	topDiagnosis     *topDiagnosis
+	diagnosisHistory []diagnosisHistoryEntry
 	// Selected row in Top Connections (within currently visible rows).
 	selectedTalkerIndex int
 	// Sort mode for Top Connections. Default: SortByBandwidth.
@@ -345,6 +346,7 @@ func (a *App) refreshData() {
 		a.latestTalkers = talkers
 		if connDataAvailable {
 			a.topDiagnosis = a.buildTopDiagnosis(connData, retransRates, conntrackRates)
+			a.appendDiagnosisHistory(a.lastRefresh, a.topDiagnosis)
 		} else {
 			a.topDiagnosis = nil
 		}
@@ -478,6 +480,9 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case 'h':
 			a.promptActionLog()
+			return nil
+		case 'd':
+			a.promptDiagnosisHistory()
 			return nil
 		case 'i':
 			a.promptSocketQueueExplain()
@@ -755,6 +760,8 @@ func statusHotkeysForPage(page string) (styled string, plain string) {
 		return "[dim]Up/Down[white]=select [dim]Enter[white]=remove [dim]Del[white]=remove [dim]Tab[white]=buttons [dim]Esc[white]=close",
 			"Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"
 	case "action-log":
+		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
+	case "diagnosis-history":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "socket-queue-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
