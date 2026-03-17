@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -31,10 +32,10 @@ func TestCreatePanelsIncludesDiagnosisPanel(t *testing.T) {
 	}
 }
 
-func TestRenderDiagnosisPanelShowsSummaryEvidenceAndNextChecks(t *testing.T) {
+func TestRenderDiagnosisPanelShowsSummaryEvidenceAndNextChecksInDetailedMode(t *testing.T) {
 	t.Parallel()
 
-	text := renderDiagnosisPanel(&topDiagnosis{
+	text := stripTviewTags(renderDiagnosisPanel(&topDiagnosis{
 		Severity: healthWarn,
 		Headline: "TCP retrans is high",
 		Reason:   "Retrans is 6.20% with enough traffic sample.",
@@ -46,7 +47,7 @@ func TestRenderDiagnosisPanelShowsSummaryEvidenceAndNextChecks(t *testing.T) {
 			"Check NIC errors/drops and inspect ss -tin for retrans behavior.",
 			"Validate path loss, RTT spikes, or congestion.",
 		},
-	}, 56)
+	}, 92))
 
 	if !strings.Contains(text, "Summary: TCP retrans is high") {
 		t.Fatalf("expected summary line, got: %q", text)
@@ -65,6 +66,43 @@ func TestRenderDiagnosisPanelShowsSummaryEvidenceAndNextChecks(t *testing.T) {
 	}
 }
 
+func TestRenderDiagnosisPanelUsesCompactCardForNarrowPanels(t *testing.T) {
+	t.Parallel()
+
+	text := stripTviewTags(renderDiagnosisPanel(&topDiagnosis{
+		Severity: healthWarn,
+		Headline: "TIME_WAIT churn on :18080 from 172.25.110.137",
+		Reason:   "4974 TIME_WAIT sockets; short-lived connections are dominating more than a current path-quality issue.",
+		Evidence: []string{
+			"State count: 4,974 TIME_WAIT sockets (warn > 1,000).",
+			"Culprit: 172.25.110.137 on :18080 via unresolved proc (4,979 sockets).",
+		},
+		NextChecks: []string{
+			"Check whether one service is creating short-lived connections faster than expected.",
+			"Review keepalive, connection reuse, or client retry behavior before blaming packet loss.",
+		},
+	}, 56))
+
+	if !strings.Contains(text, "Issue: TIME_WAIT churn") {
+		t.Fatalf("expected compact issue line, got: %q", text)
+	}
+	if !strings.Contains(text, "Scope: :18080 from 172.25.110.137") {
+		t.Fatalf("expected compact scope line, got: %q", text)
+	}
+	if !strings.Contains(text, "Signal: 4,974 TIME_WAIT sockets") {
+		t.Fatalf("expected compact signal line, got: %q", text)
+	}
+	if !strings.Contains(text, "Likely: short-lived connections") {
+		t.Fatalf("expected compact likely line, got: %q", text)
+	}
+	if !strings.Contains(text, "Check: short-lived conns") && !strings.Contains(text, "Check: one service is creating") {
+		t.Fatalf("expected compact check line, got: %q", text)
+	}
+	if strings.Contains(text, "Summary:") || strings.Contains(text, "Evidence\n") {
+		t.Fatalf("did not expect detailed sections in compact mode, got: %q", text)
+	}
+}
+
 func TestRenderDiagnosisPanelShowsPlaceholderWhenNil(t *testing.T) {
 	t.Parallel()
 
@@ -72,6 +110,12 @@ func TestRenderDiagnosisPanelShowsPlaceholderWhenNil(t *testing.T) {
 	if !strings.Contains(text, "Waiting for live diagnosis data") {
 		t.Fatalf("expected placeholder text, got: %q", text)
 	}
+}
+
+var tviewTagPattern = regexp.MustCompile(`\[[^\]]*\]`)
+
+func stripTviewTags(s string) string {
+	return tviewTagPattern.ReplaceAllString(s, "")
 }
 
 func TestDiagnosisPanelRemainsHostGlobalAcrossGroupToggle(t *testing.T) {
