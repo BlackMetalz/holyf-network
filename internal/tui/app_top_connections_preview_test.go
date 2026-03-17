@@ -320,3 +320,74 @@ func TestRenderTopConnectionsPanelHidesCurrentProcessTraffic(t *testing.T) {
 		t.Fatalf("expected non-self row to remain visible, got: %q", text)
 	}
 }
+
+func TestTopConnectionsSourceRespectsIncomingOutgoingDirection(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.latestTalkers = []collector.Connection{
+		{LocalIP: "10.0.0.10", LocalPort: 18080, RemoteIP: "172.25.110.137", RemotePort: 52001, State: "ESTABLISHED", ProcName: "server"},
+		{LocalIP: "10.0.0.10", LocalPort: 52246, RemoteIP: "20.205.243.168", RemotePort: 443, State: "ESTABLISHED", ProcName: "client"},
+	}
+	a.listenPorts = map[int]struct{}{18080: {}}
+	a.listenPortsKnown = true
+
+	incoming := a.topConnectionsSource()
+	if len(incoming) != 1 || incoming[0].LocalPort != 18080 {
+		t.Fatalf("expected IN mode to keep listener-backed row, got: %+v", incoming)
+	}
+
+	a.topDirection = topConnectionOutgoing
+	outgoing := a.topConnectionsSource()
+	if len(outgoing) != 1 || outgoing[0].RemotePort != 443 || outgoing[0].LocalPort != 52246 {
+		t.Fatalf("expected OUT mode to keep non-listener row, got: %+v", outgoing)
+	}
+}
+
+func TestBuildSelectedPeerGroupPreviewOutgoingShowsRemotePortsAndDisabledAction(t *testing.T) {
+	t.Parallel()
+
+	conns := []collector.Connection{
+		{LocalIP: "10.0.0.10", LocalPort: 52246, RemoteIP: "20.205.243.168", RemotePort: 443, State: "ESTABLISHED", ProcName: "client", Activity: 20},
+		{LocalIP: "10.0.0.10", LocalPort: 52247, RemoteIP: "20.205.243.168", RemotePort: 8443, State: "ESTABLISHED", ProcName: "client", Activity: 10},
+	}
+	a := &App{
+		latestTalkers:       conns,
+		groupView:           true,
+		topDirection:        topConnectionOutgoing,
+		sortDesc:            true,
+		selectedTalkerIndex: 0,
+	}
+
+	preview := a.buildSelectedPeerGroupPreview(a.filteredPeerGroups())
+	if preview == nil {
+		t.Fatalf("expected outgoing peer-group preview")
+	}
+	if !strings.Contains(preview.Lines[2], "RPorts: 443,8443 | Action: Enter/k disabled in OUT mode") {
+		t.Fatalf("expected remote ports and disabled action in OUT preview, got: %q", preview.Lines[2])
+	}
+}
+
+func TestRenderPeerGroupPanelOutgoingUsesRemotePortHeader(t *testing.T) {
+	t.Parallel()
+
+	conns := []collector.Connection{
+		{LocalIP: "10.0.0.10", LocalPort: 52246, RemoteIP: "20.205.243.168", RemotePort: 443, State: "ESTABLISHED", ProcName: "client"},
+	}
+	preview := &selectedRowPreview{
+		Title: "Selected Detail",
+		Lines: []string{
+			"Peer: 20.205.243.168 | Proc: client | Conns: 1",
+			"States: EST 100% (1)",
+			"RPorts: 443 | Action: Enter/k disabled in OUT mode",
+		},
+	}
+
+	text := renderPeerGroupPanelWithPreviewDirection(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "", 120, preview, topConnectionOutgoing)
+	if !strings.Contains(text, "RPORTS") {
+		t.Fatalf("expected outgoing group header to use RPORTS, got: %q", text)
+	}
+	if !strings.Contains(text, "Dir=OUT") {
+		t.Fatalf("expected outgoing panel chips to show Dir=OUT, got: %q", text)
+	}
+}

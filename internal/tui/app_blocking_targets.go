@@ -12,6 +12,9 @@ import (
 
 // selectPeerKillTarget picks the most frequent peer->localPort tuple.
 func (a *App) selectPeerKillTarget() (peerKillTarget, bool) {
+	if a.topDirection == topConnectionOutgoing {
+		return peerKillTarget{}, false
+	}
 	source := a.topConnectionsSource()
 	if len(source) == 0 {
 		return peerKillTarget{}, false
@@ -19,7 +22,7 @@ func (a *App) selectPeerKillTarget() (peerKillTarget, bool) {
 
 	filtered := a.applyTopConnectionFilters(source)
 	if a.groupView {
-		filtered = applyGroupConnectionFilters(source, a.portFilter, a.textFilter)
+		filtered = applyGroupConnectionFiltersByDirection(source, a.portFilter, a.textFilter, a.topDirection)
 	}
 	if len(filtered) == 0 {
 		return peerKillTarget{}, false
@@ -68,6 +71,9 @@ func (a *App) selectPeerKillTarget() (peerKillTarget, bool) {
 }
 
 func (a *App) selectedPeerKillTarget() (peerKillTarget, bool) {
+	if a.topDirection == topConnectionOutgoing {
+		return peerKillTarget{}, false
+	}
 	if a.groupView {
 		groups := a.visiblePeerGroups()
 		if len(groups) == 0 {
@@ -96,6 +102,9 @@ func (a *App) selectedPeerKillTarget() (peerKillTarget, bool) {
 }
 
 func (a *App) selectedPeerPortTarget(peerIP string) (peerKillTarget, bool) {
+	if a.topDirection == topConnectionOutgoing {
+		return peerKillTarget{}, false
+	}
 	source := a.topConnectionsSource()
 	if len(source) == 0 {
 		return peerKillTarget{}, false
@@ -103,7 +112,7 @@ func (a *App) selectedPeerPortTarget(peerIP string) (peerKillTarget, bool) {
 
 	filtered := a.applyTopConnectionFilters(source)
 	if a.groupView {
-		filtered = applyGroupConnectionFilters(source, a.portFilter, a.textFilter)
+		filtered = applyGroupConnectionFiltersByDirection(source, a.portFilter, a.textFilter, a.topDirection)
 	}
 	if len(filtered) == 0 {
 		return peerKillTarget{}, false

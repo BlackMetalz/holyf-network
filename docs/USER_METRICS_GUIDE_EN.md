@@ -26,6 +26,13 @@ If you are still new to TCP states / queues / conntrack, read this first:
 
 ## 1) Top Connections
 
+Live panel 1 can switch between:
+
+- `Dir=IN` (`Top Incoming`): listener-backed flows coming into local services.
+- `Dir=OUT` (`Top Outgoing`): local processes dialing out to remote services.
+  - Toggle with `o`.
+  - `Enter` / `k` stay enabled only in `IN`.
+
 Core columns:
 
 - `PROCESS`: socket ownership.
@@ -37,13 +44,17 @@ Core columns:
 - `Send-Q`, `Recv-Q`: queue backlog snapshot at sample time.
 - `TX/s`, `RX/s`: throughput computed from conntrack byte deltas in current interval.
 - In `View=GROUP`, rows also summarize:
-  - `PORTS`: local ports currently represented in the group.
+  - `PORTS`: local ports currently represented in the group for `IN`.
+  - `RPORTS`: remote service ports currently represented in the group for `OUT`.
 
 `View=CONN` vs `View=GROUP`:
 
 - `CONN`: per-connection view (best for detailed flow debugging).
 - `GROUP`: grouped by `(peer, process)` to see ownership split and heavier groups.
   - Example: same peer with `sshd` and `ct/nat` appears as separate rows.
+- `IN` vs `OUT`:
+  - `IN`: port filter and grouped `PORTS` refer to local service ports.
+  - `OUT`: port filter and grouped `RPORTS` refer to remote destination ports; mitigation is disabled and the panel is read-only for visibility.
 
 Quick interpretation:
 
@@ -53,6 +64,7 @@ Quick interpretation:
 - `Selected Detail`: in live mode, the footer preview explains the currently selected row and what `Enter` / `k` would target.
   - In `GROUP`, this is especially useful because the action still resolves to one concrete `peer + local port` target.
   - The full grouped state mix is shown there (`States: EST ... - TW ... - CW ...`), not in the row list anymore.
+- In `OUT`, `Selected Detail` switches to remote-port context and explicitly marks `Enter` / `k` as disabled.
 - The live Top panel hides TCP connections owned by the current `holyf-network` process so update-check/control traffic does not pollute operator-facing rows.
 
 ## 2) Connection States

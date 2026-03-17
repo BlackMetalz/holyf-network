@@ -104,6 +104,34 @@ func TestHandleKeyEventEnterOnTopConnectionsOpensKillForm(t *testing.T) {
 	}
 }
 
+func TestHandleKeyEventEnterAndKAreDisabledInOutgoingMode(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.topDirection = topConnectionOutgoing
+
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
+	if ret != nil {
+		t.Fatalf("Enter in OUT mode should be handled")
+	}
+	if !strings.Contains(a.statusNote, "disabled in OUT mode") {
+		t.Fatalf("expected OUT mode status note after Enter, got=%q", a.statusNote)
+	}
+	name, _ := a.pages.GetFrontPage()
+	if name != "main" {
+		t.Fatalf("expected no kill modal in OUT mode, got front page %q", name)
+	}
+
+	a.statusNote = ""
+	ret = a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'k', 0))
+	if ret != nil {
+		t.Fatalf("k in OUT mode should be handled")
+	}
+	if !strings.Contains(a.statusNote, "disabled in OUT mode") {
+		t.Fatalf("expected OUT mode status note after k, got=%q", a.statusNote)
+	}
+}
+
 func TestRecentActionLogsDefaultLimitIsModalLimit(t *testing.T) {
 	t.Parallel()
 

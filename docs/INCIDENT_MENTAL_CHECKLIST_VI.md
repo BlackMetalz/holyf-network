@@ -91,13 +91,13 @@ Kết luận nhanh:
 Đổi `View=GROUP` rồi nhìn:
 
 - `CONNS`
-- `PORTS`
+- `PORTS / RPORTS`
 - `Selected Detail -> States`
 
 Dùng `Selected Detail` để hiểu:
 
 - row đang chọn đại diện cho cái gì
-- nếu bấm `Enter` / `k` thì app sẽ target `peer + local port` nào
+- nếu đang ở `IN` thì `Enter` / `k` sẽ target `peer + local port` nào, còn `OUT` thì remote service port nào đang dominate
 
 ## Nếu thấy pattern này, nghĩ ngay điều này
 

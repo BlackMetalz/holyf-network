@@ -26,6 +26,13 @@ Nếu bạn còn mới với TCP state / queue / conntrack, nên đọc trước
 
 ## 1) Top Connections
 
+Panel 1 ở live có thể chuyển giữa:
+
+- `Dir=IN` (`Top Incoming`): flow đi vào local service đang listen.
+- `Dir=OUT` (`Top Outgoing`): flow do process local chủ động đi ra ngoài.
+  - Bấm `o` để toggle.
+  - `Enter` / `k` chỉ bật ở `IN`.
+
 Các cột chính:
 
 - `PROCESS`: tiến trình sở hữu socket.
@@ -37,13 +44,17 @@ Các cột chính:
 - `Send-Q`, `Recv-Q`: backlog queue snapshot ở thời điểm lấy mẫu.
 - `TX/s`, `RX/s`: throughput theo byte delta conntrack trong chu kỳ refresh hiện tại.
 - Trong `View=GROUP`, mỗi dòng còn tóm tắt thêm:
-  - `PORTS`: các local port hiện có trong group đó.
+  - `PORTS`: các local port của group khi đang ở `IN`.
+  - `RPORTS`: các remote service port của group khi đang ở `OUT`.
 
 `View=CONN` vs `View=GROUP`:
 
 - `CONN`: xem từng connection, tốt để debug cụ thể từng flow.
 - `GROUP`: gom theo `(peer, process)` để thấy ai đang chiếm nhiều connection/bandwidth.
   - Ví dụ cùng peer nhưng `sshd` và `ct/nat` sẽ là 2 dòng tách biệt.
+- `IN` vs `OUT`:
+  - `IN`: port filter và `PORTS` trong group là local service port.
+  - `OUT`: port filter và `RPORTS` trong group là remote destination port; panel chỉ để quan sát, không kill/block.
 
 Diễn giải nhanh:
 
@@ -53,6 +64,7 @@ Diễn giải nhanh:
 - `Selected Detail`: phần preview ở cuối panel live giải thích row đang chọn và nếu bấm `Enter` / `k` thì app sẽ target gì.
   - Ở `GROUP`, phần này đặc biệt hữu ích vì action thực tế vẫn resolve về một `peer + local port` cụ thể.
   - Full state breakdown của group cũng nằm ở đây (`States: EST ... - TW ... - CW ...`), không còn nằm trên row list nữa.
+- Ở `OUT`, `Selected Detail` sẽ chuyển sang ngữ cảnh remote port và nói rõ `Enter` / `k` đang bị tắt.
 - Panel Top live sẽ ẩn TCP connection do chính process `holyf-network` hiện tại tạo ra, để traffic control-plane như update check không chui vào danh sách operator đang xem.
 
 ## 2) Connection States

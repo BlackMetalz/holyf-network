@@ -17,8 +17,9 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 [yellow]f[white]           Port filter / clear all filters
 [yellow]/[white]           Search (contains text in Top Connections)
 [yellow]Up/Down[white]     Select row (Top Connections)
-[yellow]Enter[white]       Block selected row
-[yellow]k[white]           Block peer (selected/default)
+[yellow]o[white]           Toggle Top Connections IN/OUT mode
+[yellow]Enter[white]       Block selected row (IN mode only)
+[yellow]k[white]           Block peer (selected/default, IN mode only)
 [yellow]Shift+B[white]     Sort by Bandwidth (press again: DESC/ASC)
 [yellow]Shift+C[white]     Sort by Conns (press again: DESC/ASC)
 [yellow]Shift+P[white]     Sort by Port (press again: DESC/ASC)

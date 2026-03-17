@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -25,6 +26,7 @@ func newSortHotkeyTestApp(startMode SortMode, startDesc bool, selectedIndex int)
 		app:                 tview.NewApplication(),
 		pages:               pages,
 		panels:              panels,
+		statusBar:           tview.NewTextView(),
 		focusIndex:          2,
 		sortMode:            startMode,
 		sortDesc:            startDesc,
@@ -82,7 +84,6 @@ func TestHandleKeyEventSortKeysResetSelectionAndRender(t *testing.T) {
 		{name: "same mode toggles back to desc", key: 'B', startMode: SortByBandwidth, startDesc: false, wantMode: SortByBandwidth, wantDesc: true, handled: true},
 		{name: "conns mode first press desc", key: 'C', startMode: SortByBandwidth, startDesc: true, wantMode: SortByConns, wantDesc: true, handled: true},
 		{name: "port mode first press desc", key: 'P', startMode: SortByBandwidth, startDesc: true, wantMode: SortByPort, wantDesc: true, handled: true},
-		{name: "o removed", key: 'o', startMode: SortByBandwidth, startDesc: true, wantMode: SortByBandwidth, wantDesc: true, handled: false},
 	}
 
 	for _, tc := range tests {
@@ -114,6 +115,33 @@ func TestHandleKeyEventSortKeysResetSelectionAndRender(t *testing.T) {
 				t.Fatalf("panel text did not rerender for key %q", tc.key)
 			}
 		})
+	}
+}
+
+func TestHandleKeyEventOTogglesTopConnectionsDirection(t *testing.T) {
+	t.Parallel()
+
+	a := newSortHotkeyTestApp(SortByBandwidth, true, 4)
+	a.latestTalkers = []collector.Connection{
+		{LocalIP: "10.0.0.10", LocalPort: 18080, RemoteIP: "172.25.110.137", RemotePort: 52001, State: "ESTABLISHED"},
+		{LocalIP: "10.0.0.10", LocalPort: 52246, RemoteIP: "20.205.243.168", RemotePort: 443, State: "ESTABLISHED"},
+	}
+	a.listenPorts = map[int]struct{}{18080: {}}
+	a.listenPortsKnown = true
+
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'o', 0))
+	if ret != nil {
+		t.Fatalf("o should be handled")
+	}
+	if a.topDirection != topConnectionOutgoing {
+		t.Fatalf("expected o to switch top direction to OUT, got=%v", a.topDirection)
+	}
+	if a.selectedTalkerIndex != 0 {
+		t.Fatalf("expected selection reset on direction toggle, got=%d", a.selectedTalkerIndex)
+	}
+	panel := a.panels[2].GetText(true)
+	if !strings.Contains(panel, "Dir=OUT") {
+		t.Fatalf("expected rerendered panel to show Dir=OUT, got: %q", panel)
 	}
 }
 

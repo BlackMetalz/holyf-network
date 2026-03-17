@@ -36,6 +36,10 @@ func (a *App) promptKillPeer() {
 		a.setStatusNote("Focus Top Connections before kill-peer", 5*time.Second)
 		return
 	}
+	if a.topDirection == topConnectionOutgoing {
+		a.setStatusNote("Enter/k is disabled in OUT mode", 5*time.Second)
+		return
+	}
 
 	filteredPort := 0
 	if a.portFilter != "" {

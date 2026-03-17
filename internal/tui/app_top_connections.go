@@ -99,7 +99,7 @@ func (a *App) filteredTopConnections() []collector.Connection {
 	}
 
 	items := append([]collector.Connection(nil), filtered...)
-	sortConnections(items, a.sortMode, a.sortDesc)
+	sortConnectionsWithDirection(items, a.sortMode, a.sortDesc, a.topDirection)
 	return items
 }
 
@@ -109,12 +109,12 @@ func (a *App) filteredPeerGroups() []PeerGroup {
 		return nil
 	}
 
-	filtered := applyGroupConnectionFilters(source, a.portFilter, a.textFilter)
+	filtered := applyGroupConnectionFiltersByDirection(source, a.portFilter, a.textFilter, a.topDirection)
 	if len(filtered) == 0 {
 		return nil
 	}
 
-	return buildPeerGroups(filtered, a.sortDesc)
+	return buildPeerGroupsWithDirection(filtered, a.sortDesc, a.topDirection)
 }
 
 func (a *App) visibleTopConnections() []collector.Connection {
@@ -166,6 +166,7 @@ func (a *App) clampTopConnectionSelection() {
 }
 
 func (a *App) renderTopConnectionsPanel() {
+	a.updateTopConnectionsPanelTitle()
 	source := a.topConnectionsSource()
 	if a.groupView {
 		groups := a.filteredPeerGroups()
@@ -183,7 +184,7 @@ func (a *App) renderTopConnectionsPanel() {
 			preview = a.buildSelectedPeerGroupPreview(groups)
 		}
 
-		a.panels[2].SetText(renderPeerGroupPanelWithPreview(
+		a.panels[2].SetText(renderPeerGroupPanelWithPreviewDirection(
 			source,
 			a.portFilter,
 			a.textFilter,
@@ -195,6 +196,7 @@ func (a *App) renderTopConnectionsPanel() {
 			a.topBandwidthNote,
 			layout.PanelWidth,
 			preview,
+			a.topDirection,
 		))
 		return
 	}
@@ -214,7 +216,7 @@ func (a *App) renderTopConnectionsPanel() {
 		preview = a.buildSelectedConnectionPreview(items)
 	}
 
-	a.panels[2].SetText(renderTalkersPanelWithPreview(
+	a.panels[2].SetText(renderTalkersPanelWithPreviewDirection(
 		source,
 		a.portFilter,
 		a.textFilter,
@@ -227,6 +229,7 @@ func (a *App) renderTopConnectionsPanel() {
 		a.topBandwidthNote,
 		layout.PanelWidth,
 		preview,
+		a.topDirection,
 	))
 }
 
@@ -236,14 +239,19 @@ func (a *App) topConnectionsSource() []collector.Connection {
 	}
 
 	selfPID := os.Getpid()
-	if selfPID <= 0 {
-		return a.latestTalkers
-	}
-
 	filtered := make([]collector.Connection, 0, len(a.latestTalkers))
 	for _, conn := range a.latestTalkers {
-		if conn.PID == selfPID {
+		if selfPID > 0 && conn.PID == selfPID {
 			continue
+		}
+		if a.listenPortsKnown {
+			_, isListenerPort := a.listenPorts[conn.LocalPort]
+			if a.topDirection == topConnectionOutgoing && isListenerPort {
+				continue
+			}
+			if a.topDirection == topConnectionIncoming && !isListenerPort {
+				continue
+			}
 		}
 		filtered = append(filtered, conn)
 	}
@@ -277,7 +285,7 @@ func (a *App) moveTopConnectionSelection(delta int) bool {
 func (a *App) applyTopConnectionFilters(conns []collector.Connection) []collector.Connection {
 	filtered := conns
 	if a.portFilter != "" {
-		filtered = filterByPort(filtered, a.portFilter)
+		filtered = filterByPortDirection(filtered, a.portFilter, a.topDirection)
 	}
 	if a.textFilter != "" {
 		filtered = filterByText(filtered, a.textFilter)
@@ -298,6 +306,16 @@ func (a *App) buildSelectedConnectionPreview(conns []collector.Connection) *sele
 		Count:     a.countPeerMatches(peerIP, conn.LocalPort),
 	}
 
+	actionLine := fmt.Sprintf(
+		"Action: Enter/k => peer %s -> local %d (%d matches; peer+port scope)",
+		formatPreviewIP(target.PeerIP, a.sensitiveIP),
+		target.LocalPort,
+		target.Count,
+	)
+	if a.topDirection == topConnectionOutgoing {
+		actionLine = "Action: Enter/k disabled in OUT mode (incoming-only mitigation)"
+	}
+
 	return &selectedRowPreview{
 		Title: "Selected Detail",
 		Lines: []string{
@@ -315,12 +333,7 @@ func (a *App) buildSelectedConnectionPreview(conns []collector.Connection) *sele
 				formatBytesRateCompact(conn.TxBytesPerSec),
 				formatBytesRateCompact(conn.RxBytesPerSec),
 			),
-			fmt.Sprintf(
-				"Action: Enter/k => peer %s -> local %d (%d matches; peer+port scope)",
-				formatPreviewIP(target.PeerIP, a.sensitiveIP),
-				target.LocalPort,
-				target.Count,
-			),
+			actionLine,
 		},
 	}
 }
@@ -336,6 +349,25 @@ func (a *App) buildSelectedPeerGroupPreview(groups []PeerGroup) *selectedRowPrev
 		target = peerKillTarget{PeerIP: group.PeerIP}
 	}
 
+	portSet := group.LocalPorts
+	portLabel := "Ports"
+	actionLine := fmt.Sprintf(
+		"%s: %s | Action: Enter/k => local %d (%d matches)",
+		portLabel,
+		formatAllPeerGroupPorts(portSet),
+		target.LocalPort,
+		target.Count,
+	)
+	if a.topDirection == topConnectionOutgoing {
+		portSet = group.RemotePorts
+		portLabel = "RPorts"
+		actionLine = fmt.Sprintf(
+			"%s: %s | Action: Enter/k disabled in OUT mode",
+			portLabel,
+			formatAllPeerGroupPorts(portSet),
+		)
+	}
+
 	return &selectedRowPreview{
 		Title: "Selected Detail",
 		Lines: []string{
@@ -349,14 +381,28 @@ func (a *App) buildSelectedPeerGroupPreview(groups []PeerGroup) *selectedRowPrev
 				"States: %s",
 				formatPeerGroupStatePreview(group.States, group.Count),
 			),
-			fmt.Sprintf(
-				"Ports: %s | Action: Enter/k => local %d (%d matches)",
-				formatAllPeerGroupPorts(group.LocalPorts),
-				target.LocalPort,
-				target.Count,
-			),
+			actionLine,
 		},
 	}
+}
+
+func (a *App) updateTopConnectionsPanelTitle() {
+	if len(a.panels) <= 2 || a.panels[2] == nil {
+		return
+	}
+	a.panels[2].SetTitle(a.topDirection.PanelTitle())
+}
+
+func (a *App) toggleTopConnectionsDirection() {
+	if a.topDirection == topConnectionOutgoing {
+		a.topDirection = topConnectionIncoming
+		a.setStatusNote("Top Connections: IN mode (local listener ports, Enter/k enabled)", 4*time.Second)
+	} else {
+		a.topDirection = topConnectionOutgoing
+		a.setStatusNote("Top Connections: OUT mode (remote service ports, Enter/k disabled)", 4*time.Second)
+	}
+	a.selectedTalkerIndex = 0
+	a.renderTopConnectionsPanel()
 }
 
 // promptPortFilter shows a simple input dialog for port filtering.
@@ -373,10 +419,15 @@ func (a *App) promptPortFilter() {
 
 	// Create input field
 	input := tview.NewInputField()
-	input.SetLabel("Filter by port: ")
+	if a.topDirection == topConnectionOutgoing {
+		input.SetLabel("Filter by remote port: ")
+		input.SetTitle(" Remote Port Filter ")
+	} else {
+		input.SetLabel("Filter by local port: ")
+		input.SetTitle(" Local Port Filter ")
+	}
 	input.SetFieldWidth(10)
 	input.SetBorder(true)
-	input.SetTitle(" Port Filter ")
 
 	// Accept only numbers
 	input.SetAcceptanceFunc(tview.InputFieldInteger)

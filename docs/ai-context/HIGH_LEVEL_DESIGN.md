@@ -41,8 +41,12 @@ flowchart TD
 
 Live Top Connections also has a few important presentation behaviors:
 
-- `View=GROUP` groups by `(peer, process)` and keeps the row compact (`PORTS`, queues, bandwidth, process).
-- The selected row gets an inline footer preview (`Selected Detail`) with the full grouped state breakdown and the effective `Enter`/`k` target.
+- The panel can toggle `Dir=IN` / `Dir=OUT` via `o`.
+  - `IN` uses local listener ports as the heuristic for service-facing traffic.
+  - `OUT` keeps non-listener flows and is visibility-only (`Enter`/`k` disabled).
+- `View=GROUP` groups by `(peer, process)` and keeps the row compact (`PORTS` in `IN`, `RPORTS` in `OUT`, queues, bandwidth, process).
+- The selected row gets an inline footer preview (`Selected Detail`) with the full grouped state breakdown and, in `IN`, the effective `Enter`/`k` target.
+- Live Top Connections hides TCP connections owned by the current `holyf-network` PID so internal update/control traffic does not appear as an operator-facing top row.
 - The Diagnosis panel is host-global in v1; it is not scoped to the current filter/search slice.
 
 Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).

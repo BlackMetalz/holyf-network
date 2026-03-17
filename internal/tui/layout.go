@@ -21,7 +21,7 @@ type panelInfo struct {
 var defaultPanels = []panelInfo{
 	{title: " 2. Connection States ", text: "  Loading..."},
 	{title: " 3. Interface Stats ", text: "  Loading..."},
-	{title: " 1. Top Connections ", text: "  Loading..."},
+	{title: " 1. Top Incoming ", text: "  Loading..."},
 	{title: " 4. Conntrack ", text: "  Loading..."},
 	{title: " 5. Diagnosis ", text: "  Loading..."},
 }

@@ -57,7 +57,8 @@ sudo holyf-network -r 5
 # Tab / Shift+Tab: move focus between panels
 # Ctrl+1..5: focus panel (1=Top, 2=States, 3=Interface, 4=Conntrack, 5=Diagnosis)
 # Up / Down: select row in Top Connections
-# Enter / k: block selected Top Connections row
+# o: toggle Top Connections IN/OUT mode
+# Enter / k: block selected Top Connections row (IN mode only)
 # Shift+B: sort by Bandwidth (press again toggles DESC/ASC)
 # Shift+C: sort by Conns (press again toggles DESC/ASC)
 # Shift+P: sort by Port (press again toggles DESC/ASC)
@@ -65,7 +66,7 @@ sudo holyf-network -r 5
 # Shift+I: explain Interface Stats (RX/TX, Packets, Errors, Drops)
 # g: toggle grouped view (peer + process)
 # /: search Top Connections by text (contains match)
-# f: port filter (press f again to clear all filters)
+# f: port filter (local port in IN mode, remote port in OUT mode; press f again to clear all filters)
 # m: toggle sensitive IP masking
 # s: sort Connection States by count (toggle DESC/ASC)
 # b: list active blocks and remove selected peer block

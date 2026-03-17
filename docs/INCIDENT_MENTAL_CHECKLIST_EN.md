@@ -91,13 +91,13 @@ Fast conclusion:
 Switch to `View=GROUP` and look at:
 
 - `CONNS`
-- `PORTS`
+- `PORTS / RPORTS`
 - `Selected Detail -> States`
 
 Use `Selected Detail` to understand:
 
 - what the row actually represents
-- which `peer + local port` `Enter` / `k` would target
+- which `peer + local port` `Enter` / `k` would target in `IN`, or which remote service ports dominate in `OUT`
 
 ## If you see this pattern, think this first
 

@@ -50,6 +50,10 @@ type App struct {
 	sensitiveIP bool
 	// Latest top connections snapshot used by actions (kill peer, etc.).
 	latestTalkers []collector.Connection
+	// Local listener ports used to classify incoming vs outgoing flows.
+	listenPorts      map[int]struct{}
+	listenPortsKnown bool
+	topDirection     topConnectionDirection
 	// Current top-connection bandwidth sample metadata.
 	topSampleSeconds float64
 	topBandwidthNote string
@@ -280,6 +284,12 @@ func (a *App) refreshData() {
 		a.panels[0].SetText(renderConnectionsPanelWithStateSort(connData, retransRates, conntrackRates, a.healthThresholds, a.connStateSortDesc))
 	}
 
+	listenPorts, listenErr := collector.CollectListenPorts()
+	if listenErr == nil {
+		a.listenPorts = listenPorts
+		a.listenPortsKnown = true
+	}
+
 	// Panel 1: Interface Stats
 	ifaceStats, err := collector.CollectInterfaceStats(a.ifaceName)
 	if err != nil {
@@ -301,6 +311,7 @@ func (a *App) refreshData() {
 		a.topBandwidthNote = ""
 		a.topDiagnosis = nil
 		a.selectedTalkerIndex = 0
+		a.updateTopConnectionsPanelTitle()
 		a.panels[2].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
 		bwSample := collector.BandwidthSnapshot{}
@@ -378,6 +389,10 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 
 	case tcell.KeyEnter:
 		if a.focusIndex == 2 {
+			if a.topDirection == topConnectionOutgoing {
+				a.setStatusNote("Enter/k is disabled in OUT mode", 4*time.Second)
+				return nil
+			}
 			a.promptKillPeer()
 			return nil
 		}
@@ -452,6 +467,10 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			a.promptTextFilter()
 			return nil
 		case 'k':
+			if a.focusIndex == 2 && a.topDirection == topConnectionOutgoing {
+				a.setStatusNote("Enter/k is disabled in OUT mode", 4*time.Second)
+				return nil
+			}
 			a.promptKillPeer()
 			return nil
 		case 'b':
@@ -477,6 +496,13 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			a.groupView = !a.groupView
 			a.selectedTalkerIndex = 0
 			a.renderTopConnectionsPanel()
+			return nil
+		case 'o':
+			if a.focusIndex != 2 {
+				a.setStatusNote("Focus Top Connections before toggling IN/OUT", 4*time.Second)
+				return nil
+			}
+			a.toggleTopConnectionsDirection()
 			return nil
 		case 'z':
 			if !a.zoomed && a.focusIndex != 2 {
@@ -633,6 +659,9 @@ func (a *App) exitZoom() {
 
 // updateStatusBar updates the bottom status bar with current state.
 func (a *App) updateStatusBar() {
+	if a.statusBar == nil {
+		return
+	}
 	// Calculate time since last refresh
 	ago := "never"
 	if !a.lastRefresh.IsZero() {

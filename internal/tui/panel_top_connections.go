@@ -22,11 +22,72 @@ const (
 )
 
 const (
-	defaultTalkersHintLine  = "  [dim]Use ↑/↓ select, Enter/k block, /=search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
 	readOnlyTalkersHintLine = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, /=search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i/Shift+I=explain qcols, g=group, L=follow[white]"
-	defaultGroupHintLine    = "  [dim]Use ↑/↓ select, g=connections view, /=search, f=port/clear, Shift+C conns sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
 	readOnlyGroupHintLine   = "  [dim]Use ↑/↓ select, [=prev, ]=next snapshot, a=oldest, e=latest, t=jump-time, g=connections view, /=search, f=port/clear, Shift+C conns sort (toggle DESC/ASC), i/Shift+I=explain qcols, L=follow[white]"
 )
+
+type topConnectionDirection int
+
+const (
+	topConnectionIncoming topConnectionDirection = iota
+	topConnectionOutgoing
+)
+
+func (d topConnectionDirection) Label() string {
+	if d == topConnectionOutgoing {
+		return "OUT"
+	}
+	return "IN"
+}
+
+func (d topConnectionDirection) PanelTitle() string {
+	if d == topConnectionOutgoing {
+		return " 1. Top Outgoing "
+	}
+	return " 1. Top Incoming "
+}
+
+func (d topConnectionDirection) GroupPortHeader() string {
+	if d == topConnectionOutgoing {
+		return "RPORTS"
+	}
+	return "PORTS"
+}
+
+func (d topConnectionDirection) GroupPortLabel() string {
+	if d == topConnectionOutgoing {
+		return "RPorts"
+	}
+	return "Ports"
+}
+
+func (d topConnectionDirection) FilterMatchesPort(conn collector.Connection, port int) bool {
+	if d == topConnectionOutgoing {
+		return conn.RemotePort == port
+	}
+	return conn.LocalPort == port
+}
+
+func (d topConnectionDirection) SortPort(conn collector.Connection) int {
+	if d == topConnectionOutgoing {
+		return conn.RemotePort
+	}
+	return conn.LocalPort
+}
+
+func talkersHintLine(direction topConnectionDirection) string {
+	if direction == topConnectionOutgoing {
+		return "  [dim]Use ↑/↓ select, o=toggle IN/OUT, /=search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
+	}
+	return "  [dim]Use ↑/↓ select, Enter/k block, o=toggle IN/OUT, /=search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
+}
+
+func groupHintLine(direction topConnectionDirection) string {
+	if direction == topConnectionOutgoing {
+		return "  [dim]Use ↑/↓ select, g=connections view, o=toggle IN/OUT, /=search, f=port/clear, Shift+C conns sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
+	}
+	return "  [dim]Use ↑/↓ select, g=connections view, o=toggle IN/OUT, /=search, f=port/clear, Shift+C conns sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
+}
 
 // Label returns a short display name for the status bar chip.
 func (m SortMode) Label() string {
@@ -78,6 +139,10 @@ type selectedRowPreview struct {
 
 // sortConnections sorts a slice in-place according to the given mode.
 func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
+	sortConnectionsWithDirection(conns, mode, desc, topConnectionIncoming)
+}
+
+func sortConnectionsWithDirection(conns []collector.Connection, mode SortMode, desc bool, direction topConnectionDirection) {
 	switch mode {
 	case SortByBandwidth:
 		sort.SliceStable(conns, func(i, j int) bool {
@@ -93,8 +158,8 @@ func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
 			if conns[i].Activity != conns[j].Activity {
 				return compareInt64(conns[i].Activity, conns[j].Activity, desc)
 			}
-			if conns[i].LocalPort != conns[j].LocalPort {
-				return compareInt(conns[i].LocalPort, conns[j].LocalPort, desc)
+			if direction.SortPort(conns[i]) != direction.SortPort(conns[j]) {
+				return compareInt(direction.SortPort(conns[i]), direction.SortPort(conns[j]), desc)
 			}
 			return normalizeIP(conns[i].RemoteIP) < normalizeIP(conns[j].RemoteIP)
 		})
@@ -113,15 +178,15 @@ func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
 			if conns[i].TotalBytesDelta != conns[j].TotalBytesDelta {
 				return compareInt64(conns[i].TotalBytesDelta, conns[j].TotalBytesDelta, desc)
 			}
-			if conns[i].LocalPort != conns[j].LocalPort {
-				return compareInt(conns[i].LocalPort, conns[j].LocalPort, desc)
+			if direction.SortPort(conns[i]) != direction.SortPort(conns[j]) {
+				return compareInt(direction.SortPort(conns[i]), direction.SortPort(conns[j]), desc)
 			}
 			return normalizeIP(conns[i].RemoteIP) < normalizeIP(conns[j].RemoteIP)
 		})
 	case SortByPort:
 		sort.SliceStable(conns, func(i, j int) bool {
-			if conns[i].LocalPort != conns[j].LocalPort {
-				return compareInt(conns[i].LocalPort, conns[j].LocalPort, desc)
+			if direction.SortPort(conns[i]) != direction.SortPort(conns[j]) {
+				return compareInt(direction.SortPort(conns[i]), direction.SortPort(conns[j]), desc)
 			}
 			if conns[i].TotalBytesDelta != conns[j].TotalBytesDelta {
 				return compareInt64(conns[i].TotalBytesDelta, conns[j].TotalBytesDelta, desc)
@@ -135,18 +200,22 @@ func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
 // If portFilter is set, only connections matching that port are shown.
 // maxRows controls how many connections to display (use more when zoomed).
 func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, defaultTalkersHintLine, defaultTopConnectionsPanelWidth, nil)
+	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, talkersHintLine(topConnectionIncoming), defaultTopConnectionsPanelWidth, nil, topConnectionIncoming)
 }
 
 func renderTalkersPanelWithPreview(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, panelWidth int, preview *selectedRowPreview) string {
-	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, defaultTalkersHintLine, panelWidth, preview)
+	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, talkersHintLine(topConnectionIncoming), panelWidth, preview, topConnectionIncoming)
 }
 
 func renderTalkersPanelReadOnly(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, readOnlyTalkersHintLine, defaultTopConnectionsPanelWidth, nil)
+	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, readOnlyTalkersHintLine, defaultTopConnectionsPanelWidth, nil, topConnectionIncoming)
 }
 
-func renderTalkersPanelWithHintAndPreview(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, hintLine string, panelWidth int, preview *selectedRowPreview) string {
+func renderTalkersPanelWithPreviewDirection(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, panelWidth int, preview *selectedRowPreview, direction topConnectionDirection) string {
+	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, talkersHintLine(direction), panelWidth, preview, direction)
+}
+
+func renderTalkersPanelWithHintAndPreview(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, hintLine string, panelWidth int, preview *selectedRowPreview, direction topConnectionDirection) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -163,11 +232,12 @@ func renderTalkersPanelWithHintAndPreview(conns []collector.Connection, portFilt
 	}
 
 	sb.WriteString(fmt.Sprintf(
-		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white] | [aqua]View=CONN[white]\n",
+		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white] | [aqua]Dir=%s[white] | [aqua]View=CONN[white]\n",
 		portChip,
 		maskChip,
 		searchChip,
 		sortLabelWithDirection(sortMode, sortDesc),
+		direction.Label(),
 	))
 	sb.WriteString(hintLine)
 	renderTopConnectionsNotes(&sb, bandwidthNote, panelWidth)
@@ -180,7 +250,7 @@ func renderTalkersPanelWithHintAndPreview(conns []collector.Connection, portFilt
 	// Apply filters (port + contains text).
 	filtered := conns
 	if portFilter != "" {
-		filtered = filterByPort(conns, portFilter)
+		filtered = filterByPortDirection(conns, portFilter, direction)
 	}
 	if textFilter != "" {
 		filtered = filterByText(filtered, textFilter)
@@ -191,7 +261,7 @@ func renderTalkersPanelWithHintAndPreview(conns []collector.Connection, portFilt
 	}
 
 	// Apply sort on the filtered result set.
-	sortConnections(filtered, sortMode, sortDesc)
+	sortConnectionsWithDirection(filtered, sortMode, sortDesc, direction)
 
 	if selectedIndex < 0 {
 		selectedIndex = 0
@@ -298,6 +368,21 @@ func filterByPort(conns []collector.Connection, portStr string) []collector.Conn
 	return result
 }
 
+func filterByPortDirection(conns []collector.Connection, portStr string, direction topConnectionDirection) []collector.Connection {
+	port := parsePortFilter(portStr)
+	if port == 0 {
+		return conns
+	}
+
+	result := make([]collector.Connection, 0, len(conns))
+	for _, conn := range conns {
+		if direction.FilterMatchesPort(conn, port) {
+			result = append(result, conn)
+		}
+	}
+	return result
+}
+
 func filterByLocalPort(conns []collector.Connection, portStr string) []collector.Connection {
 	port := parsePortFilter(portStr)
 	if port == 0 {
@@ -313,6 +398,21 @@ func filterByLocalPort(conns []collector.Connection, portStr string) []collector
 	return result
 }
 
+func filterByRemotePort(conns []collector.Connection, portStr string) []collector.Connection {
+	port := parsePortFilter(portStr)
+	if port == 0 {
+		return conns
+	}
+
+	result := make([]collector.Connection, 0, len(conns))
+	for _, conn := range conns {
+		if conn.RemotePort == port {
+			result = append(result, conn)
+		}
+	}
+	return result
+}
+
 func parsePortFilter(portStr string) int {
 	port, err := strconv.Atoi(strings.TrimSpace(portStr))
 	if err != nil || port < 1 || port > 65535 {
@@ -322,9 +422,17 @@ func parsePortFilter(portStr string) int {
 }
 
 func applyGroupConnectionFilters(conns []collector.Connection, portFilter, textFilter string) []collector.Connection {
+	return applyGroupConnectionFiltersByDirection(conns, portFilter, textFilter, topConnectionIncoming)
+}
+
+func applyGroupConnectionFiltersByDirection(conns []collector.Connection, portFilter, textFilter string, direction topConnectionDirection) []collector.Connection {
 	filtered := conns
 	if strings.TrimSpace(portFilter) != "" {
-		filtered = filterByLocalPort(filtered, portFilter)
+		if direction == topConnectionOutgoing {
+			filtered = filterByRemotePort(filtered, portFilter)
+		} else {
+			filtered = filterByLocalPort(filtered, portFilter)
+		}
 	}
 	if strings.TrimSpace(textFilter) != "" {
 		filtered = filterByText(filtered, textFilter)
@@ -511,6 +619,7 @@ type PeerGroup struct {
 	RxBytesPerSec    float64
 	TotalBytesPerSec float64
 	LocalPorts       map[int]struct{}
+	RemotePorts      map[int]struct{}
 	States           map[string]int
 }
 
@@ -559,17 +668,17 @@ func sortedStateSummaryEntries(states map[string]int) []stateSummaryEntry {
 	return items
 }
 
-func sortedPeerGroupPorts(localPorts map[int]struct{}) []int {
-	portList := make([]int, 0, len(localPorts))
-	for p := range localPorts {
+func sortedPeerGroupPorts(ports map[int]struct{}) []int {
+	portList := make([]int, 0, len(ports))
+	for p := range ports {
 		portList = append(portList, p)
 	}
 	sort.Ints(portList)
 	return portList
 }
 
-func formatPeerGroupPorts(localPorts map[int]struct{}, maxItems int) string {
-	portList := sortedPeerGroupPorts(localPorts)
+func formatPeerGroupPorts(ports map[int]struct{}, maxItems int) string {
+	portList := sortedPeerGroupPorts(ports)
 	if len(portList) == 0 {
 		return "-"
 	}
@@ -590,12 +699,17 @@ func formatPeerGroupPorts(localPorts map[int]struct{}, maxItems int) string {
 	return strings.Join(portStrs, ",")
 }
 
-func formatAllPeerGroupPorts(localPorts map[int]struct{}) string {
-	return formatPeerGroupPorts(localPorts, -1)
+func formatAllPeerGroupPorts(ports map[int]struct{}) string {
+	return formatPeerGroupPorts(ports, -1)
 }
 
 // buildPeerGroups aggregates connections by remote IP + process.
 func buildPeerGroups(conns []collector.Connection, sortDesc bool) []PeerGroup {
+	return buildPeerGroupsWithDirection(conns, sortDesc, topConnectionIncoming)
+}
+
+func buildPeerGroupsWithDirection(conns []collector.Connection, sortDesc bool, direction topConnectionDirection) []PeerGroup {
+	_ = direction
 	byKey := make(map[string]*PeerGroup)
 
 	for _, conn := range conns {
@@ -609,10 +723,11 @@ func buildPeerGroups(conns []collector.Connection, sortDesc bool) []PeerGroup {
 		g, exists := byKey[key]
 		if !exists {
 			g = &PeerGroup{
-				PeerIP:     peer,
-				ProcName:   proc,
-				LocalPorts: make(map[int]struct{}),
-				States:     make(map[string]int),
+				PeerIP:      peer,
+				ProcName:    proc,
+				LocalPorts:  make(map[int]struct{}),
+				RemotePorts: make(map[int]struct{}),
+				States:      make(map[string]int),
 			}
 			byKey[key] = g
 		}
@@ -627,6 +742,7 @@ func buildPeerGroups(conns []collector.Connection, sortDesc bool) []PeerGroup {
 		g.RxBytesPerSec += conn.RxBytesPerSec
 		g.TotalBytesPerSec += conn.TotalBytesPerSec
 		g.LocalPorts[conn.LocalPort] = struct{}{}
+		g.RemotePorts[conn.RemotePort] = struct{}{}
 		g.States[conn.State]++
 	}
 
@@ -656,18 +772,22 @@ func buildPeerGroups(conns []collector.Connection, sortDesc bool) []PeerGroup {
 
 // renderPeerGroupPanel renders the per-peer aggregate view.
 func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, defaultGroupHintLine, defaultTopConnectionsPanelWidth, nil)
+	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, groupHintLine(topConnectionIncoming), defaultTopConnectionsPanelWidth, nil, topConnectionIncoming)
 }
 
 func renderPeerGroupPanelWithPreview(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, panelWidth int, preview *selectedRowPreview) string {
-	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, defaultGroupHintLine, panelWidth, preview)
+	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, groupHintLine(topConnectionIncoming), panelWidth, preview, topConnectionIncoming)
 }
 
 func renderPeerGroupPanelReadOnly(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, readOnlyGroupHintLine, defaultTopConnectionsPanelWidth, nil)
+	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, readOnlyGroupHintLine, defaultTopConnectionsPanelWidth, nil, topConnectionIncoming)
 }
 
-func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, hintLine string, panelWidth int, preview *selectedRowPreview) string {
+func renderPeerGroupPanelWithPreviewDirection(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, panelWidth int, preview *selectedRowPreview, direction topConnectionDirection) string {
+	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, groupHintLine(direction), panelWidth, preview, direction)
+}
+
+func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, hintLine string, panelWidth int, preview *selectedRowPreview, direction topConnectionDirection) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -684,10 +804,11 @@ func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFi
 	}
 
 	sb.WriteString(fmt.Sprintf(
-		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white] | [aqua]View=GROUP[white]\n",
+		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white] | [aqua]Dir=%s[white] | [aqua]View=GROUP[white]\n",
 		portChip,
 		searchChip,
 		sortChip,
+		direction.Label(),
 	))
 	sb.WriteString(hintLine)
 	renderTopConnectionsNotes(&sb, bandwidthNote, panelWidth)
@@ -698,13 +819,13 @@ func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFi
 	}
 
 	// Apply filters first, then group.
-	filtered := applyGroupConnectionFilters(conns, portFilter, textFilter)
+	filtered := applyGroupConnectionFiltersByDirection(conns, portFilter, textFilter, direction)
 	if len(filtered) == 0 {
 		sb.WriteString("  No connections matching current filters")
 		return sb.String()
 	}
 
-	groups := buildPeerGroups(filtered, sortDesc)
+	groups := buildPeerGroupsWithDirection(filtered, sortDesc, direction)
 	if selectedIndex < 0 {
 		selectedIndex = 0
 	}
@@ -729,7 +850,7 @@ func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFi
 		bwColWidth, "TX/s",
 		bwColWidth, "RX/s",
 		processColWidth, "PROCESS",
-		portsColWidth, "PORTS",
+		portsColWidth, direction.GroupPortHeader(),
 	))
 
 	for i, g := range groups {
@@ -766,7 +887,11 @@ func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFi
 		}
 		procField := fmt.Sprintf("[%s]%-*s[white]", procColor, processColWidth, procText)
 
-		portsDisplay := truncateRight(formatPeerGroupPorts(g.LocalPorts, 6), portsColWidth)
+		portSet := g.LocalPorts
+		if direction == topConnectionOutgoing {
+			portSet = g.RemotePorts
+		}
+		portsDisplay := truncateRight(formatPeerGroupPorts(portSet, 6), portsColWidth)
 
 		// Color count by severity.
 		countColor := "white"

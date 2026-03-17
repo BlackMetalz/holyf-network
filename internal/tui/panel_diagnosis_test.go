@@ -21,7 +21,7 @@ func TestCreatePanelsIncludesDiagnosisPanel(t *testing.T) {
 	titles := []string{
 		" 2. Connection States ",
 		" 3. Interface Stats ",
-		" 1. Top Connections ",
+		" 1. Top Incoming ",
 		" 4. Conntrack ",
 		" 5. Diagnosis ",
 	}
@@ -140,11 +140,11 @@ func TestDiagnosisPanelRemainsHostGlobalAcrossGroupToggle(t *testing.T) {
 	}
 	a.topDiagnosis = &topDiagnosis{
 		Severity: healthWarn,
-		Issue:   "TIME_WAIT churn",
-		Scope:   "198.51.100.10 :8080",
-		Signal:  "TW 2 | Retr LOW SAMPLE | CT 4%",
-		Likely:  "short-lived conn churn, not packet loss",
-		Check:   "keepalive, conn reuse, client retries",
+		Issue:    "TIME_WAIT churn",
+		Scope:    "198.51.100.10 :8080",
+		Signal:   "TW 2 | Retr LOW SAMPLE | CT 4%",
+		Likely:   "short-lived conn churn, not packet loss",
+		Check:    "keepalive, conn reuse, client retries",
 	}
 
 	a.renderDiagnosisPanel()
