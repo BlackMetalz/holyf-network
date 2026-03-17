@@ -37,7 +37,7 @@ func renderDiagnosisCompactPanel(diagnosis *topDiagnosis, contentWidth int) stri
 	issue, scope := splitDiagnosisHeadline(strings.TrimSpace(diagnosis.Headline))
 	writeDiagnosisField(&sb, "Issue", issue, contentWidth, colorForHealthLevel(diagnosis.Severity))
 	if scope != "" {
-		writeDiagnosisField(&sb, "Scope", scope, contentWidth, "white")
+		writeDiagnosisField(&sb, "Scope", scope, contentWidth, "dim")
 	}
 
 	signal := compactDiagnosisSignal(diagnosis)
