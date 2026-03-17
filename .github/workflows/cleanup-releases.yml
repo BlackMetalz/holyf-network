@@ -11,7 +11,7 @@ on:
       keep_latest:
         description: 'Số releases muốn giữ lại'
         required: false
-        default: '10'
+        default: '20'
 
 jobs:
   cleanup:
