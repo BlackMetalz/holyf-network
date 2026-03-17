@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -87,11 +88,12 @@ func (a *App) topConnectionsPanelLayout(hasRows bool) topConnectionsPanelLayout 
 }
 
 func (a *App) filteredTopConnections() []collector.Connection {
-	if len(a.latestTalkers) == 0 {
+	source := a.topConnectionsSource()
+	if len(source) == 0 {
 		return nil
 	}
 
-	filtered := a.applyTopConnectionFilters(a.latestTalkers)
+	filtered := a.applyTopConnectionFilters(source)
 	if len(filtered) == 0 {
 		return nil
 	}
@@ -102,11 +104,12 @@ func (a *App) filteredTopConnections() []collector.Connection {
 }
 
 func (a *App) filteredPeerGroups() []PeerGroup {
-	if len(a.latestTalkers) == 0 {
+	source := a.topConnectionsSource()
+	if len(source) == 0 {
 		return nil
 	}
 
-	filtered := applyGroupConnectionFilters(a.latestTalkers, a.portFilter, a.textFilter)
+	filtered := applyGroupConnectionFilters(source, a.portFilter, a.textFilter)
 	if len(filtered) == 0 {
 		return nil
 	}
@@ -163,6 +166,7 @@ func (a *App) clampTopConnectionSelection() {
 }
 
 func (a *App) renderTopConnectionsPanel() {
+	source := a.topConnectionsSource()
 	if a.groupView {
 		groups := a.filteredPeerGroups()
 		layout := a.topConnectionsPanelLayout(len(groups) > 0)
@@ -180,7 +184,7 @@ func (a *App) renderTopConnectionsPanel() {
 		}
 
 		a.panels[2].SetText(renderPeerGroupPanelWithPreview(
-			a.latestTalkers,
+			source,
 			a.portFilter,
 			a.textFilter,
 			layout.RowLimit,
@@ -211,7 +215,7 @@ func (a *App) renderTopConnectionsPanel() {
 	}
 
 	a.panels[2].SetText(renderTalkersPanelWithPreview(
-		a.latestTalkers,
+		source,
 		a.portFilter,
 		a.textFilter,
 		layout.RowLimit,
@@ -224,6 +228,26 @@ func (a *App) renderTopConnectionsPanel() {
 		layout.PanelWidth,
 		preview,
 	))
+}
+
+func (a *App) topConnectionsSource() []collector.Connection {
+	if len(a.latestTalkers) == 0 {
+		return nil
+	}
+
+	selfPID := os.Getpid()
+	if selfPID <= 0 {
+		return a.latestTalkers
+	}
+
+	filtered := make([]collector.Connection, 0, len(a.latestTalkers))
+	for _, conn := range a.latestTalkers {
+		if conn.PID == selfPID {
+			continue
+		}
+		filtered = append(filtered, conn)
+	}
+	return filtered
 }
 
 func (a *App) moveTopConnectionSelection(delta int) bool {

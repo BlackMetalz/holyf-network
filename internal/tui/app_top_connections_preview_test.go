@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -276,5 +277,46 @@ func TestRenderTopConnectionsPanelUpdatesPreviewOnSelectionAndGroupToggle(t *tes
 	if !strings.Contains(groupText, "Ports: 80 | Action: Enter/k => local 80 (1 matches)") &&
 		!strings.Contains(groupText, "Ports: 81 | Action: Enter/k => local 81 (1 matches)") {
 		t.Fatalf("expected group preview action line after toggle, got: %q", groupText)
+	}
+}
+
+func TestTopConnectionsSourceHidesCurrentProcessTraffic(t *testing.T) {
+	t.Parallel()
+
+	selfPID := os.Getpid()
+	a := newPhase3TestApp()
+	a.latestTalkers = []collector.Connection{
+		{LocalIP: "10.0.0.10", LocalPort: 18080, RemoteIP: "172.25.110.137", RemotePort: 52001, State: "TIME_WAIT", ProcName: "-", PID: 2001},
+		{LocalIP: "10.0.0.10", LocalPort: 52246, RemoteIP: "20.205.243.168", RemotePort: 443, State: "ESTABLISHED", ProcName: "holyf-network", PID: selfPID},
+	}
+
+	source := a.topConnectionsSource()
+	if len(source) != 1 {
+		t.Fatalf("expected self traffic to be filtered, got=%d rows", len(source))
+	}
+	if source[0].RemoteIP != "172.25.110.137" {
+		t.Fatalf("unexpected remaining row after self filter: %+v", source[0])
+	}
+}
+
+func TestRenderTopConnectionsPanelHidesCurrentProcessTraffic(t *testing.T) {
+	t.Parallel()
+
+	selfPID := os.Getpid()
+	a := newPhase3TestApp()
+	a.groupView = true
+	a.latestTalkers = []collector.Connection{
+		{LocalIP: "10.0.0.10", LocalPort: 18080, RemoteIP: "172.25.110.137", RemotePort: 52001, State: "TIME_WAIT", ProcName: "-", PID: 2001},
+		{LocalIP: "10.0.0.10", LocalPort: 52246, RemoteIP: "20.205.243.168", RemotePort: 443, State: "ESTABLISHED", ProcName: "holyf-network", PID: selfPID},
+	}
+	a.panels[2].SetRect(0, 0, 120, 27)
+
+	a.renderTopConnectionsPanel()
+	text := a.panels[2].GetText(true)
+	if strings.Contains(text, "20.205.243.168") || strings.Contains(text, "holyf-network") {
+		t.Fatalf("expected current process traffic to stay hidden from Top Connections, got: %q", text)
+	}
+	if !strings.Contains(text, "172.25.110.137") {
+		t.Fatalf("expected non-self row to remain visible, got: %q", text)
 	}
 }

@@ -53,6 +53,7 @@ Quick interpretation:
 - `Selected Detail`: in live mode, the footer preview explains the currently selected row and what `Enter` / `k` would target.
   - In `GROUP`, this is especially useful because the action still resolves to one concrete `peer + local port` target.
   - The full grouped state mix is shown there (`States: EST ... - TW ... - CW ...`), not in the row list anymore.
+- The live Top panel hides TCP connections owned by the current `holyf-network` process so update-check/control traffic does not pollute operator-facing rows.
 
 ## 2) Connection States
 

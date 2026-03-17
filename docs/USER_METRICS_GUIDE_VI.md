@@ -53,6 +53,7 @@ Diễn giải nhanh:
 - `Selected Detail`: phần preview ở cuối panel live giải thích row đang chọn và nếu bấm `Enter` / `k` thì app sẽ target gì.
   - Ở `GROUP`, phần này đặc biệt hữu ích vì action thực tế vẫn resolve về một `peer + local port` cụ thể.
   - Full state breakdown của group cũng nằm ở đây (`States: EST ... - TW ... - CW ...`), không còn nằm trên row list nữa.
+- Panel Top live sẽ ẩn TCP connection do chính process `holyf-network` hiện tại tạo ra, để traffic control-plane như update check không chui vào danh sách operator đang xem.
 
 ## 2) Connection States
 
