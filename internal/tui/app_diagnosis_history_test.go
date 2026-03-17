@@ -92,7 +92,7 @@ func TestHandleKeyEventDOpensDiagnosisHistoryModal(t *testing.T) {
 	if name != "diagnosis-history" {
 		t.Fatalf("expected diagnosis-history modal, got %q", name)
 	}
-	_, plain := statusHotkeysForPage(name)
+	_, plain := a.statusHotkeysForPage(name)
 	if plain != "Enter=close Esc=close" {
 		t.Fatalf("expected diagnosis-history hotkeys, got=%q", plain)
 	}

@@ -174,7 +174,8 @@ func TestStatusHotkeysForModalPages(t *testing.T) {
 		tc := tc
 		t.Run(tc.page, func(t *testing.T) {
 			t.Parallel()
-			_, plain := statusHotkeysForPage(tc.page)
+			a := newPhase3TestApp()
+			_, plain := a.statusHotkeysForPage(tc.page)
 			if plain != tc.wantPlain {
 				t.Fatalf("plain hotkeys mismatch for page=%q: got=%q want=%q", tc.page, plain, tc.wantPlain)
 			}

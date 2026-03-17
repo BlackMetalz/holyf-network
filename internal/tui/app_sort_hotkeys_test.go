@@ -160,11 +160,24 @@ func TestTopConnectionsSortHintsIncludeDirectOnly(t *testing.T) {
 func TestStatusHotkeysIncludeHelp(t *testing.T) {
 	t.Parallel()
 
-	_, plain := statusHotkeysForPage("main")
-	if strings.Contains(plain, " o ") {
-		t.Fatalf("main hotkeys should not mention o, got: %q", plain)
+	tests := []struct {
+		name      string
+		focus     int
+		direction topConnectionDirection
+		want      []string
+	}{
+		{name: "top incoming", focus: 2, direction: topConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "Enter/k=act", "?=help"}},
+		{name: "top outgoing", focus: 2, direction: topConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "Enter/k=disabled", "?=help"}},
+		{name: "states", focus: 0, direction: topConnectionIncoming, want: []string{"s=sort", "Ctrl+1..5=focus", "?=help"}},
+		{name: "diagnosis", focus: 4, direction: topConnectionIncoming, want: []string{"d=history", "Ctrl+1..5=focus", "?=help"}},
 	}
-	if !strings.Contains(plain, "? help") {
-		t.Fatalf("main hotkeys should mention help, got: %q", plain)
+
+	for _, tc := range tests {
+		_, plain := liveMainStatusHotkeys(tc.focus, tc.direction)
+		for _, want := range tc.want {
+			if !strings.Contains(plain, want) {
+				t.Fatalf("%s hotkeys should contain %q, got: %q", tc.name, want, plain)
+			}
+		}
 	}
 }

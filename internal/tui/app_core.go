@@ -25,6 +25,7 @@ type App struct {
 	app       *tview.Application
 	pages     *tview.Pages
 	panels    []*tview.TextView
+	helpView  *tview.TextView
 	statusBar *tview.TextView
 	grid      *tview.Grid // Store grid for zoom toggle
 
@@ -148,7 +149,11 @@ func (a *App) Run() error {
 	a.panels = createPanels()
 	a.statusBar = createStatusBar(a.ifaceName)
 	a.grid = createGrid(a.panels, a.statusBar)
-	helpModal := createHelpModal()
+	helpModal, helpView := createHelpModal()
+	a.helpView = helpView
+	if a.helpView != nil {
+		a.helpView.SetText(buildLiveHelpText(a))
+	}
 
 	// tview.Pages lets us stack "pages" (layers) on top of each other.
 	// "main" is always visible, "help" is shown/hidden on top.
@@ -613,6 +618,9 @@ func (a *App) applyTopConnectionSortInput(mode SortMode) {
 }
 
 func (a *App) showHelp() {
+	if a.helpView != nil {
+		a.helpView.SetText(buildLiveHelpText(a))
+	}
 	a.pages.SendToFront("help") // Ensure help renders above main after zoom reorder
 	a.pages.ShowPage("help")
 	a.updateStatusBar()
@@ -696,7 +704,7 @@ func (a *App) updateStatusBar() {
 	}
 
 	page := a.frontPageName()
-	hotkeysStyled, hotkeysPlain := statusHotkeysForPage(page)
+	hotkeysStyled, hotkeysPlain := a.statusHotkeysForPage(page)
 	leftStyled := fmt.Sprintf(
 		" [yellow]%s[white] |%s Updated: [green]%s[white] | Refresh Intervals: [green]%ds[white] | %s",
 		a.ifaceName,
@@ -744,7 +752,7 @@ func (a *App) frontPageName() string {
 	return name
 }
 
-func statusHotkeysForPage(page string) (styled string, plain string) {
+func (a *App) statusHotkeysForPage(page string) (styled string, plain string) {
 	switch page {
 	case "help":
 		return "[dim]any key[white]=close", "any key=close"
@@ -770,7 +778,7 @@ func statusHotkeysForPage(page string) (styled string, plain string) {
 	case "blocked-peers-remove-result", "block-summary":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[white]?[dim] help  [white]q[dim] quit[white]", "? help  q quit"
+		return liveMainStatusHotkeys(a.focusIndex, a.topDirection)
 	}
 }
 
