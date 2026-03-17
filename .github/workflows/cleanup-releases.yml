@@ -1,0 +1,30 @@
+# .github/workflows/cleanup-releases.yml
+name: Cleanup Old Releases
+
+on:
+  workflow_run:
+    workflows: ["Release"]  # tên workflow release của bro
+    types:
+      - completed
+  workflow_dispatch:  # cho phép chạy manual
+    inputs:
+      keep_latest:
+        description: 'Số releases muốn giữ lại'
+        required: false
+        default: '10'
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Delete old releases
+        uses: dev-drprasad/delete-older-releases@v0.3.4
+        with:
+          keep_latest: ${{ github.event.inputs.keep_latest || 10 }}
+          delete_tags: false        # xóa luôn git tag. Hell no.
+          delete_prerelease_only: false  # xóa cả stable releases. Hell no.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
