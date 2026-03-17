@@ -344,7 +344,7 @@ If you need a concrete flow:
 If you need a pattern:
 
 - use `View=GROUP`
-- use `STATE %` to see whether that group is mostly `EST`, `TW`, `CW`, or mixed
+- use `Selected Detail` to see the full grouped state breakdown (`States: ...`)
 
 ### Step 4: look at `Selected Detail`
 

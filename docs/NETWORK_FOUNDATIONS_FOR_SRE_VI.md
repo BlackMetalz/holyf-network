@@ -343,7 +343,7 @@ Nếu cần xem flow cụ thể:
 Nếu cần xem mẫu hình:
 
 - ở `View=GROUP`: xem theo `(peer, process)`
-- dùng `STATE %` để biết group đó đang là `EST`, `TW`, `CW` hay mixed
+- dùng `Selected Detail` để xem full state breakdown của group (`States: ...`)
 
 ### Bước 4: nhìn `Selected Detail`
 

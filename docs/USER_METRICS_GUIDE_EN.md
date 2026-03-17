@@ -38,7 +38,6 @@ Core columns:
 - `TX/s`, `RX/s`: throughput computed from conntrack byte deltas in current interval.
 - In `View=GROUP`, rows also summarize:
   - `PORTS`: local ports currently represented in the group.
-  - `STATE %`: top TCP states in that group (for example `EST 70% - TW 20% - CW 10%`).
 
 `View=CONN` vs `View=GROUP`:
 
@@ -55,6 +54,7 @@ Quick interpretation:
   - In v1 it is host-global, so it does not narrow itself to the current filter/search slice.
 - `Selected Detail`: in live mode, the footer preview explains the currently selected row and what `Enter` / `k` would target.
   - In `GROUP`, this is especially useful because the action still resolves to one concrete `peer + local port` target.
+  - The full grouped state mix is shown there (`States: EST ... - TW ... - CW ...`), not in the row list anymore.
 
 ## 2) Connection States
 

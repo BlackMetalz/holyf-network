@@ -717,12 +717,11 @@ func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFi
 		countColWidth   = 6
 		queueColWidth   = 6
 		bwColWidth      = 8
-		processColWidth = 9
-		portsColWidth   = 10
-		stateColWidth   = 31
+		processColWidth = 12
+		portsColWidth   = 18
 	)
 
-	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %*s %*s %*s %-*s %-*s %-*s[white]\n",
+	sb.WriteString(fmt.Sprintf("  [dim]%-*s %*s %*s %*s %*s %*s %-*s %-*s[white]\n",
 		peerColWidth, "PEER",
 		countColWidth, "CONNS",
 		queueColWidth, "SEND-Q",
@@ -731,7 +730,6 @@ func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFi
 		bwColWidth, "RX/s",
 		processColWidth, "PROCESS",
 		portsColWidth, "PORTS",
-		stateColWidth, "STATE %",
 	))
 
 	for i, g := range groups {
@@ -768,8 +766,7 @@ func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFi
 		}
 		procField := fmt.Sprintf("[%s]%-*s[white]", procColor, processColWidth, procText)
 
-		portsDisplay := truncateRight(formatPeerGroupPorts(g.LocalPorts, 4), portsColWidth)
-		stateDisplay := truncateRight(formatPeerGroupStatePercent(g.States, g.Count), stateColWidth)
+		portsDisplay := truncateRight(formatPeerGroupPorts(g.LocalPorts, 6), portsColWidth)
 
 		// Color count by severity.
 		countColor := "white"
@@ -781,7 +778,7 @@ func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFi
 
 		prefix := rowSelectionPrefix(i == selectedIndex)
 
-		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %s %s %s %s %s %-*s %-*s\n",
+		sb.WriteString(fmt.Sprintf("%s%-*s [%s]%*d[white] %s %s %s %s %s %-*s\n",
 			prefix,
 			peerColWidth, peer,
 			countColor, countColWidth, g.Count,
@@ -791,7 +788,6 @@ func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFi
 			rxRateField,
 			procField,
 			portsColWidth, portsDisplay,
-			stateColWidth, stateDisplay,
 		))
 	}
 
@@ -811,27 +807,6 @@ func uniquePeerCount(groups []PeerGroup) int {
 		seen[g.PeerIP] = struct{}{}
 	}
 	return len(seen)
-}
-
-func formatPeerGroupStatePercent(states map[string]int, total int) string {
-	if total <= 0 || len(states) == 0 {
-		return "-"
-	}
-
-	items := sortedStateSummaryEntries(states)
-	if len(items) == 0 {
-		return "-"
-	}
-
-	if len(items) > 3 {
-		items = items[:3]
-	}
-
-	parts := make([]string, 0, len(items))
-	for _, item := range items {
-		parts = append(parts, fmt.Sprintf("%s %s", shortStateName(item.Name), formatStatePercent(item.Count, total)))
-	}
-	return strings.Join(parts, " - ")
 }
 
 func formatPeerGroupStatePreview(states map[string]int, total int) string {

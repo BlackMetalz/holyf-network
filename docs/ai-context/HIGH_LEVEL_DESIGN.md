@@ -41,8 +41,8 @@ flowchart TD
 
 Live Top Connections also has a few important presentation behaviors:
 
-- `View=GROUP` groups by `(peer, process)` and shows a compact `STATE %` breakdown per row.
-- The selected row gets an inline footer preview (`Selected Detail`) explaining the row and the effective `Enter`/`k` target.
+- `View=GROUP` groups by `(peer, process)` and keeps the row compact (`PORTS`, queues, bandwidth, process).
+- The selected row gets an inline footer preview (`Selected Detail`) with the full grouped state breakdown and the effective `Enter`/`k` target.
 - The diagnosis note is host-global in v1; it is not scoped to the current filter/search slice.
 
 Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).

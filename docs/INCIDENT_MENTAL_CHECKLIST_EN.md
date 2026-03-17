@@ -92,7 +92,7 @@ Switch to `View=GROUP` and look at:
 
 - `CONNS`
 - `PORTS`
-- `STATE %`
+- `Selected Detail -> States`
 
 Use `Selected Detail` to understand:
 

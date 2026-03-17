@@ -109,7 +109,7 @@ This is the current high-signal layout (non-essential folders omitted):
     - `app_history.go`: action log modal + persistence (`~/.holyf-network/history.log`).
     - `history_*.go`: read-only replay mode UI and key handling.
     - `panel_*.go`: pure rendering text for each panel.
-      - `panel_top_connections.go` renders live `View=GROUP` by `(peer, process)`, row `STATE %`, diagnosis notes, and selected-row preview.
+      - `panel_top_connections.go` renders live `View=GROUP` by `(peer, process)`, diagnosis notes, and selected-row preview (including grouped state breakdown in the footer preview).
     - `layout.go`: grid composition.
 
 ## Test Map

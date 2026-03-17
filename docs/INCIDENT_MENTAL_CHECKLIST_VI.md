@@ -92,7 +92,7 @@ Kết luận nhanh:
 
 - `CONNS`
 - `PORTS`
-- `STATE %`
+- `Selected Detail -> States`
 
 Dùng `Selected Detail` để hiểu:
 
