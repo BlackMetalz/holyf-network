@@ -11,6 +11,11 @@ import (
 
 type topDiagnosis struct {
 	Severity   healthLevel
+	Issue      string
+	Scope      string
+	Signal     string
+	Likely     string
+	Check      string
 	Headline   string
 	Reason     string
 	Evidence   []string
@@ -41,6 +46,17 @@ func (a *App) buildTopDiagnosis(
 		}
 		return &topDiagnosis{
 			Severity: level,
+			Issue:    "Conntrack drops",
+			Scope:    "host-wide",
+			Signal: fmt.Sprintf(
+				"CT %s | Drops %.1f/s | %s/%s",
+				diagnosisConntrackText(conntrack),
+				conntrack.DropsPerSec,
+				formatNumber(conntrack.Current),
+				formatNumber(conntrack.Max),
+			),
+			Likely: "kernel cannot insert new tracked flows",
+			Check:  "conntrack -S, nf_conntrack_max, NAT churn",
 			Headline: "Conntrack drops active",
 			Reason: fmt.Sprintf(
 				"Kernel is dropping new tracked flows at %.0f/s; check conntrack pressure, NAT churn, or nf_conntrack_max.",
@@ -68,6 +84,16 @@ func (a *App) buildTopDiagnosis(
 		}
 		return &topDiagnosis{
 			Severity: conntrackLevel,
+			Issue:    "Conntrack pressure",
+			Scope:    "host-wide",
+			Signal: fmt.Sprintf(
+				"CT %s | %s/%s | Drops idle",
+				diagnosisConntrackText(conntrack),
+				formatNumber(conntrack.Current),
+				formatNumber(conntrack.Max),
+			),
+			Likely: "kernel state-table pressure is building",
+			Check:  "conntrack -S, nf_conntrack_max, churn source",
 			Headline: "Conntrack pressure high",
 			Reason: fmt.Sprintf(
 				"Table usage is %.0f%% of max; capacity is getting tight before inserts start failing.",
@@ -84,6 +110,11 @@ func (a *App) buildTopDiagnosis(
 	if retransLevel >= healthWarn && retrans != nil {
 		return &topDiagnosis{
 			Severity: retransLevel,
+			Issue:    "TCP retrans high",
+			Scope:    "host-wide",
+			Signal:   fmt.Sprintf("Retr %.2f%% | Out %.1f/s | EST %d", retrans.RetransPercent, retrans.OutSegsPerSec, sample.Established),
+			Likely:   "packet loss, RTT spikes, NIC errors, or congestion",
+			Check:    "NIC errors/drops, ss -tin, path loss/RTT",
 			Headline: "TCP retrans is high",
 			Reason: fmt.Sprintf(
 				"Retrans is %.2f%% with enough traffic sample (%.1f out seg/s, %d ESTABLISHED); check packet loss, RTT, NIC errors, or path congestion.",
@@ -102,28 +133,36 @@ func (a *App) buildTopDiagnosis(
 		}
 	}
 
-	if diagnosis := a.buildStateDiagnosis("SYN_RECV", data.States["SYN_RECV"]); diagnosis != nil {
+	retransSignal := diagnosisRetransText(retrans, sample)
+	conntrackSignal := diagnosisConntrackText(conntrack)
+
+	if diagnosis := a.buildStateDiagnosis("SYN_RECV", data.States["SYN_RECV"], retransSignal, conntrackSignal); diagnosis != nil {
 		return diagnosis
 	}
-	if diagnosis := a.buildStateDiagnosis("CLOSE_WAIT", data.States["CLOSE_WAIT"]); diagnosis != nil {
+	if diagnosis := a.buildStateDiagnosis("CLOSE_WAIT", data.States["CLOSE_WAIT"], retransSignal, conntrackSignal); diagnosis != nil {
 		return diagnosis
 	}
 	if conntrackLevel < healthWarn && retransLevel < healthWarn {
-		if diagnosis := a.buildStateDiagnosis("TIME_WAIT", data.States["TIME_WAIT"]); diagnosis != nil {
+		if diagnosis := a.buildStateDiagnosis("TIME_WAIT", data.States["TIME_WAIT"], retransSignal, conntrackSignal); diagnosis != nil {
 			return diagnosis
 		}
 	}
-	if diagnosis := a.buildStateDiagnosis("FIN_WAIT1", data.States["FIN_WAIT1"]); diagnosis != nil {
+	if diagnosis := a.buildStateDiagnosis("FIN_WAIT1", data.States["FIN_WAIT1"], retransSignal, conntrackSignal); diagnosis != nil {
 		return diagnosis
 	}
 
 	return &topDiagnosis{
 		Severity: healthOK,
+		Issue:    "No dominant issue",
+		Scope:    "host-wide",
+		Signal:   fmt.Sprintf("Retr %s | CT %s | States stable", retransSignal, conntrackSignal),
+		Likely:   "no warning-level signal is dominating right now",
+		Check:    "watch Top/States, wait next sample",
 		Headline: "No dominant network issue",
 		Reason: fmt.Sprintf(
 			"Retrans is %s, conntrack is %s, and no warning-level TCP state dominates.",
-			diagnosisRetransText(retrans, sample),
-			diagnosisConntrackText(conntrack),
+			retransSignal,
+			conntrackSignal,
 		),
 		Evidence: []string{
 			fmt.Sprintf("Retrans: %s.", diagnosisRetransEvidenceText(retrans, sample)),
@@ -155,7 +194,7 @@ func diagnosisRetransLevel(
 	return classifyMetric(retrans.RetransPercent, thresholds.RetransPercent), sample
 }
 
-func (a *App) buildStateDiagnosis(state string, totalCount int) *topDiagnosis {
+func (a *App) buildStateDiagnosis(state string, totalCount int, retransSignal string, conntrackSignal string) *topDiagnosis {
 	warning, ok := stateWarnings[state]
 	if !ok || totalCount <= warning.threshold {
 		return nil
@@ -163,24 +202,30 @@ func (a *App) buildStateDiagnosis(state string, totalCount int) *topDiagnosis {
 
 	culprit, found := findStateDiagnosisCulprit(a.latestTalkers, state)
 	headline := stateDiagnosisHeadline(state, culprit, found, a.sensitiveIP)
+	scope := diagnosisScope(culprit, found, a.sensitiveIP)
 
 	evidence := []string{
 		fmt.Sprintf("State count: %s %s sockets (warn > %s).", formatNumber(totalCount), state, formatNumber(warning.threshold)),
 	}
 	if found {
-		evidence = append(evidence, fmt.Sprintf(
-			"Culprit: %s on :%d via %s (%s sockets).",
-			formatPreviewIP(culprit.PeerIP, a.sensitiveIP),
-			culprit.LocalPort,
-			diagnosisProcLabel(culprit.ProcName),
-			formatNumber(culprit.Count),
-		))
-	} else {
-		evidence = append(evidence, "Culprit: not resolved from the current top-connection sample.")
+		if proc := diagnosisProcLabel(culprit.ProcName); proc != "unresolved proc" {
+			evidence = append(evidence, fmt.Sprintf(
+				"Culprit: %s on :%d via %s (%s sockets).",
+				formatPreviewIP(culprit.PeerIP, a.sensitiveIP),
+				culprit.LocalPort,
+				proc,
+				formatNumber(culprit.Count),
+			))
+		}
 	}
 
 	return &topDiagnosis{
 		Severity:   stateDiagnosisSeverity(warning.color),
+		Issue:      stateDiagnosisIssue(state),
+		Scope:      scope,
+		Signal:     fmt.Sprintf("%s %s | Retr %s | CT %s", shortStateName(state), formatNumber(totalCount), retransSignal, conntrackSignal),
+		Likely:     stateDiagnosisLikely(state),
+		Check:      stateDiagnosisCheck(state),
 		Headline:   headline,
 		Reason:     stateDiagnosisReason(state, totalCount),
 		Evidence:   evidence,
@@ -251,6 +296,21 @@ func stateDiagnosisSeverity(color string) healthLevel {
 	return healthWarn
 }
 
+func stateDiagnosisIssue(state string) string {
+	switch state {
+	case "SYN_RECV":
+		return "SYN_RECV spike"
+	case "CLOSE_WAIT":
+		return "CLOSE_WAIT pressure"
+	case "TIME_WAIT":
+		return "TIME_WAIT churn"
+	case "FIN_WAIT1":
+		return "FIN_WAIT1 lag"
+	default:
+		return state
+	}
+}
+
 func stateDiagnosisHeadline(state string, culprit stateDiagnosisCulprit, found bool, sensitiveIP bool) string {
 	base := map[string]string{
 		"SYN_RECV":   "SYN_RECV spike",
@@ -282,6 +342,21 @@ func stateDiagnosisReason(state string, totalCount int) string {
 	}
 }
 
+func stateDiagnosisLikely(state string) string {
+	switch state {
+	case "SYN_RECV":
+		return "half-open handshakes are piling up"
+	case "CLOSE_WAIT":
+		return "peer closed; local app has not closed sockets"
+	case "TIME_WAIT":
+		return "short-lived conn churn, not packet loss"
+	case "FIN_WAIT1":
+		return "close handshake or peer ACKs are lagging"
+	default:
+		return "warning-level TCP state pressure"
+	}
+}
+
 func stateDiagnosisNextChecks(state string) []string {
 	switch state {
 	case "SYN_RECV":
@@ -309,6 +384,21 @@ func stateDiagnosisNextChecks(state string) []string {
 			"Inspect the dominant state directly in Connection States and Top Connections.",
 			"Correlate the state spike with the owning process, peer, and local service port.",
 		}
+	}
+}
+
+func stateDiagnosisCheck(state string) string {
+	switch state {
+	case "SYN_RECV":
+		return "backlog, SYN flood, handshake completion"
+	case "CLOSE_WAIT":
+		return "app close path, socket cleanup"
+	case "TIME_WAIT":
+		return "keepalive, conn reuse, client retries"
+	case "FIN_WAIT1":
+		return "peer ACKs, close cleanup, middlebox"
+	default:
+		return "dominant state, peer, local port"
 	}
 }
 
@@ -352,4 +442,11 @@ func diagnosisProcLabel(proc string) string {
 		return "unresolved proc"
 	}
 	return proc
+}
+
+func diagnosisScope(culprit stateDiagnosisCulprit, found bool, sensitiveIP bool) string {
+	if !found || culprit.LocalPort == 0 || strings.TrimSpace(culprit.PeerIP) == "" {
+		return "host-wide"
+	}
+	return fmt.Sprintf("%s :%d", formatPreviewIP(culprit.PeerIP, sensitiveIP), culprit.LocalPort)
 }

@@ -97,10 +97,11 @@ Mốc vận hành thường dùng:
 ## 5) Diagnosis
 
 - Là panel live riêng, gồm:
-  - `Summary`: kết luận host-level nổi bật nhất ở thời điểm hiện tại
-  - `Why`: câu giải thích tại sao app kết luận như vậy
-  - `Evidence`: tối đa 2 dòng bằng chứng cụ thể
-  - `Next Checks`: tối đa 2 hướng kiểm tra tiếp theo
+  - `Issue`: vấn đề host-level nổi bật nhất ở thời điểm hiện tại
+  - `Scope`: peer/port nổi trội nếu xác định được, nếu không thì là `host-wide`
+  - `Signal`: một dòng metric ngắn nối diagnosis với TCP states / retrans / conntrack
+  - `Likely`: diễn giải vận hành ngắn gọn
+  - `Check`: hướng kiểm tra tiếp theo
 - Trong v1, panel này vẫn là host-global nên không bị bó hẹp theo filter/search/group selection ở `Top Connections`.
 - Mục đích là nối nhanh tín hiệu giữa các panel, không thay thế việc đọc panel gốc.
 

@@ -32,78 +32,65 @@ func TestCreatePanelsIncludesDiagnosisPanel(t *testing.T) {
 	}
 }
 
-func TestRenderDiagnosisPanelShowsSummaryEvidenceAndNextChecksInDetailedMode(t *testing.T) {
+func TestRenderDiagnosisPanelShowsFiveFieldDecisionCard(t *testing.T) {
 	t.Parallel()
 
 	text := stripTviewTags(renderDiagnosisPanel(&topDiagnosis{
 		Severity: healthWarn,
-		Headline: "TCP retrans is high",
-		Reason:   "Retrans is 6.20% with enough traffic sample.",
-		Evidence: []string{
-			"Retrans: 6.20% at 3.4 retrans/s.",
-			"Sample ready: 133 ESTABLISHED, 190.0 out seg/s.",
-		},
-		NextChecks: []string{
-			"Check NIC errors/drops and inspect ss -tin for retrans behavior.",
-			"Validate path loss, RTT spikes, or congestion.",
-		},
+		Issue:    "TCP retrans high",
+		Scope:    "host-wide",
+		Signal:   "Retr 6.20% | Out 190.0/s | EST 133",
+		Likely:   "packet loss, RTT spikes, NIC errors, or congestion",
+		Check:    "NIC errors/drops, ss -tin, path loss/RTT",
 	}, 92))
 
-	if !strings.Contains(text, "Summary: TCP retrans is high") {
-		t.Fatalf("expected summary line, got: %q", text)
+	if !strings.Contains(text, "Issue: TCP retrans high") {
+		t.Fatalf("expected issue line, got: %q", text)
 	}
-	if !strings.Contains(text, "Why: Retrans is 6.20%") {
-		t.Fatalf("expected why line, got: %q", text)
+	if !strings.Contains(text, "Scope: host-wide") {
+		t.Fatalf("expected scope line, got: %q", text)
 	}
-	if !strings.Contains(text, "Evidence") || !strings.Contains(text, "Next Checks") {
-		t.Fatalf("expected section headers, got: %q", text)
+	if !strings.Contains(text, "Signal: Retr 6.20% | Out 190.0/s | EST 133") {
+		t.Fatalf("expected signal line, got: %q", text)
 	}
-	if !strings.Contains(text, "Retrans: 6.20% at 3.4 retrans/s.") {
-		t.Fatalf("expected evidence body, got: %q", text)
+	if !strings.Contains(text, "Likely: packet loss, RTT spikes") {
+		t.Fatalf("expected likely line, got: %q", text)
 	}
-	if !strings.Contains(text, "Check NIC errors/drops") {
-		t.Fatalf("expected next-check body, got: %q", text)
+	if !strings.Contains(text, "Check: NIC errors/drops, ss -tin, path loss/RTT") {
+		t.Fatalf("expected check line, got: %q", text)
 	}
 }
 
-func TestRenderDiagnosisPanelUsesCompactCardForNarrowPanels(t *testing.T) {
+func TestRenderDiagnosisPanelShowsConciseStateIssue(t *testing.T) {
 	t.Parallel()
 
 	raw := renderDiagnosisPanel(&topDiagnosis{
 		Severity: healthWarn,
-		Headline: "TIME_WAIT churn on :18080 from 172.25.110.137",
-		Reason:   "4974 TIME_WAIT sockets; short-lived connections are dominating more than a current path-quality issue.",
-		Evidence: []string{
-			"State count: 4,974 TIME_WAIT sockets (warn > 1,000).",
-			"Culprit: 172.25.110.137 on :18080 via unresolved proc (4,979 sockets).",
-		},
-		NextChecks: []string{
-			"Check whether one service is creating short-lived connections faster than expected.",
-			"Review keepalive, connection reuse, or client retry behavior before blaming packet loss.",
-		},
+		Issue:    "TIME_WAIT churn",
+		Scope:    "172.25.110.137 :18080",
+		Signal:   "TW 4,974 | Retr LOW SAMPLE | CT 2%",
+		Likely:   "short-lived conn churn, not packet loss",
+		Check:    "keepalive, conn reuse, client retries",
 	}, 56)
 	text := stripTviewTags(raw)
 
 	if !strings.Contains(text, "Issue: TIME_WAIT churn") {
-		t.Fatalf("expected compact issue line, got: %q", text)
+		t.Fatalf("expected issue line, got: %q", text)
 	}
-	if !strings.Contains(text, "Scope: :18080 from 172.25.110.137") {
-		t.Fatalf("expected compact scope line, got: %q", text)
+	if !strings.Contains(text, "Scope: 172.25.110.137 :18080") {
+		t.Fatalf("expected scope line, got: %q", text)
 	}
-	if !strings.Contains(text, "Signal: 4,974 TIME_WAIT sockets") {
-		t.Fatalf("expected compact signal line, got: %q", text)
+	if !strings.Contains(text, "Signal: TW 4,974 | Retr LOW SAMPLE | CT 2%") {
+		t.Fatalf("expected concise signal line, got: %q", text)
 	}
-	if !strings.Contains(text, "Likely: short-lived connections") {
-		t.Fatalf("expected compact likely line, got: %q", text)
+	if !strings.Contains(text, "Likely: short-lived conn churn, not packet loss") {
+		t.Fatalf("expected likely line, got: %q", text)
 	}
-	if !strings.Contains(text, "Check: short-lived conns") && !strings.Contains(text, "Check: one service is creating") {
-		t.Fatalf("expected compact check line, got: %q", text)
-	}
-	if strings.Contains(text, "Summary:") || strings.Contains(text, "Evidence\n") {
-		t.Fatalf("did not expect detailed sections in compact mode, got: %q", text)
+	if !strings.Contains(text, "Check: keepalive, conn reuse, client retries") {
+		t.Fatalf("expected check line, got: %q", text)
 	}
 	if !strings.Contains(raw, "[dim]Scope: [white][dim]") {
-		t.Fatalf("expected scope value to be dimmed in compact mode, got: %q", raw)
+		t.Fatalf("expected scope value to be dimmed, got: %q", raw)
 	}
 }
 
@@ -121,21 +108,17 @@ func TestRenderDiagnosisPanelIgnoresBogusStartupWidth(t *testing.T) {
 
 	text := stripTviewTags(renderDiagnosisPanel(&topDiagnosis{
 		Severity: healthOK,
-		Headline: "No dominant network issue",
-		Reason:   "Retrans is LOW SAMPLE, conntrack is 0%, and no warning-level TCP state dominates.",
-		Evidence: []string{
-			"Retrans: waiting for the next refresh.",
-			"Conntrack: 0% used; no warning-level TCP state dominates.",
-		},
-		NextChecks: []string{
-			"Keep watching Top Connections and Connection States for a dominant peer or state shift.",
-		},
+		Issue:    "No dominant issue",
+		Scope:    "host-wide",
+		Signal:   "Retr LOW SAMPLE | CT 0% | States stable",
+		Likely:   "no warning-level signal is dominating right now",
+		Check:    "watch Top/States, wait next sample",
 	}, 10))
 
 	if strings.Contains(text, "Issue: No\n") {
 		t.Fatalf("expected startup width fallback to avoid one-word wrapping, got: %q", text)
 	}
-	if !strings.Contains(text, "Issue: No dominant network issue") {
+	if !strings.Contains(text, "Issue: No dominant issue") {
 		t.Fatalf("expected sane compact issue line with fallback width, got: %q", text)
 	}
 }
@@ -157,15 +140,11 @@ func TestDiagnosisPanelRemainsHostGlobalAcrossGroupToggle(t *testing.T) {
 	}
 	a.topDiagnosis = &topDiagnosis{
 		Severity: healthWarn,
-		Headline: "TIME_WAIT churn on :8080 from 198.51.100.10",
-		Reason:   "Short-lived connections are dominating more than a current path-quality issue.",
-		Evidence: []string{
-			"State count: 2 TIME_WAIT sockets (warn > 1).",
-			"Culprit: 198.51.100.10 on :8080 via api (2 sockets).",
-		},
-		NextChecks: []string{
-			"Check whether one service is creating short-lived connections faster than expected.",
-		},
+		Issue:   "TIME_WAIT churn",
+		Scope:   "198.51.100.10 :8080",
+		Signal:  "TW 2 | Retr LOW SAMPLE | CT 4%",
+		Likely:  "short-lived conn churn, not packet loss",
+		Check:   "keepalive, conn reuse, client retries",
 	}
 
 	a.renderDiagnosisPanel()

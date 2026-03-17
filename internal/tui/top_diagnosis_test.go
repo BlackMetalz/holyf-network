@@ -32,6 +32,9 @@ func TestBuildTopDiagnosisPrioritizesConntrackDropsOverRetrans(t *testing.T) {
 	if len(diagnosis.Evidence) == 0 || len(diagnosis.NextChecks) == 0 {
 		t.Fatalf("expected evidence and next checks, got: %+v", diagnosis)
 	}
+	if diagnosis.Issue != "Conntrack drops" || diagnosis.Scope != "host-wide" {
+		t.Fatalf("expected concise conntrack card fields, got: %+v", diagnosis)
+	}
 }
 
 func TestBuildTopDiagnosisRequiresReadySampleForRetrans(t *testing.T) {
@@ -107,6 +110,12 @@ func TestBuildTopDiagnosisCloseWaitShowsAppSideLeakWordingAndMasking(t *testing.
 	if len(diagnosis.Evidence) < 2 || !strings.Contains(diagnosis.Evidence[1], "xxx.xxx.100.10") {
 		t.Fatalf("expected masked culprit evidence, got: %+v", diagnosis.Evidence)
 	}
+	if diagnosis.Scope != "xxx.xxx.100.10 :8080" {
+		t.Fatalf("expected masked concise scope, got: %q", diagnosis.Scope)
+	}
+	if diagnosis.Check != "app close path, socket cleanup" {
+		t.Fatalf("expected concise close_wait check, got: %q", diagnosis.Check)
+	}
 }
 
 func TestBuildTopDiagnosisAllowsHostLevelDiagnosisWithoutTalkers(t *testing.T) {
@@ -126,6 +135,9 @@ func TestBuildTopDiagnosisAllowsHostLevelDiagnosisWithoutTalkers(t *testing.T) {
 	}
 	if diagnosis.Headline != "Conntrack pressure high" {
 		t.Fatalf("expected host-level conntrack diagnosis, got: %+v", diagnosis)
+	}
+	if diagnosis.Signal == "" || diagnosis.Likely == "" || diagnosis.Check == "" {
+		t.Fatalf("expected concise diagnosis card fields, got: %+v", diagnosis)
 	}
 }
 

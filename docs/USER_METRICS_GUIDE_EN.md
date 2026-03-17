@@ -97,10 +97,11 @@ Common operating thresholds:
 ## 5) Diagnosis
 
 - A dedicated live panel with:
-  - `Summary`: the dominant host-level conclusion right now
-  - `Why`: the reasoning sentence behind that conclusion
-  - `Evidence`: up to two concrete supporting lines
-  - `Next Checks`: up to two follow-up checks
+  - `Issue`: the primary host-level problem right now
+  - `Scope`: the dominant peer/port when one is clear, otherwise `host-wide`
+  - `Signal`: a compact metric line that ties the issue back to TCP states / retrans / conntrack
+  - `Likely`: the short operating interpretation
+  - `Check`: the next thing to inspect
 - It stays host-global in v1, so filter/search/group selection in `Top Connections` does not narrow it.
 - It is meant to connect the other panels quickly, not replace them.
 

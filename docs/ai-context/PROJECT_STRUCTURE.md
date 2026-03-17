@@ -110,7 +110,7 @@ This is the current high-signal layout (non-essential folders omitted):
     - `history_*.go`: read-only replay mode UI and key handling.
     - `panel_*.go`: pure rendering text for each panel.
       - `panel_top_connections.go` renders live `View=GROUP` by `(peer, process)`, bandwidth note, and selected-row preview (including grouped state breakdown in the footer preview).
-      - `panel_diagnosis.go` renders the live Diagnosis panel (`Summary`, `Why`, `Evidence`, `Next Checks`).
+      - `panel_diagnosis.go` renders the live Diagnosis panel as a fixed decision card (`Issue`, `Scope`, `Signal`, `Likely`, `Check`).
     - `layout.go`: grid composition.
 
 ## Test Map
