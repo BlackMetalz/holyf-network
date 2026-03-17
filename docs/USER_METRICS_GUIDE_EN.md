@@ -50,8 +50,6 @@ Quick interpretation:
 - High `Send-Q` + low `TX/s`: sender is likely blocked by downstream path.
 - High `Recv-Q`: application is reading too slowly.
 - `TX/s`,`RX/s` at `0B/s`: idle flow or not enough baseline yet.
-- `Diagnosis`: a rule-based live summary of the host's most prominent condition.
-  - In v1 it is host-global, so it does not narrow itself to the current filter/search slice.
 - `Selected Detail`: in live mode, the footer preview explains the currently selected row and what `Enter` / `k` would target.
   - In `GROUP`, this is especially useful because the action still resolves to one concrete `peer + local port` target.
   - The full grouped state mix is shown there (`States: EST ... - TW ... - CW ...`), not in the row list anymore.
@@ -95,6 +93,16 @@ Common operating thresholds:
 
 - `Conntrack% > 70%`: warning zone.
 - `Conntrack% > 85%`: critical zone.
+
+## 5) Diagnosis
+
+- A dedicated live panel with:
+  - `Summary`: the dominant host-level conclusion right now
+  - `Why`: the reasoning sentence behind that conclusion
+  - `Evidence`: up to two concrete supporting lines
+  - `Next Checks`: up to two follow-up checks
+- It stays host-global in v1, so filter/search/group selection in `Top Connections` does not narrow it.
+- It is meant to connect the other panels quickly, not replace them.
 
 ## Live vs Replay
 

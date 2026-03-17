@@ -17,6 +17,7 @@ func newPhase3TestApp() *App {
 		tview.NewTextView(),
 		tview.NewTextView(),
 		tview.NewTextView(),
+		tview.NewTextView(),
 	}
 	pages := tview.NewPages()
 	pages.AddPage("main", tview.NewBox(), true, true)
@@ -341,6 +342,10 @@ func TestFocusOrderFollowsRequestedPanelSequence(t *testing.T) {
 		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 3)
 	}
 	a.focusNext()
+	if a.focusIndex != 4 { // Diagnosis
+		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 4)
+	}
+	a.focusNext()
 	if a.focusIndex != 2 { // wrap Top
 		t.Fatalf("next wrap mismatch: got=%d want=%d", a.focusIndex, 2)
 	}
@@ -358,6 +363,7 @@ func TestHandleKeyEventCtrlNumberFocusShortcuts(t *testing.T) {
 		{rune: '2', wantFocus: 0}, // States
 		{rune: '3', wantFocus: 1}, // Interface
 		{rune: '4', wantFocus: 3}, // Conntrack
+		{rune: '5', wantFocus: 4}, // Diagnosis
 	}
 
 	for _, tc := range tests {

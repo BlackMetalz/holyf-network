@@ -135,18 +135,18 @@ func sortConnections(conns []collector.Connection, mode SortMode, desc bool) {
 // If portFilter is set, only connections matching that port are shown.
 // maxRows controls how many connections to display (use more when zoomed).
 func renderTalkersPanel(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, nil, bandwidthNote, defaultTalkersHintLine, defaultTopConnectionsPanelWidth, nil)
+	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, defaultTalkersHintLine, defaultTopConnectionsPanelWidth, nil)
 }
 
-func renderTalkersPanelWithPreview(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, diagnosis *topDiagnosis, bandwidthNote string, panelWidth int, preview *selectedRowPreview) string {
-	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, diagnosis, bandwidthNote, defaultTalkersHintLine, panelWidth, preview)
+func renderTalkersPanelWithPreview(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, panelWidth int, preview *selectedRowPreview) string {
+	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, defaultTalkersHintLine, panelWidth, preview)
 }
 
 func renderTalkersPanelReadOnly(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, nil, bandwidthNote, readOnlyTalkersHintLine, defaultTopConnectionsPanelWidth, nil)
+	return renderTalkersPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortMode, sortDesc, thresholds, bandwidthNote, readOnlyTalkersHintLine, defaultTopConnectionsPanelWidth, nil)
 }
 
-func renderTalkersPanelWithHintAndPreview(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, diagnosis *topDiagnosis, bandwidthNote string, hintLine string, panelWidth int, preview *selectedRowPreview) string {
+func renderTalkersPanelWithHintAndPreview(conns []collector.Connection, portFilter string, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, hintLine string, panelWidth int, preview *selectedRowPreview) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -170,7 +170,7 @@ func renderTalkersPanelWithHintAndPreview(conns []collector.Connection, portFilt
 		sortLabelWithDirection(sortMode, sortDesc),
 	))
 	sb.WriteString(hintLine)
-	renderTopConnectionsNotes(&sb, diagnosis, bandwidthNote, panelWidth)
+	renderTopConnectionsNotes(&sb, bandwidthNote, panelWidth)
 
 	if len(conns) == 0 {
 		sb.WriteString("  No active connections found")
@@ -656,18 +656,18 @@ func buildPeerGroups(conns []collector.Connection, sortDesc bool) []PeerGroup {
 
 // renderPeerGroupPanel renders the per-peer aggregate view.
 func renderPeerGroupPanel(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, nil, bandwidthNote, defaultGroupHintLine, defaultTopConnectionsPanelWidth, nil)
+	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, defaultGroupHintLine, defaultTopConnectionsPanelWidth, nil)
 }
 
-func renderPeerGroupPanelWithPreview(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, diagnosis *topDiagnosis, bandwidthNote string, panelWidth int, preview *selectedRowPreview) string {
-	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, diagnosis, bandwidthNote, defaultGroupHintLine, panelWidth, preview)
+func renderPeerGroupPanelWithPreview(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, panelWidth int, preview *selectedRowPreview) string {
+	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, defaultGroupHintLine, panelWidth, preview)
 }
 
 func renderPeerGroupPanelReadOnly(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string) string {
-	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, nil, bandwidthNote, readOnlyGroupHintLine, defaultTopConnectionsPanelWidth, nil)
+	return renderPeerGroupPanelWithHintAndPreview(conns, portFilter, textFilter, maxRows, sensitiveIP, selectedIndex, sortDesc, thresholds, bandwidthNote, readOnlyGroupHintLine, defaultTopConnectionsPanelWidth, nil)
 }
 
-func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, diagnosis *topDiagnosis, bandwidthNote string, hintLine string, panelWidth int, preview *selectedRowPreview) string {
+func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortDesc bool, thresholds config.HealthThresholds, bandwidthNote string, hintLine string, panelWidth int, preview *selectedRowPreview) string {
 	var sb strings.Builder
 
 	portChip := "Port Filter = ALL"
@@ -690,7 +690,7 @@ func renderPeerGroupPanelWithHintAndPreview(conns []collector.Connection, portFi
 		sortChip,
 	))
 	sb.WriteString(hintLine)
-	renderTopConnectionsNotes(&sb, diagnosis, bandwidthNote, panelWidth)
+	renderTopConnectionsNotes(&sb, bandwidthNote, panelWidth)
 
 	if len(conns) == 0 {
 		sb.WriteString("  No active connections found")
@@ -896,55 +896,15 @@ func renderSelectedRowPreview(sb *strings.Builder, preview *selectedRowPreview, 
 	}
 }
 
-func renderTopConnectionsNotes(sb *strings.Builder, diagnosis *topDiagnosis, bandwidthNote string, panelWidth int) {
+func renderTopConnectionsNotes(sb *strings.Builder, bandwidthNote string, panelWidth int) {
 	contentWidth := previewContentWidth(panelWidth)
 
-	if diagnosis != nil {
-		sb.WriteString("\n  ")
-		sb.WriteString(formatTopDiagnosisLine(diagnosis, contentWidth))
-	}
 	if strings.TrimSpace(bandwidthNote) != "" {
 		sb.WriteString("\n  [yellow]")
 		sb.WriteString(truncateRight(strings.TrimSpace(bandwidthNote), contentWidth))
 		sb.WriteString("[white]")
 	}
 	sb.WriteString("\n\n")
-}
-
-func formatTopDiagnosisLine(diagnosis *topDiagnosis, width int) string {
-	if diagnosis == nil {
-		return ""
-	}
-	if width <= 0 {
-		width = defaultTopConnectionsPanelWidth
-	}
-
-	color := colorForHealthLevel(diagnosis.Severity)
-	headline := strings.TrimSpace(diagnosis.Headline)
-	reason := strings.TrimSpace(diagnosis.Reason)
-	prefix := "Diagnosis: "
-	whyPrefix := " | Why: "
-	headlineText := prefix + headline
-
-	if len(headlineText) >= width {
-		return fmt.Sprintf("[%s]%s[white]", color, truncateRight(headlineText, width))
-	}
-	if reason == "" {
-		return fmt.Sprintf("[%s]%s[white]", color, headlineText)
-	}
-
-	remaining := width - len(headlineText)
-	if remaining <= len(whyPrefix)+1 {
-		return fmt.Sprintf("[%s]%s[white]", color, headlineText)
-	}
-
-	return fmt.Sprintf(
-		"[%s]%s[white][dim]%s%s[white]",
-		color,
-		headlineText,
-		whyPrefix,
-		truncateRight(reason, remaining-len(whyPrefix)),
-	)
 }
 
 func previewContentWidth(panelWidth int) int {

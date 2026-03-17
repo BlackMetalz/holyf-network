@@ -43,7 +43,7 @@ Live Top Connections also has a few important presentation behaviors:
 
 - `View=GROUP` groups by `(peer, process)` and keeps the row compact (`PORTS`, queues, bandwidth, process).
 - The selected row gets an inline footer preview (`Selected Detail`) with the full grouped state breakdown and the effective `Enter`/`k` target.
-- The diagnosis note is host-global in v1; it is not scoped to the current filter/search slice.
+- The Diagnosis panel is host-global in v1; it is not scoped to the current filter/search slice.
 
 Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).
 
@@ -327,13 +327,12 @@ Behavior constraints:
 ### Live mode (`layout.go`)
 
 - Left: `Top Connections`
-- Right stack: `Connection States`, `Interface Stats`, `Conntrack`
+- Right stack: `Connection States`, `Interface Stats`, `Conntrack`, `Diagnosis`
 - Bottom: status bar
 - Live `GROUP` view groups by `(peer, process)` for clarity under mixed ownership (`sshd` + `ct/nat`, etc.)
-- Top Connections can render up to two live note lines above the table:
-  - diagnosis note
-  - bandwidth note
+- Top Connections can render a live bandwidth note above the table when needed.
 - Top Connections can also render a footer preview for the selected row when panel height allows.
+- `Diagnosis` is a separate live panel with `Summary`, `Why`, `Evidence`, and `Next Checks`.
 
 ### Replay mode (`history_layout.go`)
 

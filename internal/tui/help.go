@@ -9,7 +9,7 @@ const helpText = `[yellow]Keyboard Shortcuts[white]
 ──────────────────────────
 [yellow]Tab[white]         Next panel
 [yellow]Shift+Tab[white]   Previous panel
-[yellow]Ctrl+1..4[white]   Focus panel (1=Top, 2=States, 3=Interface, 4=Conntrack)
+[yellow]Ctrl+1..5[white]   Focus panel (1=Top, 2=States, 3=Interface, 4=Conntrack, 5=Diagnosis)
 [yellow]r[white]           Refresh now
 [yellow]p[white]           Pause/Resume auto-refresh
 [yellow]m[white]           Toggle sensitive IP mask

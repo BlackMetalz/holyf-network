@@ -33,15 +33,15 @@ func TestCalculateTopConnectionsDisplayLimitFallsBackWithoutPreview(t *testing.T
 	}
 }
 
-func TestCalculateTopConnectionsDisplayLimitAccountsForTwoNoteLines(t *testing.T) {
+func TestCalculateTopConnectionsDisplayLimitAccountsForBandwidthNote(t *testing.T) {
 	t.Parallel()
 
-	limit, showPreview := calculateTopConnectionsDisplayLimit(27, 2, true)
+	limit, showPreview := calculateTopConnectionsDisplayLimit(27, 1, true)
 	if !showPreview {
-		t.Fatalf("expected preview to remain enabled with enough height for diagnosis and bandwidth notes")
+		t.Fatalf("expected preview to remain enabled with enough height for bandwidth note")
 	}
-	if limit != 13 {
-		t.Fatalf("two-note row limit mismatch: got=%d want=%d", limit, 13)
+	if limit != 14 {
+		t.Fatalf("single-note row limit mismatch: got=%d want=%d", limit, 14)
 	}
 }
 
@@ -134,7 +134,7 @@ func TestRenderTalkersPanelWithPreviewShowsPreviewAndFooter(t *testing.T) {
 		},
 	}
 
-	text := renderTalkersPanelWithPreview(conns, "", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), nil, "", 120, preview)
+	text := renderTalkersPanelWithPreview(conns, "", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), "", 120, preview)
 	if !strings.Contains(text, "Selected Detail") {
 		t.Fatalf("expected selected detail header, got: %q", text)
 	}
@@ -162,7 +162,7 @@ func TestRenderPeerGroupPanelWithPreviewShowsPreviewAndFooter(t *testing.T) {
 		},
 	}
 
-	text := renderPeerGroupPanelWithPreview(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), nil, "", 120, preview)
+	text := renderPeerGroupPanelWithPreview(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "", 120, preview)
 	if !strings.Contains(text, "States: EST 50% (1) - TW 50% (1)") {
 		t.Fatalf("expected preview states in rendered group panel, got: %q", text)
 	}
@@ -171,16 +171,11 @@ func TestRenderPeerGroupPanelWithPreviewShowsPreviewAndFooter(t *testing.T) {
 	}
 }
 
-func TestRenderTalkersPanelWithDiagnosisShowsDiagnosisBeforeBandwidthNote(t *testing.T) {
+func TestRenderTalkersPanelWithBandwidthNoteShowsBandwidthNote(t *testing.T) {
 	t.Parallel()
 
 	conns := []collector.Connection{
 		{LocalIP: "10.0.0.10", LocalPort: 443, RemoteIP: "198.51.100.10", RemotePort: 52001, State: "ESTABLISHED", ProcName: "api"},
-	}
-	diagnosis := &topDiagnosis{
-		Severity: healthWarn,
-		Headline: "TIME_WAIT churn on :443 from 198.51.100.10",
-		Reason:   "Short-lived connections are dominating more than a current path-quality issue.",
 	}
 
 	text := renderTalkersPanelWithPreview(
@@ -193,65 +188,52 @@ func TestRenderTalkersPanelWithDiagnosisShowsDiagnosisBeforeBandwidthNote(t *tes
 		SortByBandwidth,
 		true,
 		config.DefaultHealthThresholds(),
-		diagnosis,
 		"Bandwidth baseline is warming up.",
 		120,
 		nil,
 	)
-	diagnosisIndex := strings.Index(text, "Diagnosis:")
-	bandwidthIndex := strings.Index(text, "Bandwidth baseline is warming up.")
-	if diagnosisIndex < 0 || bandwidthIndex < 0 {
-		t.Fatalf("expected diagnosis and bandwidth note, got: %q", text)
+	if !strings.Contains(text, "Bandwidth baseline is warming up.") {
+		t.Fatalf("expected bandwidth note, got: %q", text)
 	}
-	if diagnosisIndex > bandwidthIndex {
-		t.Fatalf("expected diagnosis to render before bandwidth note, got: %q", text)
+	if strings.Contains(text, "Diagnosis:") {
+		t.Fatalf("did not expect diagnosis note inside top panel, got: %q", text)
 	}
 }
 
-func TestRenderTopConnectionsPanelKeepsDiagnosisAndPreviewWhenHeightAllows(t *testing.T) {
+func TestRenderTopConnectionsPanelKeepsPreviewWhenHeightAllows(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
 	a.latestTalkers = []collector.Connection{
 		{LocalIP: "10.0.0.10", LocalPort: 80, RemoteIP: "198.51.100.10", RemotePort: 52001, State: "ESTABLISHED", ProcName: "nginx", Activity: 100},
-	}
-	a.topDiagnosis = &topDiagnosis{
-		Severity: healthOK,
-		Headline: "No dominant network issue",
-		Reason:   "Retrans is LOW SAMPLE, conntrack is 4%, and no warning-level TCP state dominates.",
 	}
 	a.topBandwidthNote = "Bandwidth baseline is warming up."
 	a.panels[2].SetRect(0, 0, 120, 27)
 
 	a.renderTopConnectionsPanel()
 	text := a.panels[2].GetText(true)
-	if !strings.Contains(text, "Diagnosis: No dominant network issue") {
-		t.Fatalf("expected diagnosis line, got: %q", text)
+	if strings.Contains(text, "Diagnosis:") {
+		t.Fatalf("did not expect diagnosis line in top panel, got: %q", text)
 	}
 	if !strings.Contains(text, "Selected Detail") {
-		t.Fatalf("expected preview to remain visible with two note lines, got: %q", text)
+		t.Fatalf("expected preview to remain visible with bandwidth note, got: %q", text)
 	}
 }
 
-func TestRenderTopConnectionsPanelDropsPreviewBeforeNotes(t *testing.T) {
+func TestRenderTopConnectionsPanelDropsPreviewBeforeBandwidthNote(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
 	a.latestTalkers = []collector.Connection{
 		{LocalIP: "10.0.0.10", LocalPort: 80, RemoteIP: "198.51.100.10", RemotePort: 52001, State: "ESTABLISHED", ProcName: "nginx", Activity: 100},
 	}
-	a.topDiagnosis = &topDiagnosis{
-		Severity: healthOK,
-		Headline: "No dominant network issue",
-		Reason:   "Retrans is LOW SAMPLE, conntrack is 4%, and no warning-level TCP state dominates.",
-	}
 	a.topBandwidthNote = "Bandwidth baseline is warming up."
-	a.panels[2].SetRect(0, 0, 120, 16)
+	a.panels[2].SetRect(0, 0, 120, 13)
 
 	a.renderTopConnectionsPanel()
 	text := a.panels[2].GetText(true)
-	if !strings.Contains(text, "Diagnosis: No dominant network issue") {
-		t.Fatalf("expected diagnosis line, got: %q", text)
+	if !strings.Contains(text, "Bandwidth baseline is warming up.") {
+		t.Fatalf("expected bandwidth note, got: %q", text)
 	}
 	if strings.Contains(text, "Selected Detail") {
 		t.Fatalf("expected preview to be hidden before notes, got: %q", text)
@@ -267,17 +249,12 @@ func TestRenderTopConnectionsPanelUpdatesPreviewOnSelectionAndGroupToggle(t *tes
 		{LocalIP: "10.0.0.10", LocalPort: 80, RemoteIP: "198.51.100.10", RemotePort: 52001, State: "ESTABLISHED", ProcName: "nginx", Activity: 100},
 		{LocalIP: "10.0.0.10", LocalPort: 81, RemoteIP: "198.51.100.20", RemotePort: 52002, State: "ESTABLISHED", ProcName: "api", Activity: 50},
 	}
-	a.topDiagnosis = &topDiagnosis{
-		Severity: healthOK,
-		Headline: "No dominant network issue",
-		Reason:   "Retrans is LOW SAMPLE, conntrack is 4%, and no warning-level TCP state dominates.",
-	}
 	a.panels[2].SetRect(0, 0, 120, 27)
 
 	a.renderTopConnectionsPanel()
 	first := a.panels[2].GetText(true)
-	if !strings.Contains(first, "Diagnosis: No dominant network issue") {
-		t.Fatalf("expected diagnosis in initial render, got: %q", first)
+	if strings.Contains(first, "Diagnosis:") {
+		t.Fatalf("did not expect diagnosis in top panel render, got: %q", first)
 	}
 	if !strings.Contains(first, "peer 198.51.100.10 -> local 80") {
 		t.Fatalf("expected preview for first selected row, got: %q", first)
@@ -296,9 +273,6 @@ func TestRenderTopConnectionsPanelUpdatesPreviewOnSelectionAndGroupToggle(t *tes
 		t.Fatalf("g should be handled")
 	}
 	groupText := a.panels[2].GetText(true)
-	if !strings.Contains(groupText, "Diagnosis: No dominant network issue") {
-		t.Fatalf("expected diagnosis to persist across group toggle, got: %q", groupText)
-	}
 	if !strings.Contains(groupText, "Ports: 80 | Action: Enter/k => local 80 (1 matches)") &&
 		!strings.Contains(groupText, "Ports: 81 | Action: Enter/k => local 81 (1 matches)") {
 		t.Fatalf("expected group preview action line after toggle, got: %q", groupText)

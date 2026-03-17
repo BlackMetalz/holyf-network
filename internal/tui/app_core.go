@@ -28,7 +28,7 @@ type App struct {
 	statusBar *tview.TextView
 	grid      *tview.Grid // Store grid for zoom toggle
 
-	focusIndex int    // Which panel is currently focused (0-3)
+	focusIndex int    // Which panel is currently focused in the live layout.
 	ifaceName  string // Network interface being monitored
 	refreshSec int    // Refresh interval in seconds
 	appVersion string
@@ -94,7 +94,7 @@ type App struct {
 	healthThresholds config.HealthThresholds
 }
 
-var livePanelFocusOrder = []int{2, 0, 1, 3} // 1=Top, 2=States, 3=Interface, 4=Conntrack
+var livePanelFocusOrder = []int{2, 0, 1, 3, 4} // 1=Top, 2=States, 3=Interface, 4=Conntrack, 5=Diagnosis
 
 type activeBlockEntry struct {
 	Spec      actions.PeerBlockSpec
@@ -339,6 +339,7 @@ func (a *App) refreshData() {
 		}
 		a.renderTopConnectionsPanel()
 	}
+	a.renderDiagnosisPanel()
 
 	a.updateStatusBar()
 }
@@ -530,6 +531,9 @@ func (a *App) handleCtrlPanelShortcut(r rune) bool {
 		return true
 	case '4':
 		a.focusPanel(3)
+		return true
+	case '5':
+		a.focusPanel(4)
 		return true
 	default:
 		return false

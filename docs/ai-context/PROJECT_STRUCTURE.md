@@ -103,13 +103,14 @@ This is the current high-signal layout (non-essential folders omitted):
   - App state machine, keyboard handling, modal flows, rendering panels.
   - Grouped by concern:
     - `app_core.go`: lifecycle, refresh loop, global key handling, status bar.
-    - `app_top_connections.go`: top-connection selection/filter/sort/search orchestration + panel layout for notes/preview.
-    - `top_diagnosis.go`: rule-based live diagnosis synthesis for Top Connections.
+    - `app_top_connections.go`: top-connection selection/filter/sort/search orchestration + panel layout for note/preview.
+    - `top_diagnosis.go`: rule-based live diagnosis synthesis for the dedicated Diagnosis panel.
     - `app_blocking_*.go`: block/kill flows and blocked peers modal.
     - `app_history.go`: action log modal + persistence (`~/.holyf-network/history.log`).
     - `history_*.go`: read-only replay mode UI and key handling.
     - `panel_*.go`: pure rendering text for each panel.
-      - `panel_top_connections.go` renders live `View=GROUP` by `(peer, process)`, diagnosis notes, and selected-row preview (including grouped state breakdown in the footer preview).
+      - `panel_top_connections.go` renders live `View=GROUP` by `(peer, process)`, bandwidth note, and selected-row preview (including grouped state breakdown in the footer preview).
+      - `panel_diagnosis.go` renders the live Diagnosis panel (`Summary`, `Why`, `Evidence`, `Next Checks`).
     - `layout.go`: grid composition.
 
 ## Test Map

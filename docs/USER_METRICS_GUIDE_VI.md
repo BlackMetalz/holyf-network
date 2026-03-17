@@ -50,8 +50,6 @@ Diễn giải nhanh:
 - `Send-Q` cao kéo dài + `TX/s` thấp: app gửi ra chậm/tắc downstream.
 - `Recv-Q` cao kéo dài: app đọc chậm, queue đang backlog phía receive.
 - `TX/s`,`RX/s` đều `0B/s`: có thể flow idle hoặc chưa đủ baseline mẫu đầu.
-- `Diagnosis`: câu tóm tắt rule-based cho trạng thái nổi bật nhất của host ở live mode.
-  - Đây là summary mức host, không bị thu hẹp theo filter/search hiện tại trong v1.
 - `Selected Detail`: phần preview ở cuối panel live giải thích row đang chọn và nếu bấm `Enter` / `k` thì app sẽ target gì.
   - Ở `GROUP`, phần này đặc biệt hữu ích vì action thực tế vẫn resolve về một `peer + local port` cụ thể.
   - Full state breakdown của group cũng nằm ở đây (`States: EST ... - TW ... - CW ...`), không còn nằm trên row list nữa.
@@ -95,6 +93,16 @@ Mốc vận hành thường dùng:
 
 - `Conntrack% > 70%`: bắt đầu cảnh giác.
 - `Conntrack% > 85%`: mức nguy hiểm, cần xử lý ngay.
+
+## 5) Diagnosis
+
+- Là panel live riêng, gồm:
+  - `Summary`: kết luận host-level nổi bật nhất ở thời điểm hiện tại
+  - `Why`: câu giải thích tại sao app kết luận như vậy
+  - `Evidence`: tối đa 2 dòng bằng chứng cụ thể
+  - `Next Checks`: tối đa 2 hướng kiểm tra tiếp theo
+- Trong v1, panel này vẫn là host-global nên không bị bó hẹp theo filter/search/group selection ở `Top Connections`.
+- Mục đích là nối nhanh tín hiệu giữa các panel, không thay thế việc đọc panel gốc.
 
 ## Live vs Replay
 

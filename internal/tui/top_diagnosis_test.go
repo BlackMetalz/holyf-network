@@ -29,6 +29,9 @@ func TestBuildTopDiagnosisPrioritizesConntrackDropsOverRetrans(t *testing.T) {
 	if diagnosis.Headline != "Conntrack drops active" {
 		t.Fatalf("expected conntrack drops diagnosis, got: %+v", diagnosis)
 	}
+	if len(diagnosis.Evidence) == 0 || len(diagnosis.NextChecks) == 0 {
+		t.Fatalf("expected evidence and next checks, got: %+v", diagnosis)
+	}
 }
 
 func TestBuildTopDiagnosisRequiresReadySampleForRetrans(t *testing.T) {
@@ -100,6 +103,29 @@ func TestBuildTopDiagnosisCloseWaitShowsAppSideLeakWordingAndMasking(t *testing.
 	}
 	if !strings.Contains(diagnosis.Reason, "local app has not closed these sockets yet") {
 		t.Fatalf("expected app-side socket leak wording, got: %q", diagnosis.Reason)
+	}
+	if len(diagnosis.Evidence) < 2 || !strings.Contains(diagnosis.Evidence[1], "xxx.xxx.100.10") {
+		t.Fatalf("expected masked culprit evidence, got: %+v", diagnosis.Evidence)
+	}
+}
+
+func TestBuildTopDiagnosisAllowsHostLevelDiagnosisWithoutTalkers(t *testing.T) {
+	t.Parallel()
+
+	a := &App{
+		healthThresholds: config.DefaultHealthThresholds(),
+	}
+
+	diagnosis := a.buildTopDiagnosis(
+		collector.ConnectionData{States: map[string]int{"ESTABLISHED": 40}, Total: 40},
+		nil,
+		&collector.ConntrackRates{UsagePercent: 85, Max: 1000},
+	)
+	if diagnosis == nil {
+		t.Fatalf("expected diagnosis")
+	}
+	if diagnosis.Headline != "Conntrack pressure high" {
+		t.Fatalf("expected host-level conntrack diagnosis, got: %+v", diagnosis)
 	}
 }
 

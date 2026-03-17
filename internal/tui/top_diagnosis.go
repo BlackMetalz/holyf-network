@@ -10,9 +10,11 @@ import (
 )
 
 type topDiagnosis struct {
-	Severity healthLevel
-	Headline string
-	Reason   string
+	Severity   healthLevel
+	Headline   string
+	Reason     string
+	Evidence   []string
+	NextChecks []string
 }
 
 type stateDiagnosisCulprit struct {
@@ -29,10 +31,6 @@ func (a *App) buildTopDiagnosis(
 	retrans *collector.RetransmitRates,
 	conntrack *collector.ConntrackRates,
 ) *topDiagnosis {
-	if len(a.latestTalkers) == 0 {
-		return nil
-	}
-
 	conntrackLevel := diagnosisConntrackLevel(conntrack, a.healthThresholds)
 	retransLevel, sample := diagnosisRetransLevel(data, retrans, a.healthThresholds)
 
@@ -48,10 +46,26 @@ func (a *App) buildTopDiagnosis(
 				"Kernel is dropping new tracked flows at %.0f/s; check conntrack pressure, NAT churn, or nf_conntrack_max.",
 				conntrack.DropsPerSec,
 			),
+			Evidence: []string{
+				fmt.Sprintf("Usage: %.0f%% (%s/%s tracked entries).", conntrack.UsagePercent, formatNumber(conntrack.Current), formatNumber(conntrack.Max)),
+				fmt.Sprintf("Drops: %.1f/s from conntrack stats.", conntrack.DropsPerSec),
+			},
+			NextChecks: []string{
+				"Run conntrack -S and confirm insert, drop, and early_drop counters.",
+				"Check nf_conntrack_max and whether NAT or short-lived flows are churning.",
+			},
 		}
 	}
 
 	if conntrackLevel >= healthWarn && conntrack != nil {
+		evidence := []string{
+			fmt.Sprintf("Usage: %.0f%% (%s/%s tracked entries).", conntrack.UsagePercent, formatNumber(conntrack.Current), formatNumber(conntrack.Max)),
+		}
+		if conntrack.StatsAvailable && !conntrack.FirstReading && conntrack.DropsPerSec > 0 {
+			evidence = append(evidence, fmt.Sprintf("Drops are already visible at %.1f/s.", conntrack.DropsPerSec))
+		} else {
+			evidence = append(evidence, "Drops are not active yet, but headroom is getting tight.")
+		}
 		return &topDiagnosis{
 			Severity: conntrackLevel,
 			Headline: "Conntrack pressure high",
@@ -59,6 +73,11 @@ func (a *App) buildTopDiagnosis(
 				"Table usage is %.0f%% of max; capacity is getting tight before inserts start failing.",
 				conntrack.UsagePercent,
 			),
+			Evidence: evidence,
+			NextChecks: []string{
+				"Check conntrack -S for inserts vs drops and confirm recent growth rate.",
+				"Review nf_conntrack_max and whether one service or NAT path is driving churn.",
+			},
 		}
 	}
 
@@ -72,6 +91,14 @@ func (a *App) buildTopDiagnosis(
 				retrans.OutSegsPerSec,
 				sample.Established,
 			),
+			Evidence: []string{
+				fmt.Sprintf("Retrans: %.2f%% at %.1f retrans/s.", retrans.RetransPercent, retrans.RetransPerSec),
+				fmt.Sprintf("Sample ready: %d ESTABLISHED, %.1f out seg/s.", sample.Established, retrans.OutSegsPerSec),
+			},
+			NextChecks: []string{
+				"Check NIC errors/drops and inspect ss -tin for per-socket retrans behavior.",
+				"Validate path loss, RTT spikes, or congestion between local host and peer path.",
+			},
 		}
 	}
 
@@ -90,23 +117,22 @@ func (a *App) buildTopDiagnosis(
 		return diagnosis
 	}
 
-	conntrackText := "n/a"
-	if conntrack != nil && conntrack.Max > 0 {
-		conntrackText = fmt.Sprintf("%.0f%%", conntrack.UsagePercent)
-	}
-	retransText := "LOW SAMPLE"
-	if retrans != nil && !retrans.FirstReading && sample.Ready {
-		retransText = fmt.Sprintf("%.2f%%", retrans.RetransPercent)
-	}
-
 	return &topDiagnosis{
 		Severity: healthOK,
 		Headline: "No dominant network issue",
 		Reason: fmt.Sprintf(
 			"Retrans is %s, conntrack is %s, and no warning-level TCP state dominates.",
-			retransText,
-			conntrackText,
+			diagnosisRetransText(retrans, sample),
+			diagnosisConntrackText(conntrack),
 		),
+		Evidence: []string{
+			fmt.Sprintf("Retrans: %s.", diagnosisRetransEvidenceText(retrans, sample)),
+			fmt.Sprintf("Conntrack: %s used; no warning-level TCP state dominates.", diagnosisConntrackText(conntrack)),
+		},
+		NextChecks: []string{
+			"Keep watching Top Connections and Connection States for a dominant peer or state shift.",
+			diagnosisHealthyNextCheck(sample),
+		},
 	}
 }
 
@@ -138,10 +164,27 @@ func (a *App) buildStateDiagnosis(state string, totalCount int) *topDiagnosis {
 	culprit, found := findStateDiagnosisCulprit(a.latestTalkers, state)
 	headline := stateDiagnosisHeadline(state, culprit, found, a.sensitiveIP)
 
+	evidence := []string{
+		fmt.Sprintf("State count: %s %s sockets (warn > %s).", formatNumber(totalCount), state, formatNumber(warning.threshold)),
+	}
+	if found {
+		evidence = append(evidence, fmt.Sprintf(
+			"Culprit: %s on :%d via %s (%s sockets).",
+			formatPreviewIP(culprit.PeerIP, a.sensitiveIP),
+			culprit.LocalPort,
+			diagnosisProcLabel(culprit.ProcName),
+			formatNumber(culprit.Count),
+		))
+	} else {
+		evidence = append(evidence, "Culprit: not resolved from the current top-connection sample.")
+	}
+
 	return &topDiagnosis{
-		Severity: stateDiagnosisSeverity(warning.color),
-		Headline: headline,
-		Reason:   stateDiagnosisReason(state, totalCount),
+		Severity:   stateDiagnosisSeverity(warning.color),
+		Headline:   headline,
+		Reason:     stateDiagnosisReason(state, totalCount),
+		Evidence:   evidence,
+		NextChecks: stateDiagnosisNextChecks(state),
 	}
 }
 
@@ -237,4 +280,76 @@ func stateDiagnosisReason(state string, totalCount int) string {
 	default:
 		return fmt.Sprintf("%d %s sockets exceed the warning threshold.", totalCount, state)
 	}
+}
+
+func stateDiagnosisNextChecks(state string) []string {
+	switch state {
+	case "SYN_RECV":
+		return []string{
+			"Check listen backlog pressure and whether clients complete the handshake.",
+			"Validate SYN flood protection, accept queue saturation, or upstream load balancer behavior.",
+		}
+	case "CLOSE_WAIT":
+		return []string{
+			"Inspect the app close path and confirm handlers always close sockets after peer FIN.",
+			"Correlate with process ownership in Top Connections and review recent deploy or code paths.",
+		}
+	case "TIME_WAIT":
+		return []string{
+			"Check whether one service is creating short-lived connections faster than expected.",
+			"Review keepalive, connection reuse, or client retry behavior before blaming packet loss.",
+		}
+	case "FIN_WAIT1":
+		return []string{
+			"Check whether peers are ACKing close handshakes promptly.",
+			"Inspect app socket cleanup timing and whether a middlebox is delaying close completion.",
+		}
+	default:
+		return []string{
+			"Inspect the dominant state directly in Connection States and Top Connections.",
+			"Correlate the state spike with the owning process, peer, and local service port.",
+		}
+	}
+}
+
+func diagnosisConntrackText(conntrack *collector.ConntrackRates) string {
+	if conntrack == nil || conntrack.Max <= 0 {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.0f%%", conntrack.UsagePercent)
+}
+
+func diagnosisRetransText(retrans *collector.RetransmitRates, sample retransSampleStatus) string {
+	if retrans == nil || retrans.FirstReading || !sample.Ready {
+		return "LOW SAMPLE"
+	}
+	return fmt.Sprintf("%.2f%%", retrans.RetransPercent)
+}
+
+func diagnosisRetransEvidenceText(retrans *collector.RetransmitRates, sample retransSampleStatus) string {
+	if retrans == nil {
+		return "n/a"
+	}
+	if retrans.FirstReading {
+		return "waiting for the next refresh"
+	}
+	if !sample.Ready {
+		return fmt.Sprintf("LOW SAMPLE (est %d/%d, out %.1f/%.1f seg/s)", sample.Established, sample.MinEstablished, sample.OutSegsPerSec, sample.MinOutSegsPerSec)
+	}
+	return fmt.Sprintf("%.2f%% at %.1f retrans/s with %.1f out seg/s", retrans.RetransPercent, retrans.RetransPerSec, retrans.OutSegsPerSec)
+}
+
+func diagnosisHealthyNextCheck(sample retransSampleStatus) string {
+	if !sample.Ready {
+		return "Collect more steady traffic if you need a confident retrans verdict."
+	}
+	return "Keep sampling if workload shifts; the current host-level signal looks stable."
+}
+
+func diagnosisProcLabel(proc string) string {
+	proc = strings.TrimSpace(proc)
+	if proc == "" || proc == "-" {
+		return "unresolved proc"
+	}
+	return proc
 }

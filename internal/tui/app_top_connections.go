@@ -49,15 +49,11 @@ func calculateTopConnectionsDisplayLimit(panelHeight int, noteCount int, wantsPr
 	return limit, false
 }
 
-func topConnectionsNoteCount(diagnosis *topDiagnosis, bandwidthNote string) int {
-	count := 0
-	if diagnosis != nil {
-		count++
+func topConnectionsNoteCount(bandwidthNote string) int {
+	if strings.TrimSpace(bandwidthNote) == "" {
+		return 0
 	}
-	if strings.TrimSpace(bandwidthNote) != "" {
-		count++
-	}
-	return count
+	return 1
 }
 
 func (a *App) topConnectionsPanelSize() (int, int) {
@@ -79,7 +75,7 @@ func (a *App) topConnectionsPanelLayout(hasRows bool) topConnectionsPanelLayout 
 	width, height := a.topConnectionsPanelSize()
 	rowLimit, showPreview := calculateTopConnectionsDisplayLimit(
 		height,
-		topConnectionsNoteCount(a.topDiagnosis, a.topBandwidthNote),
+		topConnectionsNoteCount(a.topBandwidthNote),
 		hasRows,
 	)
 	return topConnectionsPanelLayout{
@@ -192,7 +188,6 @@ func (a *App) renderTopConnectionsPanel() {
 			a.selectedTalkerIndex,
 			a.sortDesc,
 			a.healthThresholds,
-			a.topDiagnosis,
 			a.topBandwidthNote,
 			layout.PanelWidth,
 			preview,
@@ -225,7 +220,6 @@ func (a *App) renderTopConnectionsPanel() {
 		a.sortMode,
 		a.sortDesc,
 		a.healthThresholds,
-		a.topDiagnosis,
 		a.topBandwidthNote,
 		layout.PanelWidth,
 		preview,
