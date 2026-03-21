@@ -175,6 +175,7 @@ func (a *App) Run() error {
 	// Start background goroutines
 	go a.startRefreshLoop()
 	go a.startInterfaceRefreshLoop()
+	go a.startWarmupRefresh()
 	go a.startStatusTicker()
 	a.startUpdateCheck()
 
@@ -237,6 +238,26 @@ func (a *App) startRefreshLoop() {
 			// App is quitting — exit the goroutine
 			return
 		}
+	}
+}
+
+// startWarmupRefresh performs one early full refresh shortly after startup.
+// This helps stabilize highly volatile first-sample panels (especially Top Connections)
+// without changing the configured steady-state refresh interval.
+func (a *App) startWarmupRefresh() {
+	timer := time.NewTimer(1 * time.Second)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+		if a.paused.Load() {
+			return
+		}
+		a.app.QueueUpdateDraw(func() {
+			a.refreshData()
+		})
+	case <-a.stopChan:
+		return
 	}
 }
 
@@ -327,11 +348,7 @@ func (a *App) refreshData() {
 		a.panels[0].SetText(renderConnectionsPanelWithStateSort(connData, retransRates, conntrackRates, a.healthThresholds, a.connStateSortDesc))
 	}
 
-	listenPorts, listenErr := collector.CollectListenPorts()
-	if listenErr == nil {
-		a.listenPorts = listenPorts
-		a.listenPortsKnown = true
-	}
+	a.ensureListenPortsKnown()
 
 	// Panel 1: Interface Stats
 	// Kept here for initial/manual/full refresh coherence; a separate 1s lane

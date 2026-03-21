@@ -339,6 +339,18 @@ func (a *App) topConnectionsSource() []collector.Connection {
 	return filtered
 }
 
+func (a *App) ensureListenPortsKnown() {
+	if a.listenPortsKnown {
+		return
+	}
+	listenPorts, err := collector.CollectListenPorts()
+	if err != nil {
+		return
+	}
+	a.listenPorts = listenPorts
+	a.listenPortsKnown = true
+}
+
 func (a *App) moveTopConnectionSelection(delta int) bool {
 	count := a.visibleTopConnectionCount()
 	if count == 0 {

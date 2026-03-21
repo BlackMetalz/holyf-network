@@ -39,7 +39,7 @@ func renderConntrackPanel(rates collector.ConntrackRates) string {
 
 	// Stats availability
 	if !rates.StatsAvailable {
-		sb.WriteString("  [dim]Stats unavailable (install conntrack plz, run with sudo)[white]\n")
+		sb.WriteString("  [dim]Stats unavailable (install conntrack plz)[white]\n")
 	} else if rates.FirstReading {
 		sb.WriteString("  [dim]Rates available after next refresh[white]\n")
 	}
