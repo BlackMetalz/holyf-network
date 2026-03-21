@@ -15,8 +15,9 @@ func TestHistoryStatusHotkeysForModalPages(t *testing.T) {
 		{page: "history-jump-time", wantPlain: "Enter=apply Esc=cancel"},
 		{page: "history-timeline-search", wantPlain: "Enter=search Esc=cancel"},
 		{page: "history-timeline-results", wantPlain: "Up/Down=select Enter=jump Esc=close"},
-		{page: historyTracePage, wantPlain: "Up/Down=select Enter=detail Esc=close"},
+		{page: historyTracePage, wantPlain: "Up/Down=select Enter=detail c=compare Esc=close"},
 		{page: historyTraceDetailPage, wantPlain: "Enter=close Esc=close"},
+		{page: historyTraceComparePage, wantPlain: "Enter=close Esc=close"},
 		{page: "main", wantPlain: "[=prev ]=next a e t f / Shift+S Shift+B/C/P o g h m i Shift+I x z L ? q"},
 		{page: "history-socket-queue-explain", wantPlain: "Enter=close Esc=close"},
 	}

@@ -20,6 +20,7 @@ import (
 const (
 	traceHistoryPage          = "trace-history"
 	traceHistoryDetailPage    = "trace-history-detail"
+	traceHistoryComparePage   = "trace-history-compare"
 	traceHistorySampleMax     = 8
 	traceHistorySegmentPrefix = "trace-history-"
 	traceHistorySegmentSuffix = ".jsonl"
@@ -164,6 +165,7 @@ func (a *App) promptTraceHistory() {
 	}
 
 	closeModal := func() {
+		a.pages.RemovePage(traceHistoryComparePage)
 		a.pages.RemovePage(traceHistoryDetailPage)
 		a.pages.RemovePage(traceHistoryPage)
 		a.app.SetFocus(a.panels[a.focusIndex])
@@ -190,6 +192,42 @@ func (a *App) promptTraceHistory() {
 		a.showTraceHistoryDetailModal(entries[idx], list)
 	}
 
+	compareMarked := -1
+	footer := tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(true).
+		SetTextAlign(tview.AlignLeft)
+	refreshFooter := func() {
+		text := "  [dim]Enter: detail | c: mark baseline/compare | Esc: close | " + a.traceHistoryStorageSummary()
+		if compareMarked >= 0 && compareMarked < len(entries) {
+			text += fmt.Sprintf(" | baseline=%s", entries[compareMarked].CapturedAt.Local().Format("15:04:05"))
+		}
+		footer.SetText(text + "[white]")
+	}
+	refreshFooter()
+
+	handleCompare := func() {
+		idx := list.GetCurrentItem()
+		if idx < 0 || idx >= len(entries) {
+			return
+		}
+		if compareMarked < 0 {
+			compareMarked = idx
+			a.setStatusNote("Baseline marked. Move to incident row and press c again.", 5*time.Second)
+			refreshFooter()
+			return
+		}
+		if compareMarked == idx {
+			compareMarked = -1
+			a.setStatusNote("Trace compare baseline cleared", 4*time.Second)
+			refreshFooter()
+			return
+		}
+		a.showTraceHistoryCompareModal(entries[compareMarked], entries[idx], list)
+		compareMarked = -1
+		refreshFooter()
+	}
+
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyEsc:
@@ -198,15 +236,14 @@ func (a *App) promptTraceHistory() {
 		case tcell.KeyEnter:
 			openDetail()
 			return nil
+		case tcell.KeyRune:
+			if event.Rune() == 'c' || event.Rune() == 'C' {
+				handleCompare()
+				return nil
+			}
 		}
 		return event
 	})
-
-	footer := tview.NewTextView().
-		SetDynamicColors(true).
-		SetWrap(true).
-		SetTextAlign(tview.AlignLeft).
-		SetText("  [dim]Enter: detail | Esc: close | " + a.traceHistoryStorageSummary() + "[white]")
 
 	content := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(list, 0, 1, true).
@@ -221,6 +258,7 @@ func (a *App) promptTraceHistory() {
 			22, 0, true).
 		AddItem(nil, 0, 1, false)
 
+	a.pages.RemovePage(traceHistoryComparePage)
 	a.pages.RemovePage(traceHistoryDetailPage)
 	a.pages.RemovePage(traceHistoryPage)
 	a.pages.AddPage(traceHistoryPage, modal, true, true)
@@ -305,6 +343,48 @@ func (a *App) showTraceHistoryDetailModal(entry traceHistoryEntry, backFocus tvi
 
 	a.pages.RemovePage(traceHistoryDetailPage)
 	a.pages.AddPage(traceHistoryDetailPage, modal, true, true)
+	a.updateStatusBar()
+	a.app.SetFocus(view)
+}
+
+func (a *App) showTraceHistoryCompareModal(baseline, incident traceHistoryEntry, backFocus tview.Primitive) {
+	body := buildTraceHistoryCompareText(baseline, incident, a.sensitiveIP)
+
+	view := tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(true).
+		SetTextAlign(tview.AlignLeft).
+		SetText(body)
+	view.SetBorder(true)
+	view.SetTitle(" Trace Compare ")
+
+	closeModal := func() {
+		a.pages.RemovePage(traceHistoryComparePage)
+		if backFocus != nil {
+			a.app.SetFocus(backFocus)
+		}
+		a.updateStatusBar()
+	}
+	view.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc, tcell.KeyEnter:
+			closeModal()
+			return nil
+		}
+		return event
+	})
+
+	modal := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(view, 132, 0, true).
+			AddItem(nil, 0, 1, false),
+			24, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	a.pages.RemovePage(traceHistoryComparePage)
+	a.pages.AddPage(traceHistoryComparePage, modal, true, true)
 	a.updateStatusBar()
 	a.app.SetFocus(view)
 }

@@ -390,6 +390,40 @@ func TestHistoryHandleKeyEventHShowsReplayTraceHistoryModal(t *testing.T) {
 	}
 }
 
+func TestShowReplayTraceHistoryCompareOpensComparePage(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir())
+	baseline := traceHistoryEntry{
+		CapturedAt:       time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC),
+		PeerIP:           "203.0.113.10",
+		Port:             443,
+		DecodedPackets:   100,
+		ReceivedByFilter: 100,
+		DroppedByKernel:  1,
+		SynCount:         20,
+		SynAckCount:      18,
+		RstCount:         2,
+	}
+	incident := traceHistoryEntry{
+		CapturedAt:       time.Date(2026, 3, 22, 10, 5, 0, 0, time.UTC),
+		PeerIP:           "203.0.113.10",
+		Port:             443,
+		DecodedPackets:   120,
+		ReceivedByFilter: 120,
+		DroppedByKernel:  12,
+		SynCount:         30,
+		SynAckCount:      12,
+		RstCount:         24,
+	}
+
+	h.showReplayTraceHistoryCompare(baseline, incident, nil)
+	name, _ := h.pages.GetFrontPage()
+	if name != historyTraceComparePage {
+		t.Fatalf("expected replay trace compare page %q, got %q", historyTraceComparePage, name)
+	}
+}
+
 func TestHistoryHandleKeyEventGTogglesReplayViewMode(t *testing.T) {
 	t.Parallel()
 

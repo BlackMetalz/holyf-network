@@ -466,8 +466,10 @@ func historyStatusHotkeysForPage(page string) (styled string, plain string) {
 	case "history-timeline-results":
 		return "[dim]Up/Down[white]=select [dim]Enter[white]=jump [dim]Esc[white]=close", "Up/Down=select Enter=jump Esc=close"
 	case historyTracePage:
-		return "[dim]Up/Down[white]=select [dim]Enter[white]=detail [dim]Esc[white]=close", "Up/Down=select Enter=detail Esc=close"
+		return "[dim]Up/Down[white]=select [dim]Enter[white]=detail [dim]c[white]=compare [dim]Esc[white]=close", "Up/Down=select Enter=detail c=compare Esc=close"
 	case historyTraceDetailPage:
+		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
+	case historyTraceComparePage:
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "history-socket-queue-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"

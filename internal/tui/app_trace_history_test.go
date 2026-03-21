@@ -177,3 +177,89 @@ func TestTraceHistoryCategoryFallbackFromScope(t *testing.T) {
 		t.Fatalf("expected default category, got=%q", got)
 	}
 }
+
+func TestBuildTraceHistoryCompareTextShowsRequestedDiffs(t *testing.T) {
+	t.Parallel()
+
+	baseline := traceHistoryEntry{
+		CapturedAt:        time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC),
+		PeerIP:            "203.0.113.10",
+		Port:              443,
+		Preset:            "Peer + Port",
+		DecodedPackets:    100,
+		ReceivedByFilter:  100,
+		DroppedByKernel:   1,
+		SynCount:          20,
+		SynAckCount:       18,
+		RstCount:          2,
+		Severity:          "INFO",
+		Issue:             "baseline stable",
+		Captured:          100,
+		CapturedEstimated: false,
+	}
+	incident := traceHistoryEntry{
+		CapturedAt:        time.Date(2026, 3, 22, 10, 5, 0, 0, time.UTC),
+		PeerIP:            "203.0.113.10",
+		Port:              443,
+		Preset:            "SYN/RST only",
+		DecodedPackets:    120,
+		ReceivedByFilter:  120,
+		DroppedByKernel:   12,
+		SynCount:          30,
+		SynAckCount:       12,
+		RstCount:          24,
+		Severity:          "WARN",
+		Issue:             "incident unstable",
+		Captured:          120,
+		CapturedEstimated: false,
+	}
+
+	text := buildTraceHistoryCompareText(baseline, incident, true)
+	for _, want := range []string{
+		"Trace Compare (Baseline vs Incident)",
+		"Drop ratio:",
+		"RST ratio:",
+		"SYN-ACK ratio:",
+		"Top Flags Changed",
+		"RST:",
+		"SYN-ACK:",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected compare text to contain %q, got=%q", want, text)
+		}
+	}
+}
+
+func TestShowTraceHistoryCompareModalOpensComparePage(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	baseline := traceHistoryEntry{
+		CapturedAt:       time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC),
+		PeerIP:           "203.0.113.10",
+		Port:             443,
+		DecodedPackets:   100,
+		ReceivedByFilter: 100,
+		DroppedByKernel:  1,
+		SynCount:         20,
+		SynAckCount:      18,
+		RstCount:         2,
+	}
+	incident := traceHistoryEntry{
+		CapturedAt:       time.Date(2026, 3, 22, 10, 5, 0, 0, time.UTC),
+		PeerIP:           "203.0.113.10",
+		Port:             443,
+		DecodedPackets:   120,
+		ReceivedByFilter: 120,
+		DroppedByKernel:  12,
+		SynCount:         30,
+		SynAckCount:      12,
+		RstCount:         24,
+	}
+
+	a.showTraceHistoryCompareModal(baseline, incident, nil)
+	name, _ := a.pages.GetFrontPage()
+	if name != traceHistoryComparePage {
+		t.Fatalf("expected %q page, got %q", traceHistoryComparePage, name)
+	}
+}

@@ -866,8 +866,10 @@ func (a *App) statusHotkeysForPage(page string) (styled string, plain string) {
 	case "diagnosis-history":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case traceHistoryPage:
-		return "[dim]Up/Down[white]=select [dim]Enter[white]=detail [dim]Esc[white]=close", "Up/Down=select Enter=detail Esc=close"
+		return "[dim]Up/Down[white]=select [dim]Enter[white]=detail [dim]c[white]=compare [dim]Esc[white]=close", "Up/Down=select Enter=detail c=compare Esc=close"
 	case traceHistoryDetailPage:
+		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
+	case traceHistoryComparePage:
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "socket-queue-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"

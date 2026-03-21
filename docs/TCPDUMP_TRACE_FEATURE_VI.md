@@ -63,7 +63,13 @@ Field trong form:
 - Modal hiển thị các lần trace gần nhất:
   - `Up/Down`: chọn run.
   - `Enter`: mở detail (nội dung tương tự `Trace Packet Result` + analyzer).
+  - `c`: chọn `baseline` rồi chọn `incident` để mở compare modal.
   - `Esc`: đóng.
+- Compare modal hiển thị diff:
+  - `drop ratio`,
+  - `RST ratio`,
+  - `SYN-ACK ratio`,
+  - `top flags changed` (incident - baseline).
 
 ### Bước 5: Replay timeline thấy trace event theo mốc snapshot (Phase 3B)
 
@@ -82,6 +88,7 @@ Field trong form:
   - `TRACE` view tập trung vào trace events tại mốc hiện tại.
 - Replay có thêm nút xem full history:
   - `h`: mở modal `Replay Trace History` (list + detail).
+  - trong modal này cũng hỗ trợ `c` để compare 2 trace.
 
 ## 3) Guardrails kỹ thuật
 
