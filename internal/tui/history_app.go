@@ -50,6 +50,11 @@ type HistoryApp struct {
 	timelineSearchSelected int
 	timelineSearchRunning  bool
 
+	traceTimelineBySnapshot map[int][]traceHistoryEntry
+	traceTimelineTotal      int
+	traceTimelineAssociated int
+	traceTimelineWindow     time.Duration
+
 	statusNote       string
 	statusNoteUntil  time.Time
 	lastStatusNote   string
@@ -155,6 +160,7 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 	h.refs = refs
 	h.filesCount = stats.Files
 	h.corruptSkipped = stats.Corrupt
+	h.rebuildTraceTimeline()
 
 	if stats.Corrupt > 0 && stats.Corrupt != h.lastCorruptNoticed {
 		h.lastCorruptNoticed = stats.Corrupt
@@ -391,6 +397,7 @@ func (h *HistoryApp) renderPanel() {
 	if strings.TrimSpace(h.snapshotMessage) != "" {
 		header += fmt.Sprintf("  [yellow]%s[white]\n", shortStatus(h.snapshotMessage, 160))
 	}
+	traceSection := h.renderCurrentTraceTimelineSection()
 
 	if len(h.currentRows()) == 0 {
 		start, end, count, approx := h.idleStreak()
@@ -412,7 +419,7 @@ func (h *HistoryApp) renderPanel() {
 			idleLine,
 			rangeLine,
 		)
-		h.panel.SetText(header + "\n" + emptyBody)
+		h.panel.SetText(header + "\n" + traceSection + emptyBody)
 		return
 	}
 
@@ -431,7 +438,7 @@ func (h *HistoryApp) renderPanel() {
 		rec.BandwidthAvailable,
 	)
 
-	h.panel.SetText(header + "\n" + body)
+	h.panel.SetText(header + "\n" + traceSection + body)
 }
 
 func (h *HistoryApp) replayScopeLabel() string {
@@ -525,6 +532,9 @@ func (h *HistoryApp) updateStatusBar() {
 	stateText += fmt.Sprintf(" [aqua]DIR-%s[white] |", h.topDirection.Label())
 	if h.skipEmpty {
 		stateText += " [aqua]SKIP-EMPTY[white] |"
+	}
+	if h.traceTimelineAssociated > 0 {
+		stateText += fmt.Sprintf(" [aqua]TRACE %d/%d[white] |", h.currentTraceTimelineCount(), h.traceTimelineAssociated)
 	}
 	if time.Now().Before(h.statusNoteUntil) && h.statusNote != "" {
 		stateText += fmt.Sprintf(" [yellow]%s[white] |", h.statusNote)

@@ -65,6 +65,15 @@ Field trong form:
   - `Enter`: mở detail (nội dung tương tự `Trace Packet Result` + analyzer).
   - `Esc`: đóng.
 
+### Bước 5: Replay timeline thấy trace event theo mốc snapshot (Phase 3B)
+
+- Khi chạy `holyf-network replay`, panel timeline sẽ tự hiển thị block `Trace timeline`.
+- App map mỗi trace event vào snapshot gần nhất theo cửa sổ thời gian động (dựa trên khoảng cách snapshot thực tế).
+- Ở mỗi snapshot:
+  - nếu có trace gần mốc đó: hiện số event + preview (time, severity, category/preset, peer:port, issue),
+  - nếu không có: hiện `0 events near this snapshot`.
+- Status bar replay có thêm chỉ báo `TRACE <near-current>/<associated>` để biết nhanh snapshot hiện tại có trace hay không.
+
 ## 3) Guardrails kỹ thuật
 
 - Chỉ chạy nếu có `tcpdump` trên host.
@@ -162,14 +171,20 @@ Lưu ý: từ bản mới, pcap mặc định lưu ở `/tmp/holyf-network-captu
   - trạng thái run + lỗi capture/read (nếu có) + sample packet rút gọn.
 - Retention dùng cùng policy với replay history (mặc định `168h`).
 
-## 8) Lưu ý vận hành
+## 8) Replay timeline integration (Phase 3B)
+
+- Replay đọc trace history từ cùng `data-dir` đang dùng để load snapshot replay.
+- Mapping là nearest-snapshot (không sửa file snapshot cũ).
+- Dữ liệu cũ chưa có field `preset` vẫn hiển thị category nhờ fallback từ `scope`.
+- Không thay đổi hotkey replay cũ; trace event xuất hiện trực tiếp trong panel timeline.
+## 9) Lưu ý vận hành
 
 - Capture trong app phục vụ triage nhanh, không thay thế full packet-forensics dài hạn.
 - Nếu cần forensic sâu:
   - tăng thời lượng ngoài app theo runbook riêng,
   - đồng bộ với change window và guardrail của team.
 
-## 9) Tài liệu tham khảo chính thống
+## 10) Tài liệu tham khảo chính thống
 
 - `tcpdump` man page (tcpdump.org): https://www.tcpdump.org/manpages/tcpdump.1.html
 - `pcap-filter` syntax (tcpdump/libpcap): https://www.tcpdump.org/manpages/pcap-filter.7.html

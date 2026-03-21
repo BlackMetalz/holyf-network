@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -61,6 +64,30 @@ func appendDirectionalSnapshotFixture(t *testing.T, writer *history.SnapshotWrit
 	}
 }
 
+func appendTraceHistoryFixture(t *testing.T, dataDir string, entry traceHistoryEntry) {
+	t.Helper()
+	if entry.CapturedAt.IsZero() {
+		t.Fatalf("trace history fixture requires captured_at")
+	}
+
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("mkdir trace data dir: %v", err)
+	}
+	path := filepath.Join(dataDir, traceHistorySegmentFileName(entry.CapturedAt))
+	raw, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal trace history fixture: %v", err)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatalf("open trace history fixture file: %v", err)
+	}
+	defer f.Close()
+	if _, err := f.Write(append(raw, '\n')); err != nil {
+		t.Fatalf("append trace history fixture: %v", err)
+	}
+}
+
 func TestHistoryHandleKeyEventBracketNavigation(t *testing.T) {
 	t.Parallel()
 
@@ -91,6 +118,66 @@ func TestHistoryHandleKeyEventBracketNavigation(t *testing.T) {
 	h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, ']', 0))
 	if h.currentIndex != 1 {
 		t.Fatalf("expected next snapshot index=1, got=%d", h.currentIndex)
+	}
+}
+
+func TestHistoryReplayRendersTraceTimelineEvents(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
+	if err != nil {
+		t.Fatalf("new snapshot writer: %v", err)
+	}
+	defer writer.Close()
+
+	base := time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC)
+	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "203.0.113.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
+	appendSnapshotFixture(t, writer, base.Add(30*time.Second), []history.SnapshotGroup{{PeerIP: "203.0.113.20", LocalPort: 443, ProcName: "nginx", ConnCount: 1}})
+
+	appendTraceHistoryFixture(t, dir, traceHistoryEntry{
+		CapturedAt: base.Add(3 * time.Second),
+		PeerIP:     "203.0.113.10",
+		Port:       22,
+		Preset:     "SYN/RST only",
+		Scope:      "SYN/RST only",
+		Severity:   "WARN",
+		Issue:      "RST pressure observed",
+	})
+	appendTraceHistoryFixture(t, dir, traceHistoryEntry{
+		CapturedAt: base.Add(28 * time.Second),
+		PeerIP:     "203.0.113.20",
+		Port:       443,
+		Preset:     "Peer only",
+		Scope:      "Peer only",
+		Severity:   "INFO",
+		Issue:      "No strong packet-level anomaly",
+	})
+
+	h := newHistoryTestApp(dir)
+	h.reloadIndex(true)
+	h.renderPanel()
+	h.updateStatusBar()
+
+	text := h.panel.GetText(true)
+	if !strings.Contains(text, "Trace timeline: 1 event(s) near this snapshot") {
+		t.Fatalf("expected trace timeline section on first snapshot, got=%q", text)
+	}
+	if !strings.Contains(text, "SYN/RST only") {
+		t.Fatalf("expected first snapshot category, got=%q", text)
+	}
+	status := h.statusBar.GetText(true)
+	if !strings.Contains(status, "TRACE 1/2") {
+		t.Fatalf("expected trace count in status bar, got=%q", status)
+	}
+
+	h.navigateNext()
+	text = h.panel.GetText(true)
+	if !strings.Contains(text, "Trace timeline: 1 event(s) near this snapshot") {
+		t.Fatalf("expected trace timeline section on second snapshot, got=%q", text)
+	}
+	if !strings.Contains(text, "Peer only") {
+		t.Fatalf("expected second snapshot category, got=%q", text)
 	}
 }
 
