@@ -975,5 +975,17 @@ func maskTracePacketPath(path string, sensitiveIP bool) string {
 	if trimmed == "" {
 		return path
 	}
-	return filepath.Join(filepath.Dir(trimmed), "[masked].pcap")
+	dir := filepath.Dir(trimmed)
+	base := filepath.Base(trimmed)
+	// Keep timestamp in display path to avoid "overwrite" confusion while masking peer/port.
+	// Expected saved-file pattern: trace-YYYYMMDD-HHMMSS-<peer>-<port>.pcap
+	if strings.HasPrefix(base, "trace-") && strings.HasSuffix(base, ".pcap") {
+		name := strings.TrimSuffix(strings.TrimPrefix(base, "trace-"), ".pcap")
+		parts := strings.Split(name, "-")
+		if len(parts) >= 2 {
+			return filepath.Join(dir, fmt.Sprintf("trace-%s-%s-masked.pcap", parts[0], parts[1]))
+		}
+	}
+	// Avoid tview color-tag syntax (`[...]`) in displayed path.
+	return filepath.Join(dir, "trace-masked.pcap")
 }

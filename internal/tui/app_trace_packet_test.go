@@ -178,7 +178,7 @@ func TestBuildTracePacketResultTextMasksSensitiveParts(t *testing.T) {
 		},
 		Filter:      "tcp and host 203.0.113.10 and port 443",
 		Saved:       true,
-		PCAPPath:    "/tmp/holyf-network/captures/trace-203_0_113_10-443.pcap",
+		PCAPPath:    "/tmp/holyf-network/captures/trace-20260322-003941-203_0_113_10-443.pcap",
 		SampleLines: []string{"IP 203.0.113.10.443 > 172.25.110.116.22: Flags [S], seq 1"},
 	}
 
@@ -186,7 +186,7 @@ func TestBuildTracePacketResultTextMasksSensitiveParts(t *testing.T) {
 	if strings.Contains(text, "203.0.113.10") || strings.Contains(text, "172.25.110.116") {
 		t.Fatalf("expected masked ips in result text, got: %q", text)
 	}
-	if !strings.Contains(text, "[masked].pcap") {
+	if !strings.Contains(text, "trace-20260322-003941-masked.pcap") {
 		t.Fatalf("expected masked pcap path in result text, got: %q", text)
 	}
 }
