@@ -174,6 +174,7 @@ func (a *App) Run() error {
 
 	// Start background goroutines
 	go a.startRefreshLoop()
+	go a.startInterfaceRefreshLoop()
 	go a.startStatusTicker()
 	a.startUpdateCheck()
 
@@ -239,6 +240,28 @@ func (a *App) startRefreshLoop() {
 	}
 }
 
+// startInterfaceRefreshLoop runs a dedicated 1-second refresh lane
+// for Interface Stats so operators can track bandwidth spikes in near real time.
+// This does not change the main refresh interval used by other panels.
+func (a *App) startInterfaceRefreshLoop() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if a.paused.Load() {
+				continue
+			}
+			a.app.QueueUpdateDraw(func() {
+				a.refreshInterfacePanel()
+			})
+		case <-a.stopChan:
+			return
+		}
+	}
+}
+
 // startStatusTicker updates the "Updated: Xs ago" text every second.
 // Runs in a separate goroutine.
 func (a *App) startStatusTicker() {
@@ -255,6 +278,18 @@ func (a *App) startStatusTicker() {
 			return
 		}
 	}
+}
+
+func (a *App) refreshInterfacePanel() {
+	ifaceStats, err := collector.CollectInterfaceStats(a.ifaceName)
+	if err != nil {
+		a.panels[1].SetText(fmt.Sprintf("  [red]%v[white]", err))
+		return
+	}
+
+	rates := collector.CalculateRates(ifaceStats, a.prevIfaceStats)
+	a.panels[1].SetText(renderInterfacePanel(rates))
+	a.prevIfaceStats = &ifaceStats
 }
 
 // refreshData collects data from system and updates all panels.
@@ -299,14 +334,9 @@ func (a *App) refreshData() {
 	}
 
 	// Panel 1: Interface Stats
-	ifaceStats, err := collector.CollectInterfaceStats(a.ifaceName)
-	if err != nil {
-		a.panels[1].SetText(fmt.Sprintf("  [red]%v[white]", err))
-	} else {
-		rates := collector.CalculateRates(ifaceStats, a.prevIfaceStats)
-		a.panels[1].SetText(renderInterfacePanel(rates))
-		a.prevIfaceStats = &ifaceStats
-	}
+	// Kept here for initial/manual/full refresh coherence; a separate 1s lane
+	// also updates this panel for near-real-time bandwidth visibility.
+	a.refreshInterfacePanel()
 
 	// Panel 2: Top Connections
 	// Use full socket set (no collector cap) so group view/counts stay
