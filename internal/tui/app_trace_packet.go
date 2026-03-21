@@ -31,7 +31,7 @@ const (
 	tracePacketMaxPacketCap       = 20000
 	tracePacketSampleLineLimit    = 24
 
-	tracePacketSavedDir  = "/tmp/holyf-network/captures"
+	tracePacketSavedDir  = "/tmp/holyf-network-captures"
 	tracePacketStopGrace = 1500 * time.Millisecond
 )
 
@@ -841,6 +841,18 @@ func buildTracePacketResultText(result tracePacketResult, sensitiveIP bool) stri
 		result.SynAckCount,
 		result.RstCount,
 	))
+	diag := analyzeTracePacket(result)
+	b.WriteString("\n  [yellow]Trace Analyzer[white]\n")
+	b.WriteString("  ─────────────────────────────────────────\n")
+	b.WriteString(fmt.Sprintf(
+		"  Severity: %s | Confidence: %s\n",
+		tracePacketSeverityStyled(diag.Severity),
+		tracePacketConfidenceStyled(diag.Confidence),
+	))
+	b.WriteString(fmt.Sprintf("  Issue: %s\n", maskSensitiveIPsInText(diag.Issue, sensitiveIP)))
+	b.WriteString(fmt.Sprintf("  Signal: %s\n", maskSensitiveIPsInText(diag.Signal, sensitiveIP)))
+	b.WriteString(fmt.Sprintf("  Likely: %s\n", maskSensitiveIPsInText(diag.Likely, sensitiveIP)))
+	b.WriteString(fmt.Sprintf("  Check next: %s\n", maskSensitiveIPsInText(diag.Check, sensitiveIP)))
 
 	if result.Saved && strings.TrimSpace(result.PCAPPath) != "" {
 		b.WriteString(fmt.Sprintf("  PCAP: [aqua]%s[white]\n", maskTracePacketPath(result.PCAPPath, sensitiveIP)))

@@ -39,9 +39,9 @@ Privilege notes:
 # Install
 ### Ubuntu/Linux (amd64)
 ```bash
-curl -sL https://github.com/BlackMetalz/holyf-network/releases/latest/download/holyf-network-linux-amd64 -o /tmp/holyf-network
-chmod +x /tmp/holyf-network
-sudo mv /tmp/holyf-network /usr/local/bin/holyf-network
+curl -sL https://github.com/BlackMetalz/holyf-network/releases/latest/download/holyf-network-linux-amd64 -o /tmp/holyf-network.bin
+chmod +x /tmp/holyf-network.bin
+sudo mv /tmp/holyf-network.bin /usr/local/bin/holyf-network
 sudo holyf-network -v
 ```
 
