@@ -32,6 +32,8 @@ Panel 1 ở live có thể chuyển giữa:
 - `Dir=OUT` (`Top Outgoing`): flow do process local chủ động đi ra ngoài.
   - Bấm `o` để toggle.
   - `Enter` / `k` chỉ bật ở `IN`.
+  - Dùng `[` / `]` để qua trang trước/sau khi danh sách dài hơn chiều cao panel (áp dụng cho cả `IN/OUT` và `CONN/GROUP`).
+  - Footer hiển thị ngữ cảnh trang hiện tại (ví dụ `Showing 16-30 of 42 connections | Page 2/3`).
 
 Các cột chính:
 

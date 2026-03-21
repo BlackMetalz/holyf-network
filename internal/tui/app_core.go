@@ -62,6 +62,8 @@ type App struct {
 	diagnosisHistory []diagnosisHistoryEntry
 	// Selected row in Top Connections (within currently visible rows).
 	selectedTalkerIndex int
+	// Zero-based page index for Top Connections/Groups.
+	topPageIndex int
 	// Sort mode for Top Connections. Default: SortByBandwidth.
 	sortMode SortMode
 	// Sort direction for Top Connections. true=DESC, false=ASC.
@@ -316,7 +318,7 @@ func (a *App) refreshData() {
 		a.topSampleSeconds = 0
 		a.topBandwidthNote = ""
 		a.topDiagnosis = nil
-		a.selectedTalkerIndex = 0
+		a.resetTopConnectionsCursor()
 		a.updateTopConnectionsPanelTitle()
 		a.panels[2].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
@@ -502,9 +504,27 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			}
 			a.applyTopConnectionSortInput(mode)
 			return nil
+		case '[':
+			if a.focusIndex != 2 {
+				a.setStatusNote("Focus Top Connections before changing page", 4*time.Second)
+				return nil
+			}
+			if !a.moveTopConnectionPage(-1) {
+				a.setStatusNote("Top Connections: already at first page", 4*time.Second)
+			}
+			return nil
+		case ']':
+			if a.focusIndex != 2 {
+				a.setStatusNote("Focus Top Connections before changing page", 4*time.Second)
+				return nil
+			}
+			if !a.moveTopConnectionPage(1) {
+				a.setStatusNote("Top Connections: already at last page", 4*time.Second)
+			}
+			return nil
 		case 'g':
 			a.groupView = !a.groupView
-			a.selectedTalkerIndex = 0
+			a.resetTopConnectionsCursor()
 			a.renderTopConnectionsPanel()
 			return nil
 		case 'o':
@@ -613,7 +633,7 @@ func (a *App) applyTopConnectionSortInput(mode SortMode) {
 		a.sortMode = mode
 		a.sortDesc = true // first hit on mode starts DESC
 	}
-	a.selectedTalkerIndex = 0
+	a.resetTopConnectionsCursor()
 	a.renderTopConnectionsPanel()
 }
 

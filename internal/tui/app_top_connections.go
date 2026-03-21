@@ -29,6 +29,31 @@ type topConnectionsPanelLayout struct {
 	ShowPreview bool
 }
 
+func topConnectionsPageBounds(totalRows, rowsPerPage, pageIndex int) (page, start, end, totalPages int) {
+	if totalRows <= 0 {
+		return 0, 0, 0, 0
+	}
+	if rowsPerPage <= 0 {
+		rowsPerPage = 1
+	}
+
+	totalPages = (totalRows + rowsPerPage - 1) / rowsPerPage
+	page = pageIndex
+	if page < 0 {
+		page = 0
+	}
+	if page >= totalPages {
+		page = totalPages - 1
+	}
+
+	start = page * rowsPerPage
+	end = start + rowsPerPage
+	if end > totalRows {
+		end = totalRows
+	}
+	return page, start, end, totalPages
+}
+
 func calculateTopConnectionsDisplayLimit(panelHeight int, noteCount int, wantsPreview bool) (int, bool) {
 	reservedLines := topConnectionsBaseReservedLines
 	if noteCount > 0 {
@@ -122,27 +147,27 @@ func (a *App) filteredPeerGroups() []PeerGroup {
 func (a *App) visibleTopConnections() []collector.Connection {
 	items := a.filteredTopConnections()
 	if len(items) == 0 {
+		a.topPageIndex = 0
 		return nil
 	}
 
 	limit := a.topConnectionsPanelLayout(true).RowLimit
-	if len(items) > limit {
-		items = items[:limit]
-	}
-	return items
+	page, start, end, _ := topConnectionsPageBounds(len(items), limit, a.topPageIndex)
+	a.topPageIndex = page
+	return items[start:end]
 }
 
 func (a *App) visiblePeerGroups() []PeerGroup {
 	groups := a.filteredPeerGroups()
 	if len(groups) == 0 {
+		a.topPageIndex = 0
 		return nil
 	}
 
 	limit := a.topConnectionsPanelLayout(true).RowLimit
-	if len(groups) > limit {
-		groups = groups[:limit]
-	}
-	return groups
+	page, start, end, _ := topConnectionsPageBounds(len(groups), limit, a.topPageIndex)
+	a.topPageIndex = page
+	return groups[start:end]
 }
 
 func (a *App) visibleTopConnectionCount() int {
@@ -167,13 +192,62 @@ func (a *App) clampTopConnectionSelection() {
 	}
 }
 
+func (a *App) resetTopConnectionsCursor() {
+	a.selectedTalkerIndex = 0
+	a.topPageIndex = 0
+}
+
+func (a *App) moveTopConnectionPage(delta int) bool {
+	if delta == 0 {
+		return false
+	}
+
+	var total int
+	if a.groupView {
+		total = len(a.filteredPeerGroups())
+	} else {
+		total = len(a.filteredTopConnections())
+	}
+	if total == 0 {
+		a.topPageIndex = 0
+		return false
+	}
+
+	layout := a.topConnectionsPanelLayout(true)
+	currentPage, _, _, totalPages := topConnectionsPageBounds(total, layout.RowLimit, a.topPageIndex)
+	if totalPages <= 1 {
+		a.topPageIndex = currentPage
+		return false
+	}
+
+	nextPage := currentPage + delta
+	if nextPage < 0 {
+		nextPage = 0
+	}
+	if nextPage >= totalPages {
+		nextPage = totalPages - 1
+	}
+	if nextPage == currentPage {
+		return false
+	}
+
+	a.topPageIndex = nextPage
+	a.selectedTalkerIndex = 0
+	a.renderTopConnectionsPanel()
+	a.updateStatusBar()
+	return true
+}
+
 func (a *App) renderTopConnectionsPanel() {
 	a.updateTopConnectionsPanelTitle()
 	source := a.topConnectionsSource()
 	if a.groupView {
 		groups := a.filteredPeerGroups()
 		layout := a.topConnectionsPanelLayout(len(groups) > 0)
-		if count := min(len(groups), layout.RowLimit); count == 0 {
+		page, start, end, _ := topConnectionsPageBounds(len(groups), layout.RowLimit, a.topPageIndex)
+		a.topPageIndex = page
+		visibleGroups := groups[start:end]
+		if count := len(visibleGroups); count == 0 {
 			a.selectedTalkerIndex = 0
 		} else if a.selectedTalkerIndex >= count {
 			a.selectedTalkerIndex = count - 1
@@ -183,7 +257,7 @@ func (a *App) renderTopConnectionsPanel() {
 
 		var preview *selectedRowPreview
 		if layout.ShowPreview {
-			preview = a.buildSelectedPeerGroupPreview(groups)
+			preview = a.buildSelectedPeerGroupPreview(visibleGroups)
 		}
 
 		a.panels[2].SetText(renderPeerGroupPanelWithPreviewDirection(
@@ -198,6 +272,7 @@ func (a *App) renderTopConnectionsPanel() {
 			a.topBandwidthNote,
 			layout.PanelWidth,
 			preview,
+			a.topPageIndex,
 			a.topDirection,
 		))
 		return
@@ -205,7 +280,10 @@ func (a *App) renderTopConnectionsPanel() {
 
 	items := a.filteredTopConnections()
 	layout := a.topConnectionsPanelLayout(len(items) > 0)
-	if count := min(len(items), layout.RowLimit); count == 0 {
+	page, start, end, _ := topConnectionsPageBounds(len(items), layout.RowLimit, a.topPageIndex)
+	a.topPageIndex = page
+	visibleItems := items[start:end]
+	if count := len(visibleItems); count == 0 {
 		a.selectedTalkerIndex = 0
 	} else if a.selectedTalkerIndex >= count {
 		a.selectedTalkerIndex = count - 1
@@ -215,7 +293,7 @@ func (a *App) renderTopConnectionsPanel() {
 
 	var preview *selectedRowPreview
 	if layout.ShowPreview {
-		preview = a.buildSelectedConnectionPreview(items)
+		preview = a.buildSelectedConnectionPreview(visibleItems)
 	}
 
 	a.panels[2].SetText(renderTalkersPanelWithPreviewDirection(
@@ -231,6 +309,7 @@ func (a *App) renderTopConnectionsPanel() {
 		a.topBandwidthNote,
 		layout.PanelWidth,
 		preview,
+		a.topPageIndex,
 		a.topDirection,
 	))
 }
@@ -403,7 +482,7 @@ func (a *App) toggleTopConnectionsDirection() {
 		a.topDirection = topConnectionOutgoing
 		a.setStatusNote("Top Connections: OUT mode (remote service ports, Enter/k disabled)", 4*time.Second)
 	}
-	a.selectedTalkerIndex = 0
+	a.resetTopConnectionsCursor()
 	a.renderTopConnectionsPanel()
 }
 
@@ -414,7 +493,7 @@ func (a *App) promptPortFilter() {
 	if a.portFilter != "" || a.textFilter != "" {
 		a.portFilter = ""
 		a.textFilter = ""
-		a.selectedTalkerIndex = 0
+		a.resetTopConnectionsCursor()
 		a.refreshData()
 		return
 	}
@@ -438,7 +517,7 @@ func (a *App) promptPortFilter() {
 	input.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
 			a.portFilter = input.GetText()
-			a.selectedTalkerIndex = 0
+			a.resetTopConnectionsCursor()
 		}
 		// On Enter or Escape: close the dialog
 		a.pages.RemovePage("filter")
@@ -484,7 +563,7 @@ func (a *App) promptTextFilter() {
 			} else {
 				a.textFilter = entered
 			}
-			a.selectedTalkerIndex = 0
+			a.resetTopConnectionsCursor()
 			a.refreshData()
 		}
 		a.pages.RemovePage("search")

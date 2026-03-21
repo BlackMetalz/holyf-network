@@ -383,7 +383,7 @@ func TestRenderPeerGroupPanelOutgoingUsesRemotePortHeader(t *testing.T) {
 		},
 	}
 
-	text := renderPeerGroupPanelWithPreviewDirection(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "", 120, preview, topConnectionOutgoing)
+	text := renderPeerGroupPanelWithPreviewDirection(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "", 120, preview, 0, topConnectionOutgoing)
 	if !strings.Contains(text, "RPORTS") {
 		t.Fatalf("expected outgoing group header to use RPORTS, got: %q", text)
 	}

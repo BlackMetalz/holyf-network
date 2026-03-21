@@ -57,6 +57,7 @@ sudo holyf-network -r 5
 # Tab / Shift+Tab: move focus between panels
 # Ctrl+1..5: focus panel (1=Top, 2=States, 3=Interface, 4=Conntrack, 5=Diagnosis)
 # Up / Down: select row in Top Connections
+# [ / ]: previous / next page in Top Connections when rows exceed visible height
 # o: toggle Top Connections IN/OUT mode
 # Enter / k: block selected Top Connections row (IN mode only)
 # Shift+B: sort by Bandwidth (press again toggles DESC/ASC)

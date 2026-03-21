@@ -44,6 +44,8 @@ Live Top Connections also has a few important presentation behaviors:
 - The panel can toggle `Dir=IN` / `Dir=OUT` via `o`.
   - `IN` uses local listener ports as the heuristic for service-facing traffic.
   - `OUT` keeps non-listener flows and is visibility-only (`Enter`/`k` disabled).
+- When result rows exceed visible panel height, `[` / `]` move across pages (works in both `CONN` and `GROUP` views, for both `IN` and `OUT`).
+  - Footer includes page context (`Showing A-B of N ... | Page X/Y`).
 - `View=GROUP` groups by `(peer, process)` and keeps the row compact (`PORTS` in `IN`, `RPORTS` in `OUT`, queues, bandwidth, process).
 - Live `GROUP` view is capped to the top 20 groups by `CONNS`; footer shows `shown / total` when the cap is active.
 - The selected row gets an inline footer preview (`Selected Detail`) with the full grouped state breakdown and, in `IN`, the effective `Enter`/`k` target.

@@ -43,11 +43,11 @@ func liveMainStatusHotkeys(focusIndex int, direction topConnectionDirection) (st
 	switch focusIndex {
 	case 2:
 		if direction == topConnectionOutgoing {
-			return "[dim]Up/Down[white]=select [dim]o[white]=IN [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]Enter/k[white]=disabled [dim]Tab[white]=panel [dim]?[white]=help",
-				"Up/Down=select o=IN g=group /=search f=filter Enter/k=disabled Tab=panel ?=help"
+			return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=IN [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]Enter/k[white]=disabled [dim]Tab[white]=panel [dim]?[white]=help",
+				"Up/Down=select [ ]=page o=IN g=group /=search f=filter Enter/k=disabled Tab=panel ?=help"
 		}
-		return "[dim]Up/Down[white]=select [dim]o[white]=OUT [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]Enter/k[white]=act [dim]Tab[white]=panel [dim]?[white]=help",
-			"Up/Down=select o=OUT g=group /=search f=filter Enter/k=act Tab=panel ?=help"
+		return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=OUT [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]Enter/k[white]=act [dim]Tab[white]=panel [dim]?[white]=help",
+			"Up/Down=select [ ]=page o=OUT g=group /=search f=filter Enter/k=act Tab=panel ?=help"
 	case 0:
 		return "[dim]s[white]=sort [dim]Tab[white]=panel [dim]Ctrl+1..5[white]=focus [dim]?[white]=help",
 			"s=sort Tab=panel Ctrl+1..5=focus ?=help"
@@ -91,6 +91,7 @@ func currentPanelHelpSection(a *App) (string, []liveHelpEntry) {
 		title := fmt.Sprintf("Top Connections (%s, %s view)", a.topDirection.Label(), topViewLabel(a.groupView))
 		entries := []liveHelpEntry{
 			{label: "Up/Down", desc: "Select row"},
+			{label: "[ / ]", desc: "Previous / next page"},
 			{label: "o", desc: fmt.Sprintf("Toggle to %s mode", oppositeDirectionLabel(a.topDirection))},
 			{label: "g", desc: topGroupToggleLabel(a.groupView)},
 			{label: "/", desc: fmt.Sprintf("Search current %s list", topViewSearchLabel(a.groupView))},
@@ -134,7 +135,7 @@ func otherPanelHelpEntries(a *App) []liveHelpEntry {
 	if a.focusIndex != 2 {
 		entries = append(entries, liveHelpEntry{
 			label: "Top Connections",
-			desc:  "Up/Down rows, o IN/OUT, g group, / search, f filter, Enter/k actions (IN only)",
+			desc:  "Up/Down rows, [ ] pages, o IN/OUT, g group, / search, f filter, Enter/k actions (IN only)",
 		})
 	}
 	if a.focusIndex != 0 {
