@@ -36,6 +36,9 @@ func newPhase3TestApp() *App {
 		refreshChan:  make(chan struct{}, 1),
 		activeBlocks: map[string]activeBlockEntry{},
 		actionLogs:   make([]string, 0, 32),
+		traceHistory: make([]traceHistoryEntry, 0, 8),
+		// Keep tests hermetic: do not read user-level trace history file.
+		traceHistoryLoaded: true,
 	}
 }
 
@@ -205,6 +208,8 @@ func TestStatusHotkeysForModalPages(t *testing.T) {
 		{page: "blocked-peers", wantPlain: "Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"},
 		{page: "action-log", wantPlain: "Enter=close Esc=close"},
 		{page: "diagnosis-history", wantPlain: "Enter=close Esc=close"},
+		{page: traceHistoryPage, wantPlain: "Up/Down=select Enter=detail Esc=close"},
+		{page: traceHistoryDetailPage, wantPlain: "Enter=close Esc=close"},
 		{page: "socket-queue-explain", wantPlain: "Enter=close Esc=close"},
 		{page: "interface-stats-explain", wantPlain: "Enter=close Esc=close"},
 		{page: "blocked-peers-remove-result", wantPlain: "Enter=close Esc=close"},

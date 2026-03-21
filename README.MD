@@ -61,6 +61,7 @@ sudo holyf-network -r 5
 # o: toggle Top Connections IN/OUT mode
 # Enter / k: block selected Top Connections row (IN mode only)
 # T: trace packet for selected Top Connections row (bounded tcpdump flow)
+# t: open Trace History (latest trace runs, Enter=view detail)
 # Shift+B: sort by Bandwidth (press again toggles DESC/ASC)
 # Shift+C: sort by Conns (press again toggles DESC/ASC)
 # Shift+P: sort by Port (press again toggles DESC/ASC)

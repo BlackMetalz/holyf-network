@@ -84,6 +84,12 @@ type App struct {
 	// Persistent action history location (~/.holyf-network/history.log).
 	actionHistoryPath string
 
+	// Recent trace-packet history (for modal "t"), persisted as NDJSON.
+	traceHistoryMu      sync.Mutex
+	traceHistory        []traceHistoryEntry
+	traceHistoryLoaded  bool
+	traceHistoryDataDir string
+
 	// Active peer blocks for cleanup on shutdown.
 	blockMu      sync.Mutex
 	activeBlocks map[string]activeBlockEntry
@@ -132,22 +138,24 @@ func NewApp(
 	healthThresholds.Normalize()
 
 	return &App{
-		app:               tview.NewApplication(),
-		ifaceName:         ifaceName,
-		refreshSec:        refreshSec,
-		appVersion:        version,
-		focusIndex:        2, // Top Connections panel is default active focus.
-		sensitiveIP:       sensitiveIP,
-		activeBlocks:      make(map[string]activeBlockEntry),
-		stopChan:          make(chan struct{}),
-		refreshChan:       make(chan struct{}, 1), // Buffered: so send never blocks
-		healthThresholds:  healthThresholds,
-		actionLogs:        make([]string, 0, 32),
-		actionHistoryPath: defaultActionHistoryPath(),
-		sortDesc:          true,
-		connStateSortDesc: true,
-		bwTracker:         collector.NewBandwidthTracker(),
-		ssBWTracker:       collector.NewSocketBandwidthTracker(),
+		app:                 tview.NewApplication(),
+		ifaceName:           ifaceName,
+		refreshSec:          refreshSec,
+		appVersion:          version,
+		focusIndex:          2, // Top Connections panel is default active focus.
+		sensitiveIP:         sensitiveIP,
+		activeBlocks:        make(map[string]activeBlockEntry),
+		stopChan:            make(chan struct{}),
+		refreshChan:         make(chan struct{}, 1), // Buffered: so send never blocks
+		healthThresholds:    healthThresholds,
+		actionLogs:          make([]string, 0, 32),
+		actionHistoryPath:   defaultActionHistoryPath(),
+		traceHistory:        make([]traceHistoryEntry, 0, 32),
+		traceHistoryDataDir: defaultTraceHistoryDataDir(),
+		sortDesc:            true,
+		connStateSortDesc:   true,
+		bwTracker:           collector.NewBandwidthTracker(),
+		ssBWTracker:         collector.NewSocketBandwidthTracker(),
 	}
 }
 
@@ -545,6 +553,9 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'd':
 			a.promptDiagnosisHistory()
 			return nil
+		case 't':
+			a.promptTraceHistory()
+			return nil
 		case 'i':
 			a.promptSocketQueueExplain()
 			return nil
@@ -853,6 +864,10 @@ func (a *App) statusHotkeysForPage(page string) (styled string, plain string) {
 	case "action-log":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "diagnosis-history":
+		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
+	case traceHistoryPage:
+		return "[dim]Up/Down[white]=select [dim]Enter[white]=detail [dim]Esc[white]=close", "Up/Down=select Enter=detail Esc=close"
+	case traceHistoryDetailPage:
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "socket-queue-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"

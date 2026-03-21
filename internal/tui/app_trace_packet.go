@@ -466,6 +466,7 @@ func (a *App) startTracePacketCapture(req tracePacketRequest) {
 				)
 			}
 
+			a.appendTraceHistory(result)
 			a.addActionLog(buildTracePacketActionSummary(result, a.sensitiveIP))
 			a.showTracePacketResultModal(result)
 		})

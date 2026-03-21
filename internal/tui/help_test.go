@@ -20,6 +20,7 @@ func TestBuildLiveHelpTextTopOutgoingGroup(t *testing.T) {
 		"Toggle to IN mode",
 		"Switch to connections view",
 		"Trace packet for selected peer/port",
+		"Open trace packet history",
 		"Disabled in OUT mode",
 		"Global Navigation",
 		"Other Panels",
@@ -48,6 +49,7 @@ func TestBuildLiveHelpTextDiagnosisFocus(t *testing.T) {
 		"Show diagnosis history",
 		"Top Connections",
 		"Logs / Blocks",
+		"t trace history",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected help text to contain %q, got: %q", want, text)

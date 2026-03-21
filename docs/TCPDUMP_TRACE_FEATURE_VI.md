@@ -51,6 +51,14 @@ Field trong form:
   - trạng thái `completed` / `aborted` / `failed`.
 - Đóng popup bằng `Enter` hoặc `Esc`.
 
+### Bước 4: Mở Trace History (Phase 3A)
+
+- Bấm `t` trong live TUI để mở `Trace History`.
+- Modal hiển thị các lần trace gần nhất:
+  - `Up/Down`: chọn run.
+  - `Enter`: mở detail (nội dung tương tự `Trace Packet Result` + analyzer).
+  - `Esc`: đóng.
+
 ## 3) Guardrails kỹ thuật
 
 - Chỉ chạy nếu có `tcpdump` trên host.
@@ -127,14 +135,26 @@ sudo holyf-network -v
 
 Lưu ý: từ bản mới, pcap mặc định lưu ở `/tmp/holyf-network-captures` để tránh đụng path cài đặt.
 
-## 7) Lưu ý vận hành
+## 7) Trace History persistence (Phase 3A)
+
+- Mỗi lần trace xong (`completed` / `completed-timeout` / `aborted` / `failed`), app ghi 1 event vào **cùng data-dir với replay/snapshot** (`history.DefaultDataDir()`).
+- Tên file theo ngày (server local time):
+  - `trace-history-YYYYMMDD.jsonl`
+- Event lưu các trường chính:
+  - context (`peer`, `port`, `interface`, `scope`, `direction`, `filter`)
+  - counters (`captured`, `received-by-filter`, `dropped-by-kernel`, `SYN`, `SYN-ACK`, `RST`)
+  - analyzer (`severity`, `confidence`, `issue`, `signal`, `likely`, `check next`)
+  - trạng thái run + lỗi capture/read (nếu có) + sample packet rút gọn.
+- Retention dùng cùng policy với replay history (mặc định `168h`).
+
+## 8) Lưu ý vận hành
 
 - Capture trong app phục vụ triage nhanh, không thay thế full packet-forensics dài hạn.
 - Nếu cần forensic sâu:
   - tăng thời lượng ngoài app theo runbook riêng,
   - đồng bộ với change window và guardrail của team.
 
-## 8) Tài liệu tham khảo chính thống
+## 9) Tài liệu tham khảo chính thống
 
 - `tcpdump` man page (tcpdump.org): https://www.tcpdump.org/manpages/tcpdump.1.html
 - `pcap-filter` syntax (tcpdump/libpcap): https://www.tcpdump.org/manpages/pcap-filter.7.html

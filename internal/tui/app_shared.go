@@ -15,6 +15,7 @@ const (
 	actionLogModalLimit      = 20
 	inMemoryActionLogMax     = 500
 	actionLogRotateLimit     = 500
+	traceHistoryModalLimit   = 20
 	diagnosisHistoryLimit    = 20
 	actionHistoryDirName     = ".holyf-network"
 	actionHistoryFileName    = "history.log"

@@ -43,11 +43,11 @@ func liveMainStatusHotkeys(focusIndex int, direction topConnectionDirection) (st
 	switch focusIndex {
 	case 2:
 		if direction == topConnectionOutgoing {
-			return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=IN [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]T[white]=trace [dim]Enter/k[white]=disabled [dim]Tab[white]=panel [dim]?[white]=help",
-				"Up/Down=select [ ]=page o=IN g=group /=search f=filter T=trace Enter/k=disabled Tab=panel ?=help"
+			return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=IN [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]T[white]=trace [dim]t[white]=traces [dim]Enter/k[white]=disabled [dim]Tab[white]=panel [dim]?[white]=help",
+				"Up/Down=select [ ]=page o=IN g=group /=search f=filter T=trace t=traces Enter/k=disabled Tab=panel ?=help"
 		}
-		return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=OUT [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]T[white]=trace [dim]Enter/k[white]=act [dim]Tab[white]=panel [dim]?[white]=help",
-			"Up/Down=select [ ]=page o=OUT g=group /=search f=filter T=trace Enter/k=act Tab=panel ?=help"
+		return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=OUT [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]T[white]=trace [dim]t[white]=traces [dim]Enter/k[white]=act [dim]Tab[white]=panel [dim]?[white]=help",
+			"Up/Down=select [ ]=page o=OUT g=group /=search f=filter T=trace t=traces Enter/k=act Tab=panel ?=help"
 	case 0:
 		return "[dim]s[white]=sort [dim]Tab[white]=panel [dim]Ctrl+1..5[white]=focus [dim]?[white]=help",
 			"s=sort Tab=panel Ctrl+1..5=focus ?=help"
@@ -71,6 +71,7 @@ func buildLiveHelpText(a *App) string {
 		{label: "r", desc: "Refresh now"},
 		{label: "p", desc: "Pause / resume auto-refresh"},
 		{label: "m", desc: "Toggle sensitive IP mask"},
+		{label: "t", desc: "Open trace packet history"},
 		{label: "?", desc: "Close help"},
 		{label: "q", desc: "Quit"},
 	}
@@ -97,6 +98,7 @@ func currentPanelHelpSection(a *App) (string, []liveHelpEntry) {
 			{label: "/", desc: fmt.Sprintf("Search current %s list", topViewSearchLabel(a.groupView))},
 			{label: "f", desc: "Filter by shown port / clear"},
 			{label: "T", desc: "Trace packet for selected peer/port"},
+			{label: "t", desc: "Open trace packet history"},
 		}
 		if a.groupView {
 			entries = append(entries, liveHelpEntry{label: "Shift+C", desc: "Sort by connection count"})
@@ -136,7 +138,7 @@ func otherPanelHelpEntries(a *App) []liveHelpEntry {
 	if a.focusIndex != 2 {
 		entries = append(entries, liveHelpEntry{
 			label: "Top Connections",
-			desc:  "Up/Down rows, [ ] pages, o IN/OUT, g group, / search, f filter, T trace packet, Enter/k actions (IN only)",
+			desc:  "Up/Down rows, [ ] pages, o IN/OUT, g group, / search, f filter, T trace packet, t trace history, Enter/k actions (IN only)",
 		})
 	}
 	if a.focusIndex != 0 {
@@ -148,7 +150,7 @@ func otherPanelHelpEntries(a *App) []liveHelpEntry {
 	if a.focusIndex != 4 {
 		entries = append(entries, liveHelpEntry{label: "Diagnosis", desc: "d show diagnosis history"})
 	}
-	entries = append(entries, liveHelpEntry{label: "Logs / Blocks", desc: "h action log, b blocked peers"})
+	entries = append(entries, liveHelpEntry{label: "Logs / Blocks", desc: "h action log, t trace history, b blocked peers"})
 	return entries
 }
 
