@@ -81,6 +81,9 @@ Field trong form:
 - Dùng `-s 128` (snaplen ngắn) để giảm overhead.
 - Nếu `Save pcap` tắt: file tạm bị xóa sau khi đọc summary.
 - Nếu `Save pcap` bật: lưu ở `/tmp/holyf-network-captures`.
+  - Tên file có category theo preset để dễ nhìn nhanh:
+  - `trace-YYYYMMDD-HHMMSS-<preset>-<peer>-<port>.pcap`
+  - Ví dụ: `trace-20260322-103011-syn-rst-14_231_106_188-22.pcap`
 
 ## 4) Command tương đương (để đối chiếu)
 
@@ -153,7 +156,7 @@ Lưu ý: từ bản mới, pcap mặc định lưu ở `/tmp/holyf-network-captu
 - Tên file theo ngày (server local time):
   - `trace-history-YYYYMMDD.jsonl`
 - Event lưu các trường chính:
-  - context (`peer`, `port`, `interface`, `scope`, `direction`, `filter`)
+  - context (`peer`, `port`, `interface`, `category/preset`, `scope`, `direction`, `filter`)
   - counters (`captured`, `received-by-filter`, `dropped-by-kernel`, `SYN`, `SYN-ACK`, `RST`)
   - analyzer (`severity`, `confidence`, `issue`, `signal`, `likely`, `check next`)
   - trạng thái run + lỗi capture/read (nếu có) + sample packet rút gọn.

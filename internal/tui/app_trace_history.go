@@ -35,6 +35,7 @@ type traceHistoryEntry struct {
 	PeerIP      string `json:"peer_ip"`
 	Port        int    `json:"port"`
 	Scope       string `json:"scope"`
+	Preset      string `json:"preset,omitempty"`
 	Direction   string `json:"direction"`
 	DurationSec int    `json:"duration_sec"`
 	PacketCap   int    `json:"packet_cap"`
@@ -105,6 +106,7 @@ func newTraceHistoryEntry(result tracePacketResult) traceHistoryEntry {
 		PeerIP:      normalizeIP(result.Request.PeerIP),
 		Port:        result.Request.Port,
 		Scope:       tracePacketScopeDisplay(result.Request),
+		Preset:      tracePacketHistoryCategory(result.Request),
 		Direction:   result.Request.Direction.Label(),
 		DurationSec: result.Request.DurationSec,
 		PacketCap:   result.Request.PacketCap,
@@ -322,9 +324,10 @@ func formatTraceHistoryListItem(entry traceHistoryEntry, sensitiveIP bool) (main
 		port,
 	)
 	secondary = fmt.Sprintf(
-		"status=%s dir=%s scope=%s cap=%s drop=%s rst=%d conf=%s",
+		"status=%s dir=%s cat=%s scope=%s cap=%s drop=%s rst=%d conf=%s",
 		blankIfUnknown(entry.Status, "completed"),
 		blankIfUnknown(entry.Direction, "ANY"),
+		traceHistoryCategory(entry),
 		blankIfUnknown(entry.Scope, "Peer + Port"),
 		tracePacketMetricDisplay(entry.Captured, entry.CapturedEstimated),
 		tracePacketMetricValue(entry.DroppedByKernel),
@@ -355,7 +358,12 @@ func buildTraceHistoryDetailText(entry traceHistoryEntry, sensitiveIP bool) stri
 	peer := formatPreviewIP(entry.PeerIP, sensitiveIP)
 	b.WriteString(fmt.Sprintf("  Interface: [green]%s[white]\n", blankIfUnknown(entry.Interface, "n/a")))
 	b.WriteString(fmt.Sprintf("  Target: [green]%s:%s[white]\n", peer, traceHistoryPortLabel(entry.Port)))
-	b.WriteString(fmt.Sprintf("  Scope: [green]%s[white] | Direction: [green]%s[white]\n", blankIfUnknown(entry.Scope, "Peer + Port"), blankIfUnknown(entry.Direction, "ANY")))
+	b.WriteString(fmt.Sprintf(
+		"  Category: [green]%s[white] | Scope: [green]%s[white] | Direction: [green]%s[white]\n",
+		traceHistoryCategory(entry),
+		blankIfUnknown(entry.Scope, "Peer + Port"),
+		blankIfUnknown(entry.Direction, "ANY"),
+	))
 	b.WriteString(fmt.Sprintf("  Duration: [green]%ds[white] | Packet cap: [green]%d[white]\n", entry.DurationSec, entry.PacketCap))
 	b.WriteString(fmt.Sprintf("  Filter: [green]%s[white]\n", maskSensitiveIPsInText(blankIfUnknown(entry.Filter, "n/a"), sensitiveIP)))
 	b.WriteString(fmt.Sprintf("  Status: [green]%s[white]\n", blankIfUnknown(entry.Status, "completed")))
@@ -423,6 +431,41 @@ func tracePacketSeverityColor(severity string) string {
 		return "yellow"
 	default:
 		return "green"
+	}
+}
+
+func tracePacketHistoryCategory(req tracePacketRequest) string {
+	switch req.Preset {
+	case traceFilterPresetPeerOnly:
+		return "Peer only"
+	case traceFilterPresetFiveTuple:
+		return "5-tuple"
+	case traceFilterPresetSynRstOnly:
+		return "SYN/RST only"
+	case traceFilterPresetCustom:
+		return "Custom"
+	default:
+		return "Peer + Port"
+	}
+}
+
+func traceHistoryCategory(entry traceHistoryEntry) string {
+	preset := strings.TrimSpace(entry.Preset)
+	if preset != "" {
+		return preset
+	}
+	scope := strings.ToLower(strings.TrimSpace(entry.Scope))
+	switch {
+	case strings.Contains(scope, "5-tuple"):
+		return "5-tuple"
+	case strings.Contains(scope, "syn/rst"):
+		return "SYN/RST only"
+	case strings.Contains(scope, "custom"):
+		return "Custom"
+	case strings.Contains(scope, "peer only"):
+		return "Peer only"
+	default:
+		return "Peer + Port"
 	}
 }
 

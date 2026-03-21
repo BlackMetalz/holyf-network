@@ -53,6 +53,27 @@ func TestBuildTracePacketFilterPresets(t *testing.T) {
 	}
 }
 
+func TestTracePacketFilterPresetSlug(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		preset tracePacketFilterPreset
+		want   string
+	}{
+		{preset: traceFilterPresetPeerPort, want: "peer-port"},
+		{preset: traceFilterPresetPeerOnly, want: "peer-only"},
+		{preset: traceFilterPresetFiveTuple, want: "five-tuple"},
+		{preset: traceFilterPresetSynRstOnly, want: "syn-rst"},
+		{preset: traceFilterPresetCustom, want: "custom"},
+	}
+
+	for _, tc := range cases {
+		if got := tc.preset.Slug(); got != tc.want {
+			t.Fatalf("unexpected slug for preset=%v: got=%q want=%q", tc.preset, got, tc.want)
+		}
+	}
+}
+
 func TestParseTracePacketCounters(t *testing.T) {
 	t.Parallel()
 

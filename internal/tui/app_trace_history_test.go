@@ -119,6 +119,7 @@ func TestBuildTraceHistoryDetailTextMasksSensitiveIP(t *testing.T) {
 		PeerIP:           "203.0.113.10",
 		Port:             443,
 		Scope:            "Peer + Port",
+		Preset:           "Peer + Port",
 		Direction:        "IN",
 		DurationSec:      10,
 		PacketCap:        2000,
@@ -149,7 +150,30 @@ func TestBuildTraceHistoryDetailTextMasksSensitiveIP(t *testing.T) {
 	if !strings.Contains(text, "Trace Analyzer") {
 		t.Fatalf("expected Trace Analyzer section, got=%q", text)
 	}
+	if !strings.Contains(text, "Category: [green]Peer + Port[white]") {
+		t.Fatalf("expected category line in detail text, got=%q", text)
+	}
 	if !strings.Contains(text, "trace-20260322-100102-masked.pcap") {
 		t.Fatalf("expected masked pcap display path, got=%q", text)
+	}
+}
+
+func TestTraceHistoryCategoryFallbackFromScope(t *testing.T) {
+	t.Parallel()
+
+	if got := traceHistoryCategory(traceHistoryEntry{Preset: "SYN/RST only"}); got != "SYN/RST only" {
+		t.Fatalf("expected explicit preset category, got=%q", got)
+	}
+	if got := traceHistoryCategory(traceHistoryEntry{Scope: "5-tuple"}); got != "5-tuple" {
+		t.Fatalf("expected 5-tuple fallback, got=%q", got)
+	}
+	if got := traceHistoryCategory(traceHistoryEntry{Scope: "Custom (Peer+Port)"}); got != "Custom" {
+		t.Fatalf("expected custom fallback, got=%q", got)
+	}
+	if got := traceHistoryCategory(traceHistoryEntry{Scope: "Peer only"}); got != "Peer only" {
+		t.Fatalf("expected peer-only fallback, got=%q", got)
+	}
+	if got := traceHistoryCategory(traceHistoryEntry{}); got != "Peer + Port" {
+		t.Fatalf("expected default category, got=%q", got)
 	}
 }

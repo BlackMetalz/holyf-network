@@ -75,6 +75,21 @@ func (p tracePacketFilterPreset) Label() string {
 	}
 }
 
+func (p tracePacketFilterPreset) Slug() string {
+	switch p {
+	case traceFilterPresetPeerOnly:
+		return "peer-only"
+	case traceFilterPresetFiveTuple:
+		return "five-tuple"
+	case traceFilterPresetSynRstOnly:
+		return "syn-rst"
+	case traceFilterPresetCustom:
+		return "custom"
+	default:
+		return "peer-port"
+	}
+}
+
 type tracePacketDirection int
 
 const (
@@ -928,14 +943,16 @@ func prepareTracePacketPath(req tracePacketRequest) (path string, keep bool, err
 		if err := os.MkdirAll(tracePacketSavedDir, 0o755); err != nil {
 			return "", false, fmt.Errorf("cannot create capture dir: %w", err)
 		}
+		presetPart := req.Preset.Slug()
 		peerPart := strings.NewReplacer(":", "-", ".", "_").Replace(req.PeerIP)
 		portPart := "peer-only"
 		if req.Port > 0 {
 			portPart = strconv.Itoa(req.Port)
 		}
 		name := fmt.Sprintf(
-			"trace-%s-%s-%s.pcap",
+			"trace-%s-%s-%s-%s.pcap",
 			time.Now().Format("20060102-150405"),
+			presetPart,
 			peerPart,
 			portPart,
 		)
