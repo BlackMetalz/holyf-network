@@ -24,6 +24,35 @@ func TestBuildTracePacketFilter(t *testing.T) {
 	}
 }
 
+func TestBuildTracePacketFilterPresets(t *testing.T) {
+	t.Parallel()
+
+	req := tracePacketRequest{
+		PeerIP:          "203.0.113.10",
+		Port:            443,
+		Scope:           traceScopePeerPort,
+		Preset:          traceFilterPresetSynRstOnly,
+		TupleLocalIP:    "172.25.110.116",
+		TupleRemoteIP:   "203.0.113.10",
+		TupleLocalPort:  22,
+		TupleRemotePort: 41334,
+	}
+	if got := buildTracePacketFilter(req); got != "tcp and host 203.0.113.10 and port 443 and (tcp[tcpflags] & (tcp-syn|tcp-rst) != 0)" {
+		t.Fatalf("unexpected syn/rst filter: %q", got)
+	}
+
+	req.Preset = traceFilterPresetFiveTuple
+	if got := buildTracePacketFilter(req); got != "tcp and ((src host 172.25.110.116 and src port 22 and dst host 203.0.113.10 and dst port 41334) or (src host 203.0.113.10 and src port 41334 and dst host 172.25.110.116 and dst port 22))" {
+		t.Fatalf("unexpected 5-tuple filter: %q", got)
+	}
+
+	req.Preset = traceFilterPresetCustom
+	req.CustomClause = "tcp[13] & 0x10 != 0"
+	if got := buildTracePacketFilter(req); got != "tcp and host 203.0.113.10 and port 443 and (tcp[13] & 0x10 != 0)" {
+		t.Fatalf("unexpected custom filter: %q", got)
+	}
+}
+
 func TestParseTracePacketCounters(t *testing.T) {
 	t.Parallel()
 
@@ -129,6 +158,23 @@ func TestTracePacketMetricDisplayEstimated(t *testing.T) {
 	}
 	if got := tracePacketMetricDisplay(-1, true); got != "n/a" {
 		t.Fatalf("unexpected n/a display: %q", got)
+	}
+}
+
+func TestTracePacketScopeDisplayPresets(t *testing.T) {
+	t.Parallel()
+
+	if got := tracePacketScopeDisplay(tracePacketRequest{Scope: traceScopePeerPort}); got != "Peer + Port" {
+		t.Fatalf("unexpected default scope display: %q", got)
+	}
+	if got := tracePacketScopeDisplay(tracePacketRequest{Preset: traceFilterPresetFiveTuple, Scope: traceScopePeerPort}); got != "5-tuple" {
+		t.Fatalf("unexpected 5-tuple scope display: %q", got)
+	}
+	if got := tracePacketScopeDisplay(tracePacketRequest{Preset: traceFilterPresetSynRstOnly, Scope: traceScopePeerPort}); got != "SYN/RST only" {
+		t.Fatalf("unexpected syn/rst scope display: %q", got)
+	}
+	if got := tracePacketScopeDisplay(tracePacketRequest{Preset: traceFilterPresetCustom, Scope: traceScopePeerOnly}); got != "Custom (Peer)" {
+		t.Fatalf("unexpected custom peer scope display: %q", got)
 	}
 }
 

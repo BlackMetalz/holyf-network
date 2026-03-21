@@ -24,9 +24,15 @@ Field trong form:
   - `IN`: lấy local service port.
   - `OUT`: lấy remote service port.
 - `Interface`: prefill từ interface hiện tại.
-- `Scope`:
+- `Preset Filter`:
   - `Peer + Port` (mặc định, khuyến nghị)
   - `Peer only`
+  - `5-tuple` (bám 1 flow cụ thể; cần row connection đủ local/remote tuple)
+  - `SYN/RST only` (phục vụ triage handshake/reset)
+  - `Custom (base + clause)` (thêm clause BPF do user nhập, vẫn giữ base filter an toàn)
+- `Custom clause`:
+  - chỉ dùng khi chọn preset `Custom`,
+  - app sẽ ghép theo dạng: `(base filter) and (<custom clause>)`.
 - `Direction`: `ANY` / `IN` / `OUT` (prefill theo mode `IN/OUT` hiện tại).
 - `Duration (s)`: mặc định `10`, max `60`.
 - `Packet cap`: mặc định `2000`, max `20000`.
@@ -62,7 +68,13 @@ Field trong form:
 ## 3) Guardrails kỹ thuật
 
 - Chỉ chạy nếu có `tcpdump` trên host.
-- Filter luôn bị giới hạn vào `tcp and host <peer>`; nếu chọn `Peer + Port` thì thêm `and port <port>`.
+- Filter luôn bị giới hạn vào `tcp and host <peer>` (base).
+- Preset sẽ mở rộng base:
+  - `Peer + Port`: thêm `and port <port>`.
+  - `Peer only`: giữ base.
+  - `5-tuple`: sinh filter tuple hai chiều cho 1 flow cụ thể.
+  - `SYN/RST only`: thêm điều kiện tcp flags SYN/RST.
+  - `Custom`: ghép thêm clause do user nhập.
 - Capture luôn bounded bởi cả:
   - timeout (`Duration`),
   - packet cap (`-c`).

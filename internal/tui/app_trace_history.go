@@ -104,7 +104,7 @@ func newTraceHistoryEntry(result tracePacketResult) traceHistoryEntry {
 		Interface:   result.Request.Interface,
 		PeerIP:      normalizeIP(result.Request.PeerIP),
 		Port:        result.Request.Port,
-		Scope:       result.Request.Scope.Label(),
+		Scope:       tracePacketScopeDisplay(result.Request),
 		Direction:   result.Request.Direction.Label(),
 		DurationSec: result.Request.DurationSec,
 		PacketCap:   result.Request.PacketCap,

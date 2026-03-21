@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -49,6 +50,31 @@ func (s tracePacketScope) Label() string {
 	return "Peer + Port"
 }
 
+type tracePacketFilterPreset int
+
+const (
+	traceFilterPresetPeerPort tracePacketFilterPreset = iota
+	traceFilterPresetPeerOnly
+	traceFilterPresetFiveTuple
+	traceFilterPresetSynRstOnly
+	traceFilterPresetCustom
+)
+
+func (p tracePacketFilterPreset) Label() string {
+	switch p {
+	case traceFilterPresetPeerOnly:
+		return "Peer only"
+	case traceFilterPresetFiveTuple:
+		return "5-tuple"
+	case traceFilterPresetSynRstOnly:
+		return "SYN/RST only"
+	case traceFilterPresetCustom:
+		return "Custom (base + clause)"
+	default:
+		return "Peer + Port"
+	}
+}
+
 type tracePacketDirection int
 
 const (
@@ -80,19 +106,36 @@ func (d tracePacketDirection) TcpdumpQArg() string {
 }
 
 type tracePacketSeed struct {
-	PeerIP string
-	Port   int
+	PeerIP     string
+	Port       int
+	LocalIP    string
+	LocalPort  int
+	RemoteIP   string
+	RemotePort int
+}
+
+func (s tracePacketSeed) SupportsFiveTuple() bool {
+	return strings.TrimSpace(s.LocalIP) != "" &&
+		strings.TrimSpace(s.RemoteIP) != "" &&
+		s.LocalPort > 0 &&
+		s.RemotePort > 0
 }
 
 type tracePacketRequest struct {
-	Interface   string
-	PeerIP      string
-	Port        int
-	Scope       tracePacketScope
-	Direction   tracePacketDirection
-	DurationSec int
-	PacketCap   int
-	SavePCAP    bool
+	Interface       string
+	PeerIP          string
+	Port            int
+	Scope           tracePacketScope
+	Preset          tracePacketFilterPreset
+	CustomClause    string
+	TupleLocalIP    string
+	TupleRemoteIP   string
+	TupleLocalPort  int
+	TupleRemotePort int
+	Direction       tracePacketDirection
+	DurationSec     int
+	PacketCap       int
+	SavePCAP        bool
 }
 
 type tracePacketResult struct {
@@ -173,11 +216,22 @@ func (a *App) promptTracePacket() {
 		SetText(strconv.Itoa(tracePacketDefaultPacketCap))
 	packetCapInput.SetAcceptanceFunc(tview.InputFieldInteger)
 
-	scopeSelection := traceScopePeerPort
-	scopeDefaultIndex := 0
+	customClauseInput := tview.NewInputField().
+		SetLabel("Custom clause: ").
+		SetFieldWidth(56).
+		SetText("")
+	presetSelection := traceFilterPresetPeerPort
+	presetDefaultIndex := 0
 	if seed.Port <= 0 {
-		scopeSelection = traceScopePeerOnly
-		scopeDefaultIndex = 1
+		presetSelection = traceFilterPresetPeerOnly
+		presetDefaultIndex = 1
+	}
+	presetOptions := []string{
+		traceFilterPresetPeerPort.Label() + " (Recommended)",
+		traceFilterPresetPeerOnly.Label(),
+		traceFilterPresetFiveTuple.Label(),
+		traceFilterPresetSynRstOnly.Label(),
+		traceFilterPresetCustom.Label(),
 	}
 	directionSelection := traceDirectionAny
 	if a.topDirection == topConnectionIncoming {
@@ -194,20 +248,25 @@ func (a *App) promptTracePacket() {
 	form.AddFormItem(portInput)
 	form.AddFormItem(ifaceInput)
 	form.AddDropDown(
-		"Scope: ",
-		[]string{
-			traceScopePeerPort.Label() + " (Recommended)",
-			traceScopePeerOnly.Label(),
-		},
-		scopeDefaultIndex,
+		"Preset: ",
+		presetOptions,
+		presetDefaultIndex,
 		func(_ string, index int) {
-			if index == 1 {
-				scopeSelection = traceScopePeerOnly
-				return
+			switch index {
+			case 1:
+				presetSelection = traceFilterPresetPeerOnly
+			case 2:
+				presetSelection = traceFilterPresetFiveTuple
+			case 3:
+				presetSelection = traceFilterPresetSynRstOnly
+			case 4:
+				presetSelection = traceFilterPresetCustom
+			default:
+				presetSelection = traceFilterPresetPeerPort
 			}
-			scopeSelection = traceScopePeerPort
 		},
 	)
+	form.AddFormItem(customClauseInput)
 	form.AddDropDown(
 		"Direction: ",
 		[]string{"ANY", "IN", "OUT"},
@@ -268,24 +327,91 @@ func (a *App) promptTracePacket() {
 			return
 		}
 
+		scope := traceScopePeerPort
 		port := 0
-		if scopeSelection == traceScopePeerPort {
-			port, err = parseTracePacketIntRange(portInput.GetText(), 1, 65535, "Port")
+		rawPort := strings.TrimSpace(portInput.GetText())
+		if rawPort != "" {
+			port, err = parseTracePacketIntRange(rawPort, 1, 65535, "Port")
 			if err != nil {
 				a.setStatusNote(err.Error(), 5*time.Second)
 				return
 			}
 		}
+		customClause := strings.TrimSpace(customClauseInput.GetText())
+
+		switch presetSelection {
+		case traceFilterPresetPeerOnly:
+			scope = traceScopePeerOnly
+			port = 0
+		case traceFilterPresetPeerPort, traceFilterPresetSynRstOnly:
+			scope = traceScopePeerPort
+			if port <= 0 {
+				a.setStatusNote("Port is required for selected preset", 5*time.Second)
+				return
+			}
+		case traceFilterPresetFiveTuple:
+			scope = traceScopePeerPort
+			if !seed.SupportsFiveTuple() {
+				a.setStatusNote("5-tuple preset requires a concrete connection row (not aggregate-only)", 6*time.Second)
+				return
+			}
+			if a.topDirection == topConnectionIncoming {
+				if port <= 0 {
+					port = seed.LocalPort
+				}
+				if port <= 0 {
+					a.setStatusNote("Port is required for 5-tuple preset", 5*time.Second)
+					return
+				}
+			} else {
+				if port <= 0 {
+					port = seed.RemotePort
+				}
+				if port <= 0 {
+					a.setStatusNote("Port is required for 5-tuple preset", 5*time.Second)
+					return
+				}
+			}
+		case traceFilterPresetCustom:
+			if customClause == "" {
+				a.setStatusNote("Custom clause is required for Custom preset", 5*time.Second)
+				return
+			}
+			if port > 0 {
+				scope = traceScopePeerPort
+			} else {
+				scope = traceScopePeerOnly
+			}
+		default:
+			scope = traceScopePeerPort
+			if port <= 0 {
+				a.setStatusNote("Port is required for selected preset", 5*time.Second)
+				return
+			}
+		}
 
 		req := tracePacketRequest{
-			Interface:   ifaceName,
-			PeerIP:      peerIP,
-			Port:        port,
-			Scope:       scopeSelection,
-			Direction:   directionSelection,
-			DurationSec: durationSec,
-			PacketCap:   packetCap,
-			SavePCAP:    savePCAP,
+			Interface:       ifaceName,
+			PeerIP:          peerIP,
+			Port:            port,
+			Scope:           scope,
+			Preset:          presetSelection,
+			CustomClause:    customClause,
+			TupleLocalIP:    seed.LocalIP,
+			TupleRemoteIP:   peerIP,
+			TupleLocalPort:  seed.LocalPort,
+			TupleRemotePort: seed.RemotePort,
+			Direction:       directionSelection,
+			DurationSec:     durationSec,
+			PacketCap:       packetCap,
+			SavePCAP:        savePCAP,
+		}
+		if req.Preset == traceFilterPresetFiveTuple {
+			if a.topDirection == topConnectionIncoming {
+				req.TupleLocalPort = req.Port
+			} else {
+				req.TupleRemotePort = req.Port
+			}
 		}
 		a.pages.RemovePage(tracePacketPageForm)
 		a.updateStatusBar()
@@ -311,7 +437,7 @@ func (a *App) promptTracePacket() {
 		SetDynamicColors(true).
 		SetWrap(true).
 		SetTextAlign(tview.AlignLeft).
-		SetText("  [dim]Use selected Top Connections row as seed. Start runs bounded tcpdump capture with safe defaults.[white]")
+		SetText("  [dim]Use selected Top Connections row as seed. Preset controls filter shape; Custom adds extra BPF clause on top of safe base filter.[white]")
 
 	modal := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
@@ -340,21 +466,30 @@ func (a *App) selectedTracePacketSeed() (tracePacketSeed, bool) {
 		}
 		a.clampTopConnectionSelection()
 		group := groups[a.selectedTalkerIndex]
-		seed := tracePacketSeed{PeerIP: normalizeIP(group.PeerIP)}
+		seed := tracePacketSeed{
+			PeerIP:   normalizeIP(group.PeerIP),
+			RemoteIP: normalizeIP(group.PeerIP),
+		}
 		if a.topDirection == topConnectionIncoming {
 			if target, ok := a.selectedPeerPortTarget(seed.PeerIP); ok {
 				seed.Port = target.LocalPort
-				return seed, true
+			} else {
+				ports := sortedPeerGroupPorts(group.LocalPorts)
+				if len(ports) > 0 {
+					seed.Port = ports[0]
+				}
 			}
-			ports := sortedPeerGroupPorts(group.LocalPorts)
+		} else {
+			ports := sortedPeerGroupPorts(group.RemotePorts)
 			if len(ports) > 0 {
 				seed.Port = ports[0]
 			}
-			return seed, true
 		}
-		ports := sortedPeerGroupPorts(group.RemotePorts)
-		if len(ports) > 0 {
-			seed.Port = ports[0]
+		if conn, ok := a.traceSeedRepresentative(seed.PeerIP, seed.Port); ok {
+			seed.LocalIP = normalizeIP(conn.LocalIP)
+			seed.LocalPort = conn.LocalPort
+			seed.RemoteIP = normalizeIP(conn.RemoteIP)
+			seed.RemotePort = conn.RemotePort
 		}
 		return seed, true
 	}
@@ -366,7 +501,11 @@ func (a *App) selectedTracePacketSeed() (tracePacketSeed, bool) {
 	a.clampTopConnectionSelection()
 	row := rows[a.selectedTalkerIndex]
 	seed := tracePacketSeed{
-		PeerIP: normalizeIP(row.RemoteIP),
+		PeerIP:     normalizeIP(row.RemoteIP),
+		LocalIP:    normalizeIP(row.LocalIP),
+		LocalPort:  row.LocalPort,
+		RemoteIP:   normalizeIP(row.RemoteIP),
+		RemotePort: row.RemotePort,
 	}
 	if a.topDirection == topConnectionOutgoing {
 		seed.Port = row.RemotePort
@@ -374,6 +513,45 @@ func (a *App) selectedTracePacketSeed() (tracePacketSeed, bool) {
 		seed.Port = row.LocalPort
 	}
 	return seed, true
+}
+
+func (a *App) traceSeedRepresentative(peerIP string, port int) (collector.Connection, bool) {
+	source := a.topConnectionsSource()
+	if len(source) == 0 {
+		return collector.Connection{}, false
+	}
+
+	filtered := a.applyTopConnectionFilters(source)
+	if a.groupView {
+		filtered = applyGroupConnectionFiltersByDirection(source, a.portFilter, a.textFilter, a.topDirection)
+	}
+	if len(filtered) == 0 {
+		return collector.Connection{}, false
+	}
+
+	best := collector.Connection{}
+	found := false
+	for _, conn := range filtered {
+		if normalizeIP(conn.RemoteIP) != peerIP {
+			continue
+		}
+		if port > 0 {
+			if a.topDirection == topConnectionOutgoing && conn.RemotePort != port {
+				continue
+			}
+			if a.topDirection != topConnectionOutgoing && conn.LocalPort != port {
+				continue
+			}
+		}
+
+		if !found ||
+			conn.Activity > best.Activity ||
+			(conn.Activity == best.Activity && conn.TotalBytesDelta > best.TotalBytesDelta) {
+			best = conn
+			found = true
+		}
+	}
+	return best, found
 }
 
 func parseTracePacketIntRange(raw string, minVal, maxVal int, field string) (int, error) {
@@ -408,7 +586,7 @@ func (a *App) startTracePacketCapture(req tracePacketRequest) {
 		progressView.SetText(fmt.Sprintf(
 			"  [yellow]Trace Packet Running[white]\n\n  Interface: [green]%s[white]\n  Scope: [green]%s[white]\n  Direction: [green]%s[white]\n  Duration: [green]%ds[white] | Cap: [green]%d[white]\n  Remaining: [green]%ds[white]\n\n  [dim]Press Esc to abort.[white]",
 			req.Interface,
-			req.Scope.Label(),
+			tracePacketScopeDisplay(req),
 			req.Direction.Label(),
 			req.DurationSec,
 			req.PacketCap,
@@ -571,11 +749,63 @@ func (a *App) exitTraceFlowPause() {
 }
 
 func buildTracePacketFilter(req tracePacketRequest) string {
+	base := tracePacketBaseFilter(req)
+	switch req.Preset {
+	case traceFilterPresetPeerOnly:
+		return "tcp and host " + req.PeerIP
+	case traceFilterPresetFiveTuple:
+		if strings.TrimSpace(req.TupleLocalIP) == "" ||
+			strings.TrimSpace(req.TupleRemoteIP) == "" ||
+			req.TupleLocalPort <= 0 ||
+			req.TupleRemotePort <= 0 {
+			return base
+		}
+		return fmt.Sprintf(
+			"tcp and ((src host %s and src port %d and dst host %s and dst port %d) or (src host %s and src port %d and dst host %s and dst port %d))",
+			req.TupleLocalIP,
+			req.TupleLocalPort,
+			req.TupleRemoteIP,
+			req.TupleRemotePort,
+			req.TupleRemoteIP,
+			req.TupleRemotePort,
+			req.TupleLocalIP,
+			req.TupleLocalPort,
+		)
+	case traceFilterPresetSynRstOnly:
+		return fmt.Sprintf("%s and (tcp[tcpflags] & (tcp-syn|tcp-rst) != 0)", base)
+	case traceFilterPresetCustom:
+		clause := strings.TrimSpace(req.CustomClause)
+		if clause == "" {
+			return base
+		}
+		return fmt.Sprintf("%s and (%s)", base, clause)
+	default:
+		return base
+	}
+}
+
+func tracePacketBaseFilter(req tracePacketRequest) string {
 	base := "tcp and host " + req.PeerIP
 	if req.Scope == traceScopePeerOnly || req.Port <= 0 {
 		return base
 	}
 	return fmt.Sprintf("%s and port %d", base, req.Port)
+}
+
+func tracePacketScopeDisplay(req tracePacketRequest) string {
+	switch req.Preset {
+	case traceFilterPresetFiveTuple:
+		return "5-tuple"
+	case traceFilterPresetSynRstOnly:
+		return "SYN/RST only"
+	case traceFilterPresetCustom:
+		if req.Scope == traceScopePeerOnly {
+			return "Custom (Peer)"
+		}
+		return "Custom (Peer+Port)"
+	default:
+		return req.Scope.Label()
+	}
 }
 
 func runTracePacketCapture(ctx context.Context, req tracePacketRequest) tracePacketResult {
@@ -816,7 +1046,7 @@ func buildTracePacketResultText(result tracePacketResult, sensitiveIP bool) stri
 	b.WriteString("  ─────────────────────────────────────────\n")
 	b.WriteString(fmt.Sprintf("  Interface: [green]%s[white]\n", result.Request.Interface))
 	b.WriteString(fmt.Sprintf("  Filter: [green]%s[white]\n", buildTracePacketDisplayFilter(result.Request, sensitiveIP)))
-	b.WriteString(fmt.Sprintf("  Scope: [green]%s[white] | Direction: [green]%s[white]\n", result.Request.Scope.Label(), result.Request.Direction.Label()))
+	b.WriteString(fmt.Sprintf("  Scope: [green]%s[white] | Direction: [green]%s[white]\n", tracePacketScopeDisplay(result.Request), result.Request.Direction.Label()))
 	b.WriteString(fmt.Sprintf("  Duration: [green]%ds[white] | Packet cap: [green]%d[white]\n", result.Request.DurationSec, result.Request.PacketCap))
 
 	status := "[green]completed[white]"
@@ -937,7 +1167,7 @@ func buildTracePacketActionSummary(result tracePacketResult, sensitiveIP bool) s
 		formatPreviewIP(result.Request.PeerIP, sensitiveIP),
 		portPart,
 		result.Request.Direction.Label(),
-		result.Request.Scope.Label(),
+		tracePacketScopeDisplay(result.Request),
 		tracePacketMetricValue(result.Captured),
 		dropped,
 		result.RstCount,
@@ -946,11 +1176,7 @@ func buildTracePacketActionSummary(result tracePacketResult, sensitiveIP bool) s
 }
 
 func buildTracePacketDisplayFilter(req tracePacketRequest, sensitiveIP bool) string {
-	base := "tcp and host " + formatPreviewIP(req.PeerIP, sensitiveIP)
-	if req.Scope == traceScopePeerOnly || req.Port <= 0 {
-		return base
-	}
-	return fmt.Sprintf("%s and port %d", base, req.Port)
+	return maskSensitiveIPsInText(buildTracePacketFilter(req), sensitiveIP)
 }
 
 var (
