@@ -181,6 +181,80 @@ func TestHistoryReplayRendersTraceTimelineEvents(t *testing.T) {
 	}
 }
 
+func TestHistoryReplayFallsBackToTraceOnlyMode(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	capturedAt := time.Date(2026, 3, 22, 10, 30, 0, 0, time.UTC)
+	appendTraceHistoryFixture(t, dir, traceHistoryEntry{
+		CapturedAt: capturedAt,
+		PeerIP:     "203.0.113.40",
+		Port:       443,
+		Preset:     "Custom",
+		Scope:      "Custom (Peer+Port)",
+		Severity:   "INFO",
+		Issue:      "No strong packet-level anomaly",
+	})
+
+	h := newHistoryTestApp(dir)
+	h.reloadIndex(true)
+	h.renderPanel()
+	h.updateStatusBar()
+
+	if !h.traceOnlyMode {
+		t.Fatalf("expected trace-only mode when no snapshots exist")
+	}
+	if len(h.refs) != 1 || h.currentIndex != 0 {
+		t.Fatalf("expected one synthetic trace ref selected at index 0, refs=%d idx=%d", len(h.refs), h.currentIndex)
+	}
+	if got := h.currentRecord.Interface; got != "trace-history" {
+		t.Fatalf("expected synthetic trace interface, got=%q", got)
+	}
+
+	panel := h.panel.GetText(true)
+	if !strings.Contains(panel, "Trace-only replay mode") {
+		t.Fatalf("expected trace-only hint in panel, got=%q", panel)
+	}
+	if !strings.Contains(panel, "Trace timeline: 1 event(s) at current slot") {
+		t.Fatalf("expected trace timeline section in panel, got=%q", panel)
+	}
+
+	status := h.statusBar.GetText(true)
+	if !strings.Contains(status, "TRACE-ONLY") || !strings.Contains(status, "Trace: 1/1") {
+		t.Fatalf("expected trace-only status bar markers, got=%q", status)
+	}
+}
+
+func TestHistoryTraceOnlyModeDisablesTimelineSearch(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	appendTraceHistoryFixture(t, dir, traceHistoryEntry{
+		CapturedAt: time.Date(2026, 3, 22, 10, 45, 0, 0, time.UTC),
+		PeerIP:     "203.0.113.41",
+		Port:       22,
+		Preset:     "SYN/RST only",
+		Scope:      "SYN/RST only",
+		Severity:   "WARN",
+		Issue:      "RST pressure observed",
+	})
+
+	h := newHistoryTestApp(dir)
+	h.reloadIndex(true)
+
+	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'S', 0))
+	if ret != nil {
+		t.Fatalf("Shift+S should be consumed in trace-only mode")
+	}
+	if !strings.Contains(h.statusNote, "unavailable in trace-only replay") {
+		t.Fatalf("expected trace-only timeline-search note, got=%q", h.statusNote)
+	}
+	name, _ := h.pages.GetFrontPage()
+	if name != "main" {
+		t.Fatalf("trace-only timeline search should not open modal, front page=%q", name)
+	}
+}
+
 func TestHistoryStartAtOldestSkipsLeadingEmptySnapshots(t *testing.T) {
 	t.Parallel()
 

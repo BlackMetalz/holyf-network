@@ -50,6 +50,8 @@ type HistoryApp struct {
 	timelineSearchSelected int
 	timelineSearchRunning  bool
 
+	traceOnlyMode           bool
+	traceReplayEntries      []traceHistoryEntry
 	traceTimelineBySnapshot map[int][]traceHistoryEntry
 	traceTimelineTotal      int
 	traceTimelineAssociated int
@@ -148,6 +150,16 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 		return
 	}
 	refs = h.filterRefsByReplayRange(refs)
+	h.traceOnlyMode = false
+	h.traceReplayEntries = nil
+	if len(refs) == 0 {
+		if traceRefs, traceEntries := h.buildTraceOnlyRefs(); len(traceRefs) > 0 {
+			refs = traceRefs
+			h.traceOnlyMode = true
+			h.traceReplayEntries = traceEntries
+			h.setStatusNote(fmt.Sprintf("Trace-only replay mode (%d events)", len(traceEntries)), 6*time.Second)
+		}
+	}
 
 	prevFile := ""
 	prevOffset := int64(-1)
@@ -219,6 +231,20 @@ func (h *HistoryApp) loadSnapshotAt(index int) {
 		index = len(h.refs) - 1
 	}
 
+	if h.traceOnlyMode {
+		h.currentIndex = index
+		h.currentRecord = history.SnapshotRecord{
+			CapturedAt:      h.refs[index].CapturedAt,
+			Interface:       "trace-history",
+			TopLimitPerSide: 0,
+			IncomingGroups:  []history.SnapshotGroup{},
+			OutgoingGroups:  []history.SnapshotGroup{},
+			Version:         h.appVersion,
+		}
+		h.selectedIndex = 0
+		return
+	}
+
 	record, err := history.ReadSnapshot(h.refs[index])
 	if err != nil {
 		h.setStatusNote("Read snapshot failed: "+shortStatus(err.Error(), 72), 8*time.Second)
@@ -264,6 +290,9 @@ func (h *HistoryApp) currentRows() []history.SnapshotGroup {
 }
 
 func (h *HistoryApp) refCountForDirection(ref history.SnapshotRef, direction topConnectionDirection) int {
+	if h.traceOnlyMode {
+		return 1
+	}
 	if ref.IncomingCount == 0 && ref.OutgoingCount == 0 && ref.ConnCount > 0 {
 		return ref.ConnCount
 	}
@@ -398,8 +427,16 @@ func (h *HistoryApp) renderPanel() {
 		header += fmt.Sprintf("  [yellow]%s[white]\n", shortStatus(h.snapshotMessage, 160))
 	}
 	traceSection := h.renderCurrentTraceTimelineSection()
+	traceOnlyHint := ""
+	if h.traceOnlyMode {
+		traceOnlyHint = "  [yellow]Trace-only replay mode[white] (no connection snapshots in selected scope/range)\n\n"
+	}
 
 	if len(h.currentRows()) == 0 {
+		if h.traceOnlyMode {
+			h.panel.SetText(header + "\n" + traceOnlyHint + traceSection + "  [dim]Use [ / ] to move between trace events. Snapshot rows are unavailable in this mode.[white]")
+			return
+		}
 		start, end, count, approx := h.idleStreak()
 		idleLine := fmt.Sprintf("  [dim]Idle streak: %d snapshots[white]", count)
 		if approx > 0 {
@@ -510,7 +547,9 @@ func (h *HistoryApp) updateStatusBar() {
 
 	snapshotPart := "Snapshot: 0/0"
 	if len(h.refs) > 0 && h.currentIndex >= 0 {
-		if h.skipEmpty {
+		if h.traceOnlyMode {
+			snapshotPart = fmt.Sprintf("Trace: %d/%d", h.currentIndex+1, len(h.refs))
+		} else if h.skipEmpty {
 			activePos, activeTotal := h.activeTimelinePosition()
 			snapshotPart = fmt.Sprintf("Active: %d/%d Raw: %d/%d", activePos, activeTotal, h.currentIndex+1, len(h.refs))
 		} else {
@@ -529,9 +568,13 @@ func (h *HistoryApp) updateStatusBar() {
 	if h.sensitiveIP {
 		stateText += " [yellow]IP MASK[white] |"
 	}
-	stateText += fmt.Sprintf(" [aqua]DIR-%s[white] |", h.topDirection.Label())
-	if h.skipEmpty {
-		stateText += " [aqua]SKIP-EMPTY[white] |"
+	if h.traceOnlyMode {
+		stateText += " [aqua]TRACE-ONLY[white] |"
+	} else {
+		stateText += fmt.Sprintf(" [aqua]DIR-%s[white] |", h.topDirection.Label())
+		if h.skipEmpty {
+			stateText += " [aqua]SKIP-EMPTY[white] |"
+		}
 	}
 	if h.traceTimelineAssociated > 0 {
 		stateText += fmt.Sprintf(" [aqua]TRACE %d/%d[white] |", h.currentTraceTimelineCount(), h.traceTimelineAssociated)
@@ -603,6 +646,9 @@ func (h *HistoryApp) setSnapshotMessage(msg string) {
 func (h *HistoryApp) headerSnapshotLabel() string {
 	if len(h.refs) == 0 || h.currentIndex < 0 || h.currentIndex >= len(h.refs) {
 		return "Snapshot 0/0"
+	}
+	if h.traceOnlyMode {
+		return fmt.Sprintf("Trace Event %d/%d", h.currentIndex+1, len(h.refs))
 	}
 	if !h.skipEmpty {
 		return fmt.Sprintf("Snapshot %d/%d", h.currentIndex+1, len(h.refs))

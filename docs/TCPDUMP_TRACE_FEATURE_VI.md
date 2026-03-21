@@ -73,6 +73,10 @@ Field trong form:
   - nếu có trace gần mốc đó: hiện số event + preview (time, severity, category/preset, peer:port, issue),
   - nếu không có: hiện `0 events near this snapshot`.
 - Status bar replay có thêm chỉ báo `TRACE <near-current>/<associated>` để biết nhanh snapshot hiện tại có trace hay không.
+- Nếu không có `connections-*.jsonl` trong scope/range nhưng có `trace-history-*.jsonl`, replay tự chuyển sang **trace-only fallback**:
+  - timeline dựng theo từng trace event (dùng `[` `]` để đi qua event),
+  - status bar hiện `TRACE-ONLY`,
+  - panel hiển thị `Trace-only replay mode`.
 
 ## 3) Guardrails kỹ thuật
 
@@ -177,6 +181,7 @@ Lưu ý: từ bản mới, pcap mặc định lưu ở `/tmp/holyf-network-captu
 - Mapping là nearest-snapshot (không sửa file snapshot cũ).
 - Dữ liệu cũ chưa có field `preset` vẫn hiển thị category nhờ fallback từ `scope`.
 - Không thay đổi hotkey replay cũ; trace event xuất hiện trực tiếp trong panel timeline.
+- Khi chạy ở trace-only fallback, `Shift+S` (timeline snapshot search) bị disable vì không có snapshot record để scan.
 ## 9) Lưu ý vận hành
 
 - Capture trong app phục vụ triage nhanh, không thay thế full packet-forensics dài hạn.

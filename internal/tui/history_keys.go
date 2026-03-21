@@ -87,6 +87,10 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			h.promptJumpToTime()
 			return nil
 		case 'S':
+			if h.traceOnlyMode {
+				h.setStatusNote("Timeline search is unavailable in trace-only replay", 5*time.Second)
+				return nil
+			}
 			h.promptTimelineSearch()
 			return nil
 		case 'B', 'C', 'P':

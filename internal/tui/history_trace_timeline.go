@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/BlackMetalz/holyf-network/internal/history"
 )
 
 const historyTracePreviewLimit = 3
@@ -16,6 +18,14 @@ func (h *HistoryApp) rebuildTraceTimeline() {
 	h.traceTimelineWindow = 0
 
 	if len(h.refs) == 0 {
+		return
+	}
+	if h.traceOnlyMode {
+		h.traceTimelineTotal = len(h.traceReplayEntries)
+		h.traceTimelineAssociated = len(h.traceReplayEntries)
+		for i, entry := range h.traceReplayEntries {
+			h.traceTimelineBySnapshot[i] = []traceHistoryEntry{entry}
+		}
 		return
 	}
 
@@ -54,6 +64,47 @@ func (h *HistoryApp) rebuildTraceTimeline() {
 			return h.traceTimelineBySnapshot[idx][i].CapturedAt.After(h.traceTimelineBySnapshot[idx][j].CapturedAt)
 		})
 	}
+}
+
+func (h *HistoryApp) buildTraceOnlyRefs() ([]history.SnapshotRef, []traceHistoryEntry) {
+	entries, err := readTraceHistoryEntriesFromDir(h.dataDir)
+	if err != nil || len(entries) == 0 {
+		return nil, nil
+	}
+	entries = h.filterTraceEntriesByReplayRange(entries)
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].CapturedAt.Before(entries[j].CapturedAt)
+	})
+
+	refs := make([]history.SnapshotRef, 0, len(entries))
+	for i, entry := range entries {
+		if entry.CapturedAt.IsZero() {
+			continue
+		}
+		refs = append(refs, history.SnapshotRef{
+			FilePath:      "trace-history",
+			Offset:        int64(i),
+			CapturedAt:    entry.CapturedAt,
+			IncomingCount: 1,
+			OutgoingCount: 1,
+			TotalCount:    1,
+			ConnCount:     1,
+		})
+	}
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	trimmed := make([]traceHistoryEntry, 0, len(refs))
+	for _, ref := range refs {
+		idx := int(ref.Offset)
+		if idx >= 0 && idx < len(entries) {
+			trimmed = append(trimmed, entries[idx])
+		}
+	}
+	return refs, trimmed
 }
 
 func (h *HistoryApp) filterTraceEntriesByReplayRange(entries []traceHistoryEntry) []traceHistoryEntry {
@@ -127,6 +178,9 @@ func (h *HistoryApp) renderCurrentTraceTimelineSection() string {
 
 	events := h.currentTraceTimelineEvents()
 	if len(events) == 0 {
+		if h.traceOnlyMode {
+			return "  [dim]Trace timeline: 0 events at current slot[white]\n\n"
+		}
 		return fmt.Sprintf(
 			"  [dim]Trace timeline: 0 events near this snapshot (mapped window ~%s)[white]\n\n",
 			formatApproxDuration(h.traceTimelineWindow),
@@ -134,11 +188,18 @@ func (h *HistoryApp) renderCurrentTraceTimelineSection() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf(
-		"  [yellow]Trace timeline: %d event(s) near this snapshot (window ~%s)[white]\n",
-		len(events),
-		formatApproxDuration(h.traceTimelineWindow),
-	))
+	if h.traceOnlyMode {
+		b.WriteString(fmt.Sprintf(
+			"  [yellow]Trace timeline: %d event(s) at current slot (trace-only fallback)[white]\n",
+			len(events),
+		))
+	} else {
+		b.WriteString(fmt.Sprintf(
+			"  [yellow]Trace timeline: %d event(s) near this snapshot (window ~%s)[white]\n",
+			len(events),
+			formatApproxDuration(h.traceTimelineWindow),
+		))
+	}
 
 	limit := historyTracePreviewLimit
 	if len(events) < limit {
