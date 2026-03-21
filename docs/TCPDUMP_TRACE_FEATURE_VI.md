@@ -77,6 +77,11 @@ Field trong form:
   - timeline dựng theo từng trace event (dùng `[` `]` để đi qua event),
   - status bar hiện `TRACE-ONLY`,
   - panel hiển thị `Trace-only replay mode`.
+- Replay có thêm mode toggle:
+  - `g`: chuyển `CONN <-> TRACE` view.
+  - `TRACE` view tập trung vào trace events tại mốc hiện tại.
+- Replay có thêm nút xem full history:
+  - `h`: mở modal `Replay Trace History` (list + detail).
 
 ## 3) Guardrails kỹ thuật
 
@@ -180,7 +185,9 @@ Lưu ý: từ bản mới, pcap mặc định lưu ở `/tmp/holyf-network-captu
 - Replay đọc trace history từ cùng `data-dir` đang dùng để load snapshot replay.
 - Mapping là nearest-snapshot (không sửa file snapshot cũ).
 - Dữ liệu cũ chưa có field `preset` vẫn hiển thị category nhờ fallback từ `scope`.
-- Không thay đổi hotkey replay cũ; trace event xuất hiện trực tiếp trong panel timeline.
+- Replay hotkeys được mở rộng:
+  - `g` toggle view `CONN/TRACE`,
+  - `h` mở replay trace history modal.
 - Khi chạy ở trace-only fallback, `Shift+S` (timeline snapshot search) bị disable vì không có snapshot record để scan.
 ## 9) Lưu ý vận hành
 

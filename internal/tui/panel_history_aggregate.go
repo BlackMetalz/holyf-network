@@ -151,7 +151,7 @@ func renderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 }
 
 func historyAggregateHintLine(skipEmpty bool) string {
-	base := "  [dim]Use ↑/↓ select, o=toggle IN/OUT, t=jump-time, /=snapshot search, Shift+S=timeline search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i/Shift+I=explain qcols, L=follow, "
+	base := "  [dim]Use ↑/↓ select, o=toggle IN/OUT, g=trace view, h=trace history, t=jump-time, /=snapshot search, Shift+S=timeline search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i/Shift+I=explain qcols, L=follow, "
 	if skipEmpty {
 		return base + "]=next active snapshot, [=previous active snapshot, x=show all snapshots[white]"
 	}

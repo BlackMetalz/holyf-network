@@ -15,6 +15,8 @@ const historyHelpText = `[yellow]Replay Shortcuts[white]
 [yellow][[white]             Previous snapshot
 [yellow]a / e[white]         Jump to oldest / latest snapshot
 [yellow]t[white]             Jump to specific time
+[yellow]g[white]             Toggle replay view CONN <-> TRACE
+[yellow]h[white]             Open replay trace history modal
 [yellow]Shift+S[white]       Search timeline (all loaded snapshots)
 [yellow]L[white]             Follow latest snapshots
 [yellow]o[white]             Toggle replay IN/OUT direction
@@ -32,6 +34,7 @@ const historyHelpText = `[yellow]Replay Shortcuts[white]
 [yellow]q[white]           Quit
 
 [dim]Replay is read-only (no kill/block actions)[white]
+[dim]Trace-only fallback auto-enables when no connections snapshots exist.[white]
 [dim]Press Esc or any key to close[white]`
 
 type liveHelpEntry struct {

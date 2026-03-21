@@ -13,6 +13,20 @@ import (
 	"github.com/rivo/tview"
 )
 
+type replayViewMode int
+
+const (
+	replayViewConnections replayViewMode = iota
+	replayViewTrace
+)
+
+func (m replayViewMode) Label() string {
+	if m == replayViewTrace {
+		return "TRACE"
+	}
+	return "CONN"
+}
+
 // HistoryApp is read-only replay UI for persisted connection snapshots.
 type HistoryApp struct {
 	app       *tview.Application
@@ -49,6 +63,7 @@ type HistoryApp struct {
 	timelineSearchResults  []timelineSearchResult
 	timelineSearchSelected int
 	timelineSearchRunning  bool
+	replayViewMode         replayViewMode
 
 	traceOnlyMode           bool
 	traceReplayEntries      []traceHistoryEntry
@@ -85,6 +100,7 @@ func NewHistoryApp(dataDir, segmentFile string, sensitiveIP bool, appVersion str
 		topDirection:     topConnectionIncoming,
 		skipEmpty:        true,
 		currentIndex:     -1,
+		replayViewMode:   replayViewConnections,
 		stopChan:         make(chan struct{}),
 		healthThresholds: config.DefaultHealthThresholds(),
 	}
@@ -157,6 +173,7 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 			refs = traceRefs
 			h.traceOnlyMode = true
 			h.traceReplayEntries = traceEntries
+			h.replayViewMode = replayViewTrace
 			h.setStatusNote(fmt.Sprintf("Trace-only replay mode (%d events)", len(traceEntries)), 6*time.Second)
 		}
 	}
@@ -408,13 +425,14 @@ func (h *HistoryApp) renderPanel() {
 	}
 
 	header := fmt.Sprintf(
-		"  [dim]%s | %s | %s | rows=in:%d out:%d | dir=%s | scope=%s | range=%s[white]\n",
+		"  [dim]%s | %s | %s | rows=in:%d out:%d | dir=%s | view=%s | scope=%s | range=%s[white]\n",
 		h.headerSnapshotLabel(),
 		captured,
 		iface,
 		len(rec.IncomingGroups),
 		len(rec.OutgoingGroups),
 		h.topDirection.Label(),
+		h.replayViewMode.Label(),
 		h.replayScopeLabel(),
 		h.replayRangeLabel(),
 	)
@@ -430,6 +448,10 @@ func (h *HistoryApp) renderPanel() {
 	traceOnlyHint := ""
 	if h.traceOnlyMode {
 		traceOnlyHint = "  [yellow]Trace-only replay mode[white] (no connection snapshots in selected scope/range)\n\n"
+	}
+	if h.replayViewMode == replayViewTrace {
+		h.panel.SetText(header + "\n" + traceOnlyHint + traceSection + h.renderTraceReplayViewBody())
+		return
 	}
 
 	if len(h.currentRows()) == 0 {
@@ -576,6 +598,7 @@ func (h *HistoryApp) updateStatusBar() {
 			stateText += " [aqua]SKIP-EMPTY[white] |"
 		}
 	}
+	stateText += fmt.Sprintf(" [aqua]VIEW-%s[white] |", h.replayViewMode.Label())
 	if h.traceTimelineAssociated > 0 {
 		stateText += fmt.Sprintf(" [aqua]TRACE %d/%d[white] |", h.currentTraceTimelineCount(), h.traceTimelineAssociated)
 	}

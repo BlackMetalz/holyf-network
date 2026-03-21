@@ -361,6 +361,65 @@ func TestHistoryHandleKeyEventShiftSShowsTimelineSearchModal(t *testing.T) {
 	}
 }
 
+func TestHistoryHandleKeyEventHShowsReplayTraceHistoryModal(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	appendTraceHistoryFixture(t, dir, traceHistoryEntry{
+		CapturedAt: time.Date(2026, 3, 22, 11, 0, 0, 0, time.UTC),
+		PeerIP:     "203.0.113.60",
+		Port:       443,
+		Preset:     "Peer + Port",
+		Scope:      "Peer + Port",
+		Severity:   "INFO",
+		Issue:      "No strong packet-level anomaly",
+	})
+
+	h := newHistoryTestApp(dir)
+	h.refs = []history.SnapshotRef{{CapturedAt: time.Now().UTC()}}
+	h.currentIndex = 0
+
+	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'h', 0))
+	if ret != nil {
+		t.Fatalf("h should be handled in replay mode")
+	}
+
+	name, _ := h.pages.GetFrontPage()
+	if name != historyTracePage {
+		t.Fatalf("expected replay trace-history modal, got front page=%q", name)
+	}
+}
+
+func TestHistoryHandleKeyEventGTogglesReplayViewMode(t *testing.T) {
+	t.Parallel()
+
+	h := newHistoryTestApp(t.TempDir())
+	h.refs = []history.SnapshotRef{{CapturedAt: time.Now().UTC(), IncomingCount: 1}}
+	h.currentIndex = 0
+	h.currentRecord = history.SnapshotRecord{
+		CapturedAt:      time.Now().UTC(),
+		Interface:       "eth0",
+		TopLimitPerSide: 500,
+		IncomingGroups:  []history.SnapshotGroup{{PeerIP: "198.51.100.10", Port: 22, ProcName: "sshd", ConnCount: 1}},
+	}
+
+	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
+	if ret != nil {
+		t.Fatalf("g should be handled in replay mode")
+	}
+	if h.replayViewMode != replayViewTrace {
+		t.Fatalf("expected replay view mode TRACE, got=%v", h.replayViewMode)
+	}
+
+	ret = h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
+	if ret != nil {
+		t.Fatalf("g should be handled in replay mode")
+	}
+	if h.replayViewMode != replayViewConnections {
+		t.Fatalf("expected replay view mode CONN after toggle back, got=%v", h.replayViewMode)
+	}
+}
+
 func TestHistoryHandleKeyEventOTogglesDirectionAndUsesOutgoingRows(t *testing.T) {
 	t.Parallel()
 

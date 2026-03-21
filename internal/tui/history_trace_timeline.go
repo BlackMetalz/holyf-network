@@ -227,3 +227,52 @@ func (h *HistoryApp) renderCurrentTraceTimelineSection() string {
 	b.WriteString("\n")
 	return b.String()
 }
+
+func (h *HistoryApp) renderTraceReplayViewBody() string {
+	events := h.currentTraceTimelineEvents()
+	if len(events) == 0 {
+		return "  [yellow]No trace events at current replay position[white]\n\n  [dim]Use [ / ] to move timeline, g=connections view, h=open trace history.[white]"
+	}
+
+	var b strings.Builder
+	toggleHint := "g=connections view"
+	if h.traceOnlyMode {
+		toggleHint = "g=connections view (disabled in trace-only)"
+	}
+	b.WriteString(fmt.Sprintf("  [dim]Trace View: Up/Down not required | [ / ] timeline | %s | h=open trace history[white]\n\n", toggleHint))
+	b.WriteString("  [dim]TIME     SEV   CAT           TARGET                 STATUS               ISSUE[white]\n")
+
+	maxRows := h.topDisplayLimit()
+	if maxRows < 5 {
+		maxRows = 5
+	}
+
+	limit := maxRows
+	if len(events) < limit {
+		limit = len(events)
+	}
+	for i := 0; i < limit; i++ {
+		entry := events[i]
+		severity := strings.ToUpper(blankIfUnknown(entry.Severity, traceSeverityInfo))
+		sevColor := tracePacketSeverityColor(severity)
+		category := truncateRight(traceHistoryCategory(entry), 12)
+		peer := formatPreviewIP(entry.PeerIP, h.sensitiveIP)
+		target := truncateRight(fmt.Sprintf("%s:%s", peer, traceHistoryPortLabel(entry.Port)), 22)
+		status := truncateRight(blankIfUnknown(entry.Status, "completed"), 20)
+		issue := truncateRight(maskSensitiveIPsInText(blankIfUnknown(entry.Issue, "n/a"), h.sensitiveIP), 72)
+		b.WriteString(fmt.Sprintf(
+			"  [dim]%-8s[white] [%s]%-5s[white] [aqua]%-12s[white] %-22s %-20s %s\n",
+			entry.CapturedAt.Local().Format("15:04:05"),
+			sevColor,
+			severity,
+			category,
+			target,
+			status,
+			issue,
+		))
+	}
+	if len(events) > limit {
+		b.WriteString(fmt.Sprintf("  [dim]... and %d more trace events[white]\n", len(events)-limit))
+	}
+	return b.String()
+}

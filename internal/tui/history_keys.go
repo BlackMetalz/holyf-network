@@ -83,6 +83,28 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			h.renderPanel()
 			h.updateStatusBar()
 			return nil
+		case 'g', 'G':
+			if h.replayViewMode == replayViewConnections {
+				h.replayViewMode = replayViewTrace
+				if h.traceTimelineAssociated == 0 {
+					h.setStatusNote("Replay view: TRACE (no trace events in current scope/range)", 5*time.Second)
+				} else {
+					h.setStatusNote("Replay view: TRACE", 4*time.Second)
+				}
+			} else {
+				if h.traceOnlyMode {
+					h.setStatusNote("Connection view unavailable in trace-only replay", 5*time.Second)
+					return nil
+				}
+				h.replayViewMode = replayViewConnections
+				h.setStatusNote("Replay view: CONN", 4*time.Second)
+			}
+			h.renderPanel()
+			h.updateStatusBar()
+			return nil
+		case 'h', 'H':
+			h.promptReplayTraceHistory()
+			return nil
 		case 't', 'T':
 			h.promptJumpToTime()
 			return nil
@@ -443,10 +465,14 @@ func historyStatusHotkeysForPage(page string) (styled string, plain string) {
 		return "[dim]Enter[white]=search [dim]Esc[white]=cancel", "Enter=search Esc=cancel"
 	case "history-timeline-results":
 		return "[dim]Up/Down[white]=select [dim]Enter[white]=jump [dim]Esc[white]=close", "Up/Down=select Enter=jump Esc=close"
+	case historyTracePage:
+		return "[dim]Up/Down[white]=select [dim]Enter[white]=detail [dim]Esc[white]=close", "Up/Down=select Enter=detail Esc=close"
+	case historyTraceDetailPage:
+		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "history-socket-queue-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim][=prev ]=next a e t f / Shift+S Shift+B/C/P o m i Shift+I x z L ? q[white]", "[=prev ]=next a e t f / Shift+S Shift+B/C/P o m i Shift+I x z L ? q"
+		return "[dim][=prev ]=next a e t f / Shift+S Shift+B/C/P o g h m i Shift+I x z L ? q[white]", "[=prev ]=next a e t f / Shift+S Shift+B/C/P o g h m i Shift+I x z L ? q"
 	}
 }
 

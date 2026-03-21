@@ -137,6 +137,8 @@ Common operating thresholds:
   - default `holyf-network replay` loads current day (server local time).
   - use `-f`, `-b`, `-e` to narrow scope.
   - `o` toggles replay between aggregate `IN` and aggregate `OUT`.
+  - `g` toggles replay view `CONN <-> TRACE`.
+  - `h` opens `Replay Trace History` (list/detail for trace runs).
   - replay stays aggregate-only in v1.
   - unlike live `GROUP`, replay does not apply the top-20 business cap; it shows all stored rows for the selected direction.
   - `Diagnosis` is not rendered in this phase.
