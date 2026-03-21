@@ -239,6 +239,9 @@ func (a *App) moveTopConnectionPage(delta int) bool {
 }
 
 func (a *App) renderTopConnectionsPanel() {
+	// Retry listener-port discovery before rendering so IN/OUT classification
+	// is less likely to show stale "all rows" right after entering the panel.
+	a.ensureListenPortsKnown()
 	a.updateTopConnectionsPanelTitle()
 	source := a.topConnectionsSource()
 	if a.groupView {

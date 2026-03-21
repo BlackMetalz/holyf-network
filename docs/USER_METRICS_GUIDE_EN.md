@@ -32,6 +32,8 @@ Live panel 1 can switch between:
 - `Dir=OUT` (`Top Outgoing`): local processes dialing out to remote services.
   - Toggle with `o`.
   - `Enter` / `k` stay enabled only in `IN`.
+  - Press `T` to open `Trace Packet` flow (bounded tcpdump) for the selected row.
+    - UX/guardrails details: `docs/TCPDUMP_TRACE_FEATURE_VI.md`.
   - Use `[` / `]` to move previous/next page when the row list is longer than visible height (applies to both `IN/OUT` and `CONN/GROUP`).
   - Footer shows current page context (for example `Showing 16-30 of 42 connections | Page 2/3`).
 

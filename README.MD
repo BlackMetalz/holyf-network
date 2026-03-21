@@ -60,6 +60,7 @@ sudo holyf-network -r 5
 # [ / ]: previous / next page in Top Connections when rows exceed visible height
 # o: toggle Top Connections IN/OUT mode
 # Enter / k: block selected Top Connections row (IN mode only)
+# T: trace packet for selected Top Connections row (bounded tcpdump flow)
 # Shift+B: sort by Bandwidth (press again toggles DESC/ASC)
 # Shift+C: sort by Conns (press again toggles DESC/ASC)
 # Shift+P: sort by Port (press again toggles DESC/ASC)
@@ -94,6 +95,8 @@ Mitigation behavior:
 
 - Beginner TCP/network foundation (English, operator-first): `docs/NETWORK_FOUNDATIONS_FOR_SRE_EN.md`
 - Beginner TCP/network foundation (Vietnamese, operator-first): `docs/NETWORK_FOUNDATIONS_FOR_SRE_VI.md`
+- Tcpdump for beginners (Vietnamese, practical packet-capture basics): `docs/TCPDUMP_FOR_BEGINNERS_VI.md`
+- Tcpdump trace feature in holyf-network (Vietnamese, UX/guardrails): `docs/TCPDUMP_TRACE_FEATURE_VI.md`
 - Incident mental checklist (English, 1-page quick reference): `docs/INCIDENT_MENTAL_CHECKLIST_EN.md`
 - Incident mental checklist (Vietnamese, 1-page quick reference): `docs/INCIDENT_MENTAL_CHECKLIST_VI.md`
 - Vietnamese (practical ops): `docs/USER_METRICS_GUIDE_VI.md`

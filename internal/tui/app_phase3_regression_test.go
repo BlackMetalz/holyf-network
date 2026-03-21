@@ -132,6 +132,44 @@ func TestHandleKeyEventEnterAndKAreDisabledInOutgoingMode(t *testing.T) {
 	}
 }
 
+func TestHandleKeyEventTRequiresTopConnectionsFocus(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.focusIndex = 0
+
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'T', 0))
+	if ret != nil {
+		t.Fatalf("T should be handled")
+	}
+	if !strings.Contains(a.statusNote, "Focus Top Connections before trace-packet") {
+		t.Fatalf("unexpected status note: %q", a.statusNote)
+	}
+	name, _ := a.pages.GetFrontPage()
+	if name != "main" {
+		t.Fatalf("should stay on main page, got=%q", name)
+	}
+}
+
+func TestHandleKeyEventTRequiresSelectedRow(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.focusIndex = 2
+
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'T', 0))
+	if ret != nil {
+		t.Fatalf("T should be handled")
+	}
+	if !strings.Contains(a.statusNote, "No row selected for trace-packet") {
+		t.Fatalf("unexpected status note: %q", a.statusNote)
+	}
+	name, _ := a.pages.GetFrontPage()
+	if name != "main" {
+		t.Fatalf("should stay on main page when no row is selected, got=%q", name)
+	}
+}
+
 func TestRecentActionLogsDefaultLimitIsModalLimit(t *testing.T) {
 	t.Parallel()
 
@@ -161,6 +199,9 @@ func TestStatusHotkeysForModalPages(t *testing.T) {
 	}{
 		{page: "kill-peer-form", wantPlain: "Tab=field Enter=next Esc=cancel"},
 		{page: "kill-peer", wantPlain: "<-/->=choose Enter=confirm Esc=cancel"},
+		{page: tracePacketPageForm, wantPlain: "Tab=field Enter=next Esc=cancel"},
+		{page: tracePacketPageProgress, wantPlain: "Esc=abort q=abort"},
+		{page: tracePacketPageResult, wantPlain: "Enter=close Esc=close"},
 		{page: "blocked-peers", wantPlain: "Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"},
 		{page: "action-log", wantPlain: "Enter=close Esc=close"},
 		{page: "diagnosis-history", wantPlain: "Enter=close Esc=close"},

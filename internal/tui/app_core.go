@@ -95,6 +95,12 @@ type App struct {
 	lastRefresh time.Time
 	// Tracks temporary auto-pause while the kill-peer flow is open.
 	killFlowAutoPaused bool
+	// Tracks temporary auto-pause while the trace-packet flow is open.
+	traceFlowAutoPaused bool
+	// Whether a trace-packet capture is currently running.
+	traceCaptureRunning bool
+	// Active cancel function for running trace-packet capture (if any).
+	traceCaptureCancel context.CancelFunc
 
 	// Zoom state
 	zoomed bool // Whether a panel is zoomed to fullscreen
@@ -481,6 +487,7 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		// tcell.KeyRune means a regular character key (not special key)
 		switch event.Rune() {
 		case 'q':
+			a.cancelTracePacketCapture()
 			a.cleanupActiveBlocks()
 			close(a.stopChan) // Signal goroutines to stop
 			a.app.Stop()
@@ -543,6 +550,9 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case 'I':
 			a.promptInterfaceStatsExplain()
+			return nil
+		case 'T':
+			a.promptTracePacket()
 			return nil
 		case 'B', 'C', 'P':
 			mode, ok := directSortModeForRune(event.Rune())
@@ -831,6 +841,12 @@ func (a *App) statusHotkeysForPage(page string) (styled string, plain string) {
 		return "[dim]Tab[white]=field [dim]Enter[white]=next [dim]Esc[white]=cancel", "Tab=field Enter=next Esc=cancel"
 	case "kill-peer":
 		return "[dim]<-/->[white]=choose [dim]Enter[white]=confirm [dim]Esc[white]=cancel", "<-/->=choose Enter=confirm Esc=cancel"
+	case tracePacketPageForm:
+		return "[dim]Tab[white]=field [dim]Enter[white]=next [dim]Esc[white]=cancel", "Tab=field Enter=next Esc=cancel"
+	case tracePacketPageProgress:
+		return "[dim]Esc[white]=abort [dim]q[white]=abort", "Esc=abort q=abort"
+	case tracePacketPageResult:
+		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "blocked-peers":
 		return "[dim]Up/Down[white]=select [dim]Enter[white]=remove [dim]Del[white]=remove [dim]Tab[white]=buttons [dim]Esc[white]=close",
 			"Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"

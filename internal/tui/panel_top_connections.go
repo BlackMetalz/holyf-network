@@ -77,16 +77,16 @@ func (d topConnectionDirection) SortPort(conn collector.Connection) int {
 
 func talkersHintLine(direction topConnectionDirection) string {
 	if direction == topConnectionOutgoing {
-		return "  [dim]Use ↑/↓ select, [=prev page, ]=next page, o=toggle IN/OUT, /=search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
+		return "  [dim]Use ↑/↓ select, [=prev page, ]=next page, o=toggle IN/OUT, /=search, f=port/clear, T=trace packet, Shift+B/C/P sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
 	}
-	return "  [dim]Use ↑/↓ select, [=prev page, ]=next page, Enter/k block, o=toggle IN/OUT, /=search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
+	return "  [dim]Use ↑/↓ select, [=prev page, ]=next page, Enter/k block, o=toggle IN/OUT, /=search, f=port/clear, T=trace packet, Shift+B/C/P sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
 }
 
 func groupHintLine(direction topConnectionDirection) string {
 	if direction == topConnectionOutgoing {
-		return "  [dim]Use ↑/↓ select, [=prev page, ]=next page, g=connections view, o=toggle IN/OUT, /=search, f=port/clear, Shift+C conns sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
+		return "  [dim]Use ↑/↓ select, [=prev page, ]=next page, g=connections view, o=toggle IN/OUT, /=search, f=port/clear, T=trace packet, Shift+C conns sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
 	}
-	return "  [dim]Use ↑/↓ select, [=prev page, ]=next page, g=connections view, o=toggle IN/OUT, /=search, f=port/clear, Shift+C conns sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
+	return "  [dim]Use ↑/↓ select, [=prev page, ]=next page, g=connections view, o=toggle IN/OUT, /=search, f=port/clear, T=trace packet, Shift+C conns sort (toggle DESC/ASC), i=explain qcols, Shift+I=explain iface[white]"
 }
 
 // Label returns a short display name for the status bar chip.

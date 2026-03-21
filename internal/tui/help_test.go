@@ -19,6 +19,7 @@ func TestBuildLiveHelpTextTopOutgoingGroup(t *testing.T) {
 		"Top Connections (OUT, group view)",
 		"Toggle to IN mode",
 		"Switch to connections view",
+		"Trace packet for selected peer/port",
 		"Disabled in OUT mode",
 		"Global Navigation",
 		"Other Panels",

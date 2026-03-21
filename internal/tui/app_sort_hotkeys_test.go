@@ -155,6 +155,9 @@ func TestTopConnectionsSortHintsIncludeDirectOnly(t *testing.T) {
 	if !strings.Contains(panel, "Shift+B/C/P sort") {
 		t.Fatalf("hint line should mention direct sort keys")
 	}
+	if !strings.Contains(panel, "T=trace packet") {
+		t.Fatalf("hint line should mention trace hotkey")
+	}
 }
 
 func TestStatusHotkeysIncludeHelp(t *testing.T) {
@@ -166,8 +169,8 @@ func TestStatusHotkeysIncludeHelp(t *testing.T) {
 		direction topConnectionDirection
 		want      []string
 	}{
-		{name: "top incoming", focus: 2, direction: topConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "Enter/k=act", "?=help"}},
-		{name: "top outgoing", focus: 2, direction: topConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "Enter/k=disabled", "?=help"}},
+		{name: "top incoming", focus: 2, direction: topConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "T=trace", "Enter/k=act", "?=help"}},
+		{name: "top outgoing", focus: 2, direction: topConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "T=trace", "Enter/k=disabled", "?=help"}},
 		{name: "states", focus: 0, direction: topConnectionIncoming, want: []string{"s=sort", "Ctrl+1..5=focus", "?=help"}},
 		{name: "diagnosis", focus: 4, direction: topConnectionIncoming, want: []string{"d=history", "Ctrl+1..5=focus", "?=help"}},
 	}
