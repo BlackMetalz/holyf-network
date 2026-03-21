@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/BlackMetalz/holyf-network/internal/history"
@@ -565,7 +564,7 @@ func (h *HistoryApp) updateStatusBar() {
 		return
 	}
 	page := h.frontPageName()
-	hotkeysStyled, hotkeysPlain := historyStatusHotkeysForPage(page)
+	hotkeysStyled, _ := historyStatusHotkeysForPage(page)
 
 	snapshotPart := "Snapshot: 0/0"
 	if len(h.refs) > 0 && h.currentIndex >= 0 {
@@ -608,38 +607,18 @@ func (h *HistoryApp) updateStatusBar() {
 		stateText += fmt.Sprintf(" [dim]Last:%s[white] |", shortStatus(h.lastStatusNote, 72))
 	}
 
-	leftStyled := fmt.Sprintf(
-		" [yellow]history[white] |%s %s | Files:%d | Corrupt:%d | [%s]%s[white] | %s",
+	line1 := fmt.Sprintf(
+		" [yellow]history[white] |%s %s | Files:%d | Corrupt:%d | [%s]%s[white] | [dim]holyf-network %s[white]",
 		stateText,
 		snapshotPart,
 		h.filesCount,
 		h.corruptSkipped,
 		followColor,
 		followState,
-		hotkeysStyled,
+		h.appVersion,
 	)
-	leftPlain := fmt.Sprintf(
-		" history |%s %s | Files:%d | Corrupt:%d | %s | %s",
-		stripStatusColors(stateText),
-		snapshotPart,
-		h.filesCount,
-		h.corruptSkipped,
-		followState,
-		hotkeysPlain,
-	)
-
-	rightStyled := fmt.Sprintf(" [dim]holyf-network %s[white]", h.appVersion)
-	rightPlain := fmt.Sprintf(" holyf-network %s", h.appVersion)
-
-	text := leftStyled
-	_, _, width, _ := h.statusBar.GetInnerRect()
-	if width > 0 {
-		pad := width - utf8.RuneCountInString(leftPlain) - utf8.RuneCountInString(rightPlain)
-		if pad > 0 {
-			text = leftStyled + strings.Repeat(" ", pad) + rightStyled
-		}
-	}
-	h.statusBar.SetText(text)
+	line2 := fmt.Sprintf(" [dim]keys:[white] %s", hotkeysStyled)
+	h.statusBar.SetText(line1 + "\n" + line2)
 }
 
 func (h *HistoryApp) frontPageName() string {

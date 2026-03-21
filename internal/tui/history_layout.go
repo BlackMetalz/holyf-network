@@ -24,5 +24,5 @@ func createHistoryStatusBar() *tview.TextView {
 func createHistoryLayout(panel *tview.TextView, statusBar *tview.TextView) *tview.Flex {
 	return tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(panel, 0, 1, true).
-		AddItem(statusBar, 1, 0, false)
+		AddItem(statusBar, 2, 0, false)
 }
