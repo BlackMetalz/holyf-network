@@ -86,6 +86,9 @@ When to worry:
 - `RX/TX`: NIC-level throughput (bytes/s).
 - `Packets`: packet rate RX/TX.
 - `Errors`, `Drops`: NIC error/drop counters.
+- In live mode, this panel refreshes every `1s` so bandwidth spikes are visible faster.
+- This `1s` cadence is independent from the global refresh interval (`-r/--refresh`) used for full-panel recompute.
+- Right after startup, one early warm-up refresh runs (~1s) to stabilize first-sample volatility.
 
 How to correlate:
 
@@ -161,7 +164,7 @@ sudo sysctl net.netfilter.nf_conntrack_acct
 
 Actions:
 
-1. Reduce interval to `5-10s` for bandwidth-focused monitoring.
+1. Reduce interval to `5-10s` for **Top Connections** bandwidth-focused monitoring.
 2. Press `r` to collect additional baseline samples.
 3. Use `f` (port filter) and `/` (text search) to narrow context.
 

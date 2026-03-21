@@ -19,7 +19,14 @@ flowchart TD
 
 ## 2) Live TUI (Existing Path)
 
-`refreshData()` in `internal/tui/app_core.go` remains the central loop:
+`refreshData()` in `internal/tui/app_core.go` remains the central full-refresh loop.
+Live scheduling now has 3 lanes:
+
+- Main lane: every `--refresh/-r` seconds (plus manual `r`) runs `refreshData()` end-to-end.
+- Interface fast lane: every `1s` updates only `Interface Stats` for faster RX/TX visibility.
+- Warm-up lane: one early full refresh at ~`1s` after startup to settle first-sample volatility.
+
+Inside `refreshData()`:
 
 1. Collect conntrack snapshot and rates.
 2. Collect TCP retrans snapshot and rates.

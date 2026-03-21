@@ -86,6 +86,9 @@ Khi nào đáng lo:
 - `RX/TX`: tổng lưu lượng theo NIC (bytes/s).
 - `Packets`: số packet/s RX/TX.
 - `Errors`, `Drops`: lỗi và drop của interface.
+- Ở live mode, panel này refresh mỗi `1s` để thấy spike bandwidth nhanh hơn.
+- Nhịp `1s` này độc lập với refresh interval toàn cục (`-r/--refresh`) dùng cho full recompute các panel.
+- Ngay sau lúc startup có một warm-up refresh sớm (~1s) để ổn định sample đầu.
 
 Cách đối chiếu:
 
@@ -161,7 +164,7 @@ sudo sysctl net.netfilter.nf_conntrack_acct
 
 Gợi ý xử lý:
 
-1. Giảm interval xuống `5-10s` nếu đang theo dõi bandwidth.
+1. Giảm interval xuống `5-10s` nếu đang theo dõi bandwidth ở **Top Connections**.
 2. Bấm `r` để lấy thêm mẫu baseline.
 3. Dùng `f` (lọc port) và `/` (search text) để thu hẹp context.
 
