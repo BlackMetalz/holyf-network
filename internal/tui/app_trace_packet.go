@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,7 +31,8 @@ const (
 	tracePacketMaxPacketCap       = 20000
 	tracePacketSampleLineLimit    = 24
 
-	tracePacketSavedDir = "/tmp/holyf-network/captures"
+	tracePacketSavedDir  = "/tmp/holyf-network/captures"
+	tracePacketStopGrace = 1500 * time.Millisecond
 )
 
 type tracePacketScope int
@@ -103,9 +105,10 @@ type tracePacketResult struct {
 	PCAPPath string
 	Saved    bool
 
-	Captured         int
-	ReceivedByFilter int
-	DroppedByKernel  int
+	Captured          int
+	CapturedEstimated bool
+	ReceivedByFilter  int
+	DroppedByKernel   int
 
 	DecodedPackets int
 	SynCount       int
@@ -451,7 +454,7 @@ func (a *App) startTracePacketCapture(req tracePacketRequest) {
 			case result.Aborted:
 				a.setStatusNote("Trace packet aborted", 5*time.Second)
 			case result.CaptureErr != nil:
-				a.setStatusNote("Trace packet failed: "+shortStatus(result.CaptureErr.Error(), 72), 8*time.Second)
+				a.setStatusNote("Trace packet failed: "+shortStatus(maskSensitiveIPsInText(result.CaptureErr.Error(), a.sensitiveIP), 72), 8*time.Second)
 			default:
 				droppedText := "n/a"
 				if result.DroppedByKernel >= 0 {
@@ -463,7 +466,7 @@ func (a *App) startTracePacketCapture(req tracePacketRequest) {
 				)
 			}
 
-			a.addActionLog(buildTracePacketActionSummary(result))
+			a.addActionLog(buildTracePacketActionSummary(result, a.sensitiveIP))
 			a.showTracePacketResultModal(result)
 		})
 	}()
@@ -502,7 +505,7 @@ func (a *App) showTracePacketProgressModal(req tracePacketRequest) *tview.TextVi
 }
 
 func (a *App) showTracePacketResultModal(result tracePacketResult) {
-	body := buildTracePacketResultText(result)
+	body := buildTracePacketResultText(result, a.sensitiveIP)
 
 	view := tview.NewTextView().
 		SetDynamicColors(true).
@@ -612,29 +615,27 @@ func runTracePacketCapture(ctx context.Context, req tracePacketRequest) tracePac
 	}
 	args = append(args, result.Filter)
 
-	cmd := exec.CommandContext(ctx, "tcpdump", args...)
+	cmd := exec.Command("tcpdump", args...)
 	cmd.Stdout = io.Discard
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	runErr := cmd.Run()
+	runErr := runTracePacketCommandWithContext(ctx, cmd)
 	captured, receivedByFilter, droppedByKernel := parseTracePacketCounters(stderr.String())
 	result.Captured = captured
 	result.ReceivedByFilter = receivedByFilter
 	result.DroppedByKernel = droppedByKernel
 
-	if runErr != nil {
-		switch {
-		case errors.Is(ctx.Err(), context.Canceled):
-			result.Aborted = true
-		case errors.Is(ctx.Err(), context.DeadlineExceeded):
-			result.TimedOut = true
-		default:
-			msg := strings.TrimSpace(stderr.String())
-			if msg == "" {
-				msg = runErr.Error()
-			}
-			result.CaptureErr = fmt.Errorf("%s", msg)
+	switch {
+	case errors.Is(ctx.Err(), context.Canceled):
+		result.Aborted = true
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		result.TimedOut = true
+	case runErr != nil:
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = runErr.Error()
 		}
+		result.CaptureErr = fmt.Errorf("%s", msg)
 	}
 
 	if stat, err := os.Stat(pcapPath); err == nil && stat.Size() > 0 {
@@ -646,6 +647,10 @@ func runTracePacketCapture(ctx context.Context, req tracePacketRequest) tracePac
 		result.RstCount = rst
 		result.ReadErr = readErr
 	}
+	if result.Captured < 0 && result.DecodedPackets > 0 {
+		result.Captured = result.DecodedPackets
+		result.CapturedEstimated = true
+	}
 
 	if !keepFile {
 		_ = os.Remove(pcapPath)
@@ -654,6 +659,37 @@ func runTracePacketCapture(ctx context.Context, req tracePacketRequest) tracePac
 
 	result.EndedAt = time.Now()
 	return result
+}
+
+func runTracePacketCommandWithContext(ctx context.Context, cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-waitCh:
+		return err
+	case <-ctx.Done():
+		if cmd.Process != nil {
+			_ = cmd.Process.Signal(os.Interrupt)
+		}
+		timer := time.NewTimer(tracePacketStopGrace)
+		defer timer.Stop()
+		select {
+		case err := <-waitCh:
+			return err
+		case <-timer.C:
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			return <-waitCh
+		}
+	}
 }
 
 func prepareTracePacketPath(req tracePacketRequest) (path string, keep bool, err error) {
@@ -773,12 +809,12 @@ func inspectTracePacketPCAP(path string) (sampleLines []string, decodedPackets i
 	return samples, decodedPackets, syn, synAck, rst, nil
 }
 
-func buildTracePacketResultText(result tracePacketResult) string {
+func buildTracePacketResultText(result tracePacketResult, sensitiveIP bool) string {
 	var b strings.Builder
 	b.WriteString("  [yellow]Trace Packet Summary[white]\n")
 	b.WriteString("  ─────────────────────────────────────────\n")
 	b.WriteString(fmt.Sprintf("  Interface: [green]%s[white]\n", result.Request.Interface))
-	b.WriteString(fmt.Sprintf("  Filter: [green]%s[white]\n", result.Filter))
+	b.WriteString(fmt.Sprintf("  Filter: [green]%s[white]\n", buildTracePacketDisplayFilter(result.Request, sensitiveIP)))
 	b.WriteString(fmt.Sprintf("  Scope: [green]%s[white] | Direction: [green]%s[white]\n", result.Request.Scope.Label(), result.Request.Direction.Label()))
 	b.WriteString(fmt.Sprintf("  Duration: [green]%ds[white] | Packet cap: [green]%d[white]\n", result.Request.DurationSec, result.Request.PacketCap))
 
@@ -794,7 +830,7 @@ func buildTracePacketResultText(result tracePacketResult) string {
 
 	b.WriteString(fmt.Sprintf(
 		"  Captured: [green]%s[white] | ReceivedByFilter: [green]%s[white] | DroppedByKernel: [green]%s[white]\n",
-		tracePacketMetricValue(result.Captured),
+		tracePacketMetricDisplay(result.Captured, result.CapturedEstimated),
 		tracePacketMetricValue(result.ReceivedByFilter),
 		tracePacketMetricValue(result.DroppedByKernel),
 	))
@@ -807,16 +843,20 @@ func buildTracePacketResultText(result tracePacketResult) string {
 	))
 
 	if result.Saved && strings.TrimSpace(result.PCAPPath) != "" {
-		b.WriteString(fmt.Sprintf("  PCAP: [aqua]%s[white]\n", result.PCAPPath))
+		b.WriteString(fmt.Sprintf("  PCAP: [aqua]%s[white]\n", maskTracePacketPath(result.PCAPPath, sensitiveIP)))
 	} else {
 		b.WriteString("  PCAP: [dim]not saved (summary-only mode)[white]\n")
 	}
 
 	if result.CaptureErr != nil {
-		b.WriteString(fmt.Sprintf("  [red]Capture error:[white] %s\n", shortStatus(result.CaptureErr.Error(), 180)))
+		b.WriteString(fmt.Sprintf("  [red]Capture error:[white] %s\n", shortStatus(maskSensitiveIPsInText(result.CaptureErr.Error(), sensitiveIP), 180)))
 	}
 	if result.ReadErr != nil {
-		b.WriteString(fmt.Sprintf("  [yellow]Read warning:[white] %s\n", shortStatus(result.ReadErr.Error(), 180)))
+		if shouldDowngradeTracePacketReadWarning(result) {
+			b.WriteString(fmt.Sprintf("  [dim]Read note:[white] partial capture near timeout boundary (%s)\n", shortStatus(maskSensitiveIPsInText(result.ReadErr.Error(), sensitiveIP), 120)))
+		} else {
+			b.WriteString(fmt.Sprintf("  [yellow]Read warning:[white] %s\n", shortStatus(maskSensitiveIPsInText(result.ReadErr.Error(), sensitiveIP), 180)))
+		}
 	}
 
 	b.WriteString("\n  [yellow]Sample Packets[white]\n")
@@ -826,7 +866,7 @@ func buildTracePacketResultText(result tracePacketResult) string {
 	} else {
 		for _, line := range result.SampleLines {
 			b.WriteString("  ")
-			b.WriteString(line)
+			b.WriteString(maskSensitiveIPsInText(line, sensitiveIP))
 			b.WriteString("\n")
 		}
 	}
@@ -841,7 +881,26 @@ func tracePacketMetricValue(v int) string {
 	return strconv.Itoa(v)
 }
 
-func buildTracePacketActionSummary(result tracePacketResult) string {
+func tracePacketMetricDisplay(v int, estimated bool) string {
+	base := tracePacketMetricValue(v)
+	if estimated && v >= 0 {
+		return base + " (est.)"
+	}
+	return base
+}
+
+func shouldDowngradeTracePacketReadWarning(result tracePacketResult) bool {
+	if !result.TimedOut || result.ReadErr == nil || result.DecodedPackets <= 0 {
+		return false
+	}
+	msg := strings.ToLower(result.ReadErr.Error())
+	if strings.Contains(msg, "pcap_loop") || strings.Contains(msg, "truncated") || strings.Contains(msg, "reading from file") {
+		return true
+	}
+	return false
+}
+
+func buildTracePacketActionSummary(result tracePacketResult, sensitiveIP bool) string {
 	status := "ok"
 	if result.Aborted {
 		status = "aborted"
@@ -856,13 +915,13 @@ func buildTracePacketActionSummary(result tracePacketResult) string {
 	dropped := tracePacketMetricValue(result.DroppedByKernel)
 	saved := "no"
 	if result.Saved && strings.TrimSpace(result.PCAPPath) != "" {
-		saved = result.PCAPPath
+		saved = maskTracePacketPath(result.PCAPPath, sensitiveIP)
 	}
 
 	return fmt.Sprintf(
 		"Trace %s %s:%s | dir=%s scope=%s | captured=%s drop=%s rst=%d | saved=%s",
 		status,
-		result.Request.PeerIP,
+		formatPreviewIP(result.Request.PeerIP, sensitiveIP),
 		portPart,
 		result.Request.Direction.Label(),
 		result.Request.Scope.Label(),
@@ -871,4 +930,50 @@ func buildTracePacketActionSummary(result tracePacketResult) string {
 		result.RstCount,
 		saved,
 	)
+}
+
+func buildTracePacketDisplayFilter(req tracePacketRequest, sensitiveIP bool) string {
+	base := "tcp and host " + formatPreviewIP(req.PeerIP, sensitiveIP)
+	if req.Scope == traceScopePeerOnly || req.Port <= 0 {
+		return base
+	}
+	return fmt.Sprintf("%s and port %d", base, req.Port)
+}
+
+var (
+	traceIPv4Regex = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+	traceIPv6Regex = regexp.MustCompile(`\b(?:[0-9a-fA-F]{1,4}:){2,}[0-9a-fA-F:.]*[0-9a-fA-F]{1,4}\b`)
+)
+
+func maskSensitiveIPsInText(raw string, sensitiveIP bool) string {
+	if !sensitiveIP || strings.TrimSpace(raw) == "" {
+		return raw
+	}
+
+	out := traceIPv4Regex.ReplaceAllStringFunc(raw, func(token string) string {
+		ip := net.ParseIP(token)
+		if ip == nil || ip.To4() == nil {
+			return token
+		}
+		return maskIP(token)
+	})
+	out = traceIPv6Regex.ReplaceAllStringFunc(out, func(token string) string {
+		ip := net.ParseIP(token)
+		if ip == nil || ip.To4() != nil {
+			return token
+		}
+		return maskIP(token)
+	})
+	return out
+}
+
+func maskTracePacketPath(path string, sensitiveIP bool) string {
+	if !sensitiveIP {
+		return path
+	}
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return path
+	}
+	return filepath.Join(filepath.Dir(trimmed), "[masked].pcap")
 }

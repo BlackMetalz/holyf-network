@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -78,7 +79,7 @@ func TestBuildTracePacketActionSummaryIncludesKeyFields(t *testing.T) {
 		PCAPPath:        "/tmp/holyf-network/captures/trace-test.pcap",
 	}
 
-	summary := buildTracePacketActionSummary(result)
+	summary := buildTracePacketActionSummary(result, false)
 	for _, want := range []string{
 		"Trace ok 203.0.113.10:443",
 		"dir=IN scope=Peer + Port",
@@ -88,5 +89,104 @@ func TestBuildTracePacketActionSummaryIncludesKeyFields(t *testing.T) {
 		if !strings.Contains(summary, want) {
 			t.Fatalf("expected summary to contain %q, got: %q", want, summary)
 		}
+	}
+}
+
+func TestBuildTracePacketActionSummaryMasksSensitiveIP(t *testing.T) {
+	t.Parallel()
+
+	result := tracePacketResult{
+		Request: tracePacketRequest{
+			PeerIP:    "203.0.113.10",
+			Port:      443,
+			Scope:     traceScopePeerPort,
+			Direction: traceDirectionIn,
+		},
+		Captured:        12,
+		DroppedByKernel: 1,
+		RstCount:        2,
+		Saved:           true,
+		PCAPPath:        "/tmp/holyf-network/captures/trace-203_0_113_10-443.pcap",
+	}
+
+	summary := buildTracePacketActionSummary(result, true)
+	if strings.Contains(summary, "203.0.113.10") {
+		t.Fatalf("expected masked peer ip in summary, got: %q", summary)
+	}
+	if strings.Contains(summary, "trace-203_0_113_10-443.pcap") {
+		t.Fatalf("expected masked pcap path in summary, got: %q", summary)
+	}
+	if !strings.Contains(summary, "xxx.xxx.113.10") {
+		t.Fatalf("expected masked peer format in summary, got: %q", summary)
+	}
+}
+
+func TestTracePacketMetricDisplayEstimated(t *testing.T) {
+	t.Parallel()
+
+	if got := tracePacketMetricDisplay(47, true); got != "47 (est.)" {
+		t.Fatalf("unexpected estimated display: %q", got)
+	}
+	if got := tracePacketMetricDisplay(-1, true); got != "n/a" {
+		t.Fatalf("unexpected n/a display: %q", got)
+	}
+}
+
+func TestShouldDowngradeTracePacketReadWarning(t *testing.T) {
+	t.Parallel()
+
+	result := tracePacketResult{
+		TimedOut:       true,
+		DecodedPackets: 10,
+		ReadErr:        errors.New("pcap read failed: reading from file /tmp/x.pcap, tcpdump: pcap_loop: truncated dump file"),
+	}
+	if !shouldDowngradeTracePacketReadWarning(result) {
+		t.Fatalf("expected timeout-boundary read warning to be downgraded")
+	}
+
+	result.TimedOut = false
+	if shouldDowngradeTracePacketReadWarning(result) {
+		t.Fatalf("expected non-timeout warning to keep warning severity")
+	}
+}
+
+func TestMaskSensitiveIPsInText(t *testing.T) {
+	t.Parallel()
+
+	line := "IP 14.231.106.188.41334 > 172.25.110.116.22: Flags [.], ack 1, win 1"
+	masked := maskSensitiveIPsInText(line, true)
+	if strings.Contains(masked, "14.231.106.188") || strings.Contains(masked, "172.25.110.116") {
+		t.Fatalf("expected ipv4 addresses to be masked, got: %q", masked)
+	}
+	if !strings.Contains(masked, "xxx.xxx.106.188") || !strings.Contains(masked, "xxx.xxx.110.116") {
+		t.Fatalf("expected masked ipv4 output, got: %q", masked)
+	}
+}
+
+func TestBuildTracePacketResultTextMasksSensitiveParts(t *testing.T) {
+	t.Parallel()
+
+	result := tracePacketResult{
+		Request: tracePacketRequest{
+			Interface:   "eth0",
+			PeerIP:      "203.0.113.10",
+			Port:        443,
+			Scope:       traceScopePeerPort,
+			Direction:   traceDirectionIn,
+			DurationSec: 10,
+			PacketCap:   2000,
+		},
+		Filter:      "tcp and host 203.0.113.10 and port 443",
+		Saved:       true,
+		PCAPPath:    "/tmp/holyf-network/captures/trace-203_0_113_10-443.pcap",
+		SampleLines: []string{"IP 203.0.113.10.443 > 172.25.110.116.22: Flags [S], seq 1"},
+	}
+
+	text := buildTracePacketResultText(result, true)
+	if strings.Contains(text, "203.0.113.10") || strings.Contains(text, "172.25.110.116") {
+		t.Fatalf("expected masked ips in result text, got: %q", text)
+	}
+	if !strings.Contains(text, "[masked].pcap") {
+		t.Fatalf("expected masked pcap path in result text, got: %q", text)
 	}
 }
