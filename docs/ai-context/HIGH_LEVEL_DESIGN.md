@@ -364,7 +364,7 @@ Behavior constraints:
 - Live `GROUP` view groups by `(peer, process)` for clarity under mixed ownership (`sshd` + `ct/nat`, etc.)
 - Top Connections can render a live bandwidth note above the table when needed.
 - Top Connections can also render a footer preview for the selected row when panel height allows.
-- `Diagnosis` is a separate live panel with a fixed operator card: `Issue`, `Scope`, `Signal`, `Likely`, and `Check`.
+- `Diagnosis` is a separate live panel with an operator card: `Issue`, `Scope`, `Signal`, `Likely Cause`, `Confidence`, `Why`, and `Next Actions`.
 
 ### Replay mode (`history_layout.go`)
 

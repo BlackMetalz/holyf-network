@@ -11,6 +11,7 @@ import (
 
 type topDiagnosis struct {
 	Severity   healthLevel
+	Confidence string
 	Issue      string
 	Scope      string
 	Signal     string
@@ -45,9 +46,10 @@ func (a *App) buildTopDiagnosis(
 			level = healthWarn
 		}
 		return &topDiagnosis{
-			Severity: level,
-			Issue:    "Conntrack drops",
-			Scope:    "host-wide",
+			Severity:   level,
+			Confidence: "HIGH",
+			Issue:      "Conntrack drops",
+			Scope:      "host-wide",
 			Signal: fmt.Sprintf(
 				"CT %s | Drops %.1f/s | %s/%s",
 				diagnosisConntrackText(conntrack),
@@ -55,8 +57,8 @@ func (a *App) buildTopDiagnosis(
 				formatNumber(conntrack.Current),
 				formatNumber(conntrack.Max),
 			),
-			Likely: "kernel cannot insert new tracked flows",
-			Check:  "conntrack -S, nf_conntrack_max, NAT churn",
+			Likely:   "kernel cannot insert new tracked flows",
+			Check:    "conntrack -S, nf_conntrack_max, NAT churn",
 			Headline: "Conntrack drops active",
 			Reason: fmt.Sprintf(
 				"Kernel is dropping new tracked flows at %.0f/s; check conntrack pressure, NAT churn, or nf_conntrack_max.",
@@ -83,17 +85,18 @@ func (a *App) buildTopDiagnosis(
 			evidence = append(evidence, "Drops are not active yet, but headroom is getting tight.")
 		}
 		return &topDiagnosis{
-			Severity: conntrackLevel,
-			Issue:    "Conntrack pressure",
-			Scope:    "host-wide",
+			Severity:   conntrackLevel,
+			Confidence: "HIGH",
+			Issue:      "Conntrack pressure",
+			Scope:      "host-wide",
 			Signal: fmt.Sprintf(
 				"CT %s | %s/%s | Drops idle",
 				diagnosisConntrackText(conntrack),
 				formatNumber(conntrack.Current),
 				formatNumber(conntrack.Max),
 			),
-			Likely: "kernel state-table pressure is building",
-			Check:  "conntrack -S, nf_conntrack_max, churn source",
+			Likely:   "kernel state-table pressure is building",
+			Check:    "conntrack -S, nf_conntrack_max, churn source",
 			Headline: "Conntrack pressure high",
 			Reason: fmt.Sprintf(
 				"Table usage is %.0f%% of max; capacity is getting tight before inserts start failing.",
@@ -109,13 +112,14 @@ func (a *App) buildTopDiagnosis(
 
 	if retransLevel >= healthWarn && retrans != nil {
 		return &topDiagnosis{
-			Severity: retransLevel,
-			Issue:    "TCP retrans high",
-			Scope:    "host-wide",
-			Signal:   fmt.Sprintf("Retr %.2f%% | Out %.1f/s | EST %d", retrans.RetransPercent, retrans.OutSegsPerSec, sample.Established),
-			Likely:   "packet loss, RTT spikes, NIC errors, or congestion",
-			Check:    "NIC errors/drops, ss -tin, path loss/RTT",
-			Headline: "TCP retrans is high",
+			Severity:   retransLevel,
+			Confidence: diagnosisConfidenceForRetrans(sample),
+			Issue:      "TCP retrans high",
+			Scope:      "host-wide",
+			Signal:     fmt.Sprintf("Retr %.2f%% | Out %.1f/s | EST %d", retrans.RetransPercent, retrans.OutSegsPerSec, sample.Established),
+			Likely:     "packet loss, RTT spikes, NIC errors, or congestion",
+			Check:      "NIC errors/drops, ss -tin, path loss/RTT",
+			Headline:   "TCP retrans is high",
 			Reason: fmt.Sprintf(
 				"Retrans is %.2f%% with enough traffic sample (%.1f out seg/s, %d ESTABLISHED); check packet loss, RTT, NIC errors, or path congestion.",
 				retrans.RetransPercent,
@@ -152,13 +156,14 @@ func (a *App) buildTopDiagnosis(
 	}
 
 	return &topDiagnosis{
-		Severity: healthOK,
-		Issue:    "No dominant issue",
-		Scope:    "host-wide",
-		Signal:   fmt.Sprintf("Retr %s | CT %s | States stable", retransSignal, conntrackSignal),
-		Likely:   "no warning-level signal is dominating right now",
-		Check:    "watch Top/States, wait next sample",
-		Headline: "No dominant network issue",
+		Severity:   healthOK,
+		Confidence: diagnosisConfidenceForHealthy(sample),
+		Issue:      "No dominant issue",
+		Scope:      "host-wide",
+		Signal:     fmt.Sprintf("Retr %s | CT %s | States stable", retransSignal, conntrackSignal),
+		Likely:     "no warning-level signal is dominating right now",
+		Check:      "watch Top/States, wait next sample",
+		Headline:   "No dominant network issue",
 		Reason: fmt.Sprintf(
 			"Retrans is %s, conntrack is %s, and no warning-level TCP state dominates.",
 			retransSignal,
@@ -169,8 +174,9 @@ func (a *App) buildTopDiagnosis(
 			fmt.Sprintf("Conntrack: %s used; no warning-level TCP state dominates.", diagnosisConntrackText(conntrack)),
 		},
 		NextChecks: []string{
-			"Keep watching Top Connections and Connection States for a dominant peer or state shift.",
-			diagnosisHealthyNextCheck(sample),
+			"Watch Top/States for a dominant peer or state shift.",
+			diagnosisHealthySampleNextCheck(sample),
+			"If workload shifts, run Trace Packet on the hottest peer:port.",
 		},
 	}
 }
@@ -192,6 +198,32 @@ func diagnosisRetransLevel(
 		return healthUnknown, sample
 	}
 	return classifyMetric(retrans.RetransPercent, thresholds.RetransPercent), sample
+}
+
+func diagnosisConfidenceForRetrans(sample retransSampleStatus) string {
+	if sample.Ready &&
+		sample.Established >= sample.MinEstablished*2 &&
+		sample.OutSegsPerSec >= sample.MinOutSegsPerSec*2 {
+		return "HIGH"
+	}
+	if sample.Ready {
+		return "MEDIUM"
+	}
+	return "LOW"
+}
+
+func diagnosisConfidenceForState(found bool) string {
+	if found {
+		return "MEDIUM"
+	}
+	return "LOW"
+}
+
+func diagnosisConfidenceForHealthy(sample retransSampleStatus) string {
+	if sample.Ready {
+		return "MEDIUM"
+	}
+	return "LOW"
 }
 
 func (a *App) buildStateDiagnosis(state string, totalCount int, retransSignal string, conntrackSignal string) *topDiagnosis {
@@ -221,6 +253,7 @@ func (a *App) buildStateDiagnosis(state string, totalCount int, retransSignal st
 
 	return &topDiagnosis{
 		Severity:   stateDiagnosisSeverity(warning.color),
+		Confidence: diagnosisConfidenceForState(found),
 		Issue:      stateDiagnosisIssue(state),
 		Scope:      scope,
 		Signal:     fmt.Sprintf("%s %s | Retr %s | CT %s", shortStateName(state), formatNumber(totalCount), retransSignal, conntrackSignal),
@@ -406,7 +439,7 @@ func diagnosisConntrackText(conntrack *collector.ConntrackRates) string {
 	if conntrack == nil || conntrack.Max <= 0 {
 		return "n/a"
 	}
-	return fmt.Sprintf("%.0f%%", conntrack.UsagePercent)
+	return formatConntrackPercentShort(conntrack.UsagePercent)
 }
 
 func diagnosisRetransText(retrans *collector.RetransmitRates, sample retransSampleStatus) string {
@@ -429,11 +462,11 @@ func diagnosisRetransEvidenceText(retrans *collector.RetransmitRates, sample ret
 	return fmt.Sprintf("%.2f%% at %.1f retrans/s with %.1f out seg/s", retrans.RetransPercent, retrans.RetransPerSec, retrans.OutSegsPerSec)
 }
 
-func diagnosisHealthyNextCheck(sample retransSampleStatus) string {
+func diagnosisHealthySampleNextCheck(sample retransSampleStatus) string {
 	if !sample.Ready {
-		return "Collect more steady traffic if you need a confident retrans verdict."
+		return "LOW SAMPLE: keep steady traffic to raise retrans confidence."
 	}
-	return "Keep sampling if workload shifts; the current host-level signal looks stable."
+	return "Sample ready: retrans is stable now, keep monitoring trend."
 }
 
 func diagnosisProcLabel(proc string) string {

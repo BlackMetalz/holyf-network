@@ -180,7 +180,7 @@ func renderHealthStrip(
 	if conntrack != nil && conntrack.Max > 0 {
 		conntrackLevel = classifyMetric(conntrack.UsagePercent, thresholds.ConntrackPercent)
 		conntrackColor = colorForHealthLevel(conntrackLevel)
-		conntrackValue = fmt.Sprintf("%.0f%%", conntrack.UsagePercent)
+		conntrackValue = formatConntrackPercentShort(conntrack.UsagePercent)
 		overall = maxHealthLevel(overall, conntrackLevel)
 	}
 

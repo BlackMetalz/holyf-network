@@ -62,6 +62,7 @@ func diagnosisFingerprint(diagnosis *topDiagnosis) string {
 	}
 	parts := []string{
 		fmt.Sprintf("%d", diagnosis.Severity),
+		strings.TrimSpace(diagnosisConfidenceValue(diagnosis)),
 		strings.TrimSpace(diagnosisIssueValue(diagnosis)),
 		strings.TrimSpace(diagnosisScopeValue(diagnosis)),
 		strings.TrimSpace(diagnosisLikelyValue(diagnosis)),
@@ -145,16 +146,18 @@ func (a *App) promptDiagnosisHistory() {
 
 func formatDiagnosisHistoryEntry(entry diagnosisHistoryEntry) string {
 	color := colorForHealthLevel(entry.Diagnosis.Severity)
+	conf := shortStatus(diagnosisConfidenceValue(&entry.Diagnosis), 8)
 	issue := shortStatus(diagnosisIssueValue(&entry.Diagnosis), 36)
 	scope := shortStatus(diagnosisScopeValue(&entry.Diagnosis), 36)
 	signal := shortStatus(diagnosisSignalValue(&entry.Diagnosis), 96)
 
 	return fmt.Sprintf(
-		"[%s]%s[white] | [%s]%s[white] | %s | %s",
+		"[%s]%s[white] | [%s]%s[white] | %s | %s | %s",
 		color,
 		formatDiagnosisHistoryRange(entry),
 		color,
 		issue,
+		conf,
 		scope,
 		signal,
 	)

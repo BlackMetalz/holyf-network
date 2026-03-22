@@ -121,8 +121,10 @@ Mốc vận hành thường dùng:
   - `Issue`: vấn đề host-level nổi bật nhất ở thời điểm hiện tại
   - `Scope`: peer/port nổi trội nếu xác định được, nếu không thì là `host-wide`
   - `Signal`: một dòng metric ngắn nối diagnosis với TCP states / retrans / conntrack
-  - `Likely`: diễn giải vận hành ngắn gọn
-  - `Check`: hướng kiểm tra tiếp theo
+  - `Likely Cause`: nguyên nhân nghi ngờ chính (diễn giải ngắn)
+  - `Confidence`: mức tin cậy `LOW` / `MEDIUM` / `HIGH`
+  - `Why`: tóm tắt bằng chứng chính cho kết luận
+  - `Next Actions`: tối đa 2 bước nên kiểm tra ngay
 - Trong v1, panel này vẫn là host-global nên không bị bó hẹp theo filter/search/group selection ở `Top Connections`.
 - Mục đích là nối nhanh tín hiệu giữa các panel, không thay thế việc đọc panel gốc.
 - Bấm `d` để mở `Diagnosis History`, là modal lưu các lần diagnosis đổi trong live session hiện tại.

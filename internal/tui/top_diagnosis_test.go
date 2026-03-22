@@ -35,6 +35,9 @@ func TestBuildTopDiagnosisPrioritizesConntrackDropsOverRetrans(t *testing.T) {
 	if diagnosis.Issue != "Conntrack drops" || diagnosis.Scope != "host-wide" {
 		t.Fatalf("expected concise conntrack card fields, got: %+v", diagnosis)
 	}
+	if diagnosis.Confidence != "HIGH" {
+		t.Fatalf("expected high confidence for conntrack drops, got=%q", diagnosis.Confidence)
+	}
 }
 
 func TestBuildTopDiagnosisRequiresReadySampleForRetrans(t *testing.T) {
@@ -60,6 +63,9 @@ func TestBuildTopDiagnosisRequiresReadySampleForRetrans(t *testing.T) {
 	}
 	if !strings.Contains(diagnosis.Reason, "LOW SAMPLE") {
 		t.Fatalf("expected LOW SAMPLE fallback reason, got: %q", diagnosis.Reason)
+	}
+	if diagnosis.Confidence != "LOW" {
+		t.Fatalf("expected low confidence on low sample fallback, got=%q", diagnosis.Confidence)
 	}
 }
 
@@ -138,6 +144,9 @@ func TestBuildTopDiagnosisAllowsHostLevelDiagnosisWithoutTalkers(t *testing.T) {
 	}
 	if diagnosis.Signal == "" || diagnosis.Likely == "" || diagnosis.Check == "" {
 		t.Fatalf("expected concise diagnosis card fields, got: %+v", diagnosis)
+	}
+	if diagnosis.Confidence != "HIGH" {
+		t.Fatalf("expected high confidence for conntrack pressure, got=%q", diagnosis.Confidence)
 	}
 }
 

@@ -32,16 +32,24 @@ func TestCreatePanelsIncludesDiagnosisPanel(t *testing.T) {
 	}
 }
 
-func TestRenderDiagnosisPanelShowsFiveFieldDecisionCard(t *testing.T) {
+func TestRenderDiagnosisPanelShowsV2DecisionCard(t *testing.T) {
 	t.Parallel()
 
 	text := stripTviewTags(renderDiagnosisPanel(&topDiagnosis{
-		Severity: healthWarn,
-		Issue:    "TCP retrans high",
-		Scope:    "host-wide",
-		Signal:   "Retr 6.20% | Out 190.0/s | EST 133",
-		Likely:   "packet loss, RTT spikes, NIC errors, or congestion",
-		Check:    "NIC errors/drops, ss -tin, path loss/RTT",
+		Severity:   healthWarn,
+		Confidence: "MEDIUM",
+		Issue:      "TCP retrans high",
+		Scope:      "host-wide",
+		Signal:     "Retr 6.20% | Out 190.0/s | EST 133",
+		Likely:     "packet loss, RTT spikes, NIC errors, or congestion",
+		Evidence: []string{
+			"Retrans: 6.20% at 190.0 retrans/s.",
+			"Sample ready: 133 ESTABLISHED, 190.0 out seg/s.",
+		},
+		NextChecks: []string{
+			"Check NIC errors/drops and inspect ss -tin for per-socket retrans behavior.",
+			"Validate path loss, RTT spikes, or congestion between local host and peer path.",
+		},
 	}, 92))
 
 	if !strings.Contains(text, "Issue: TCP retrans high") {
@@ -50,14 +58,26 @@ func TestRenderDiagnosisPanelShowsFiveFieldDecisionCard(t *testing.T) {
 	if !strings.Contains(text, "Scope: host-wide") {
 		t.Fatalf("expected scope line, got: %q", text)
 	}
-	if !strings.Contains(text, "Signal: Retr 6.20% | Out 190.0/s | EST 133") {
+	if !strings.Contains(text, "Signal: Retrans: 6.20% | Out seg/s: 190.0/s | ESTABLISHED: 133") {
 		t.Fatalf("expected signal line, got: %q", text)
 	}
-	if !strings.Contains(text, "Likely: packet loss, RTT spikes") {
-		t.Fatalf("expected likely line, got: %q", text)
+	if !strings.Contains(text, "Likely Cause: packet loss, RTT spikes") {
+		t.Fatalf("expected likely-cause line, got: %q", text)
 	}
-	if !strings.Contains(text, "Check: NIC errors/drops, ss -tin, path loss/RTT") {
-		t.Fatalf("expected check line, got: %q", text)
+	if !strings.Contains(text, "Confidence: MEDIUM") {
+		t.Fatalf("expected confidence line, got: %q", text)
+	}
+	if !strings.Contains(text, "Why: Retrans: 6.20% at 190.0 retrans/s.") {
+		t.Fatalf("expected why line, got: %q", text)
+	}
+	if !strings.Contains(text, "Next Actions:\n") {
+		t.Fatalf("expected next-actions label line, got: %q", text)
+	}
+	if !regexp.MustCompile(`\n\s+1\)\s+Check NIC errors/drops`).MatchString(text) {
+		t.Fatalf("expected first action on its own line, got: %q", text)
+	}
+	if !regexp.MustCompile(`\n\s+2\)\s+Validate path loss`).MatchString(text) {
+		t.Fatalf("expected second action on its own line, got: %q", text)
 	}
 }
 
@@ -65,12 +85,18 @@ func TestRenderDiagnosisPanelShowsConciseStateIssue(t *testing.T) {
 	t.Parallel()
 
 	raw := renderDiagnosisPanel(&topDiagnosis{
-		Severity: healthWarn,
-		Issue:    "TIME_WAIT churn",
-		Scope:    "172.25.110.137 :18080",
-		Signal:   "TW 4,974 | Retr LOW SAMPLE | CT 2%",
-		Likely:   "short-lived conn churn, not packet loss",
-		Check:    "keepalive, conn reuse, client retries",
+		Severity:   healthWarn,
+		Confidence: "MEDIUM",
+		Issue:      "TIME_WAIT churn",
+		Scope:      "172.25.110.137 :18080",
+		Signal:     "TW 4,974 | Retr LOW SAMPLE | CT 2%",
+		Likely:     "short-lived conn churn, not packet loss",
+		Evidence: []string{
+			"State count: 4,974 TIME_WAIT sockets (warn > 600).",
+		},
+		NextChecks: []string{
+			"Check whether one service is creating short-lived connections faster than expected.",
+		},
 	}, 56)
 	text := stripTviewTags(raw)
 
@@ -80,14 +106,23 @@ func TestRenderDiagnosisPanelShowsConciseStateIssue(t *testing.T) {
 	if !strings.Contains(text, "Scope: 172.25.110.137 :18080") {
 		t.Fatalf("expected scope line, got: %q", text)
 	}
-	if !strings.Contains(text, "Signal: TW 4,974 | Retr LOW SAMPLE | CT 2%") {
+	if !strings.Contains(text, "Signal: TIME_WAIT: 4,974 | Retrans: LOW SAMPLE |") || !strings.Contains(text, "Conntrack: 2%") {
 		t.Fatalf("expected concise signal line, got: %q", text)
 	}
-	if !strings.Contains(text, "Likely: short-lived conn churn, not packet loss") {
-		t.Fatalf("expected likely line, got: %q", text)
+	if !strings.Contains(text, "Likely Cause: short-lived conn churn, not packet loss") {
+		t.Fatalf("expected likely-cause line, got: %q", text)
 	}
-	if !strings.Contains(text, "Check: keepalive, conn reuse, client retries") {
-		t.Fatalf("expected check line, got: %q", text)
+	if !strings.Contains(text, "Confidence: MEDIUM") {
+		t.Fatalf("expected confidence line, got: %q", text)
+	}
+	if !strings.Contains(text, "Why: State count: 4,974 TIME_WAIT sockets") {
+		t.Fatalf("expected why line, got: %q", text)
+	}
+	if !strings.Contains(text, "Next Actions:\n") {
+		t.Fatalf("expected next-actions label line, got: %q", text)
+	}
+	if !regexp.MustCompile(`\n\s+1\)\s+Check whether one service is creating`).MatchString(text) {
+		t.Fatalf("expected first action on its own line, got: %q", text)
 	}
 	if !strings.Contains(raw, "[dim]Scope: [white][dim]") {
 		t.Fatalf("expected scope value to be dimmed, got: %q", raw)

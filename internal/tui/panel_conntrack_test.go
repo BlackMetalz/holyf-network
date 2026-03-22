@@ -22,6 +22,9 @@ func TestRenderConntrackPanelHidesZeroDropsWhenStatsAvailable(t *testing.T) {
 	if strings.Contains(rendered, "Drops: 0") {
 		t.Fatalf("expected zero drops to be hidden, got: %q", rendered)
 	}
+	if !strings.Contains(rendered, "<0.1%") {
+		t.Fatalf("expected tiny usage to render as <0.1%%, got: %q", rendered)
+	}
 }
 
 func TestRenderConntrackPanelShowsDropCountWhenNonZero(t *testing.T) {

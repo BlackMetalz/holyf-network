@@ -16,10 +16,10 @@ func renderConntrackPanel(rates collector.ConntrackRates) string {
 
 	// Usage: "Used: 45,231 / 262,144 (17%)"
 	if rates.Max > 0 {
-		sb.WriteString(fmt.Sprintf("  [bold]Used:[white] %s / %s (%.1f%%)\n\n",
+		sb.WriteString(fmt.Sprintf("  [bold]Used:[white] %s / %s (%s)\n\n",
 			formatNumber(rates.Current),
 			formatNumber(rates.Max),
-			rates.UsagePercent,
+			formatConntrackPercentDetailed(rates.UsagePercent),
 		))
 
 		// Visual usage bar (Story 6.2)
@@ -76,11 +76,11 @@ func renderUsageBar(percent float64) string {
 		color = "yellow"
 	}
 
-	bar := fmt.Sprintf("[%s]%s[dim]%s[white] %.1f%%",
+	bar := fmt.Sprintf("[%s]%s[dim]%s[white] %s",
 		color,
 		strings.Repeat("█", filled),
 		strings.Repeat("░", barWidth-filled),
-		percent,
+		formatConntrackPercentDetailed(percent),
 	)
 
 	return bar
