@@ -14,6 +14,7 @@ If you are still new to TCP states / queues / conntrack, read this first:
 2. Check `Interface Stats`:
    - Is `RX/TX` spiking?
    - Are `Errors/Drops` non-zero?
+   - If needed, press `y` to switch profile (`WEB/DB/CACHE`) and re-evaluate spike sensitivity for this host role.
 3. Open `Top Connections`:
    - Sort by bandwidth (`Shift+B`) to find heavy flows first.
    - Look for unusual `Send-Q/Recv-Q`.
@@ -87,10 +88,21 @@ When to worry:
 
 - `RX/TX`: NIC-level throughput (bytes/s).
 - `Packets`: packet rate RX/TX.
+- `Traffic`: profile-aware spike verdict from peak throughput + moving baseline ratio.
 - `Errors`, `Drops`: NIC error/drop counters.
 - In live mode, this panel refreshes every `1s` so bandwidth spikes are visible faster.
 - This `1s` cadence is independent from the global refresh interval (`-r/--refresh`) used for full-panel recompute.
 - Right after startup, one early warm-up refresh runs (~1s) to stabilize first-sample volatility.
+
+`Traffic` line meaning:
+
+- Uses current profile (`WEB`, `DB`, or `CACHE`).
+- Evaluates both:
+  - interface utilization threshold when NIC speed is known, and
+  - absolute throughput threshold (peak of RX/TX) as fallback when NIC speed is unknown, and
+  - spike ratio threshold (`peak / moving_baseline`).
+- `DB` profile is stricter (alerts earlier), `CACHE` profile is more tolerant, `WEB` is balanced for bursty edge/API nodes.
+- Footer shows link-speed debug: `LINK(sysfs):<Mb/s>` or `LINK(sysfs):UNKNOWN`.
 
 How to correlate:
 
@@ -110,10 +122,14 @@ In the live panel, focus on state-table pressure:
 - pay special attention to `Drops` only when it is non-zero
   - `Drops: 0` is intentionally hidden in the panel to keep noise down
 
-Common operating thresholds:
+Conntrack thresholds are profile-aware:
 
-- `Conntrack% > 70%`: warning zone.
-- `Conntrack% > 85%`: critical zone.
+- `WEB`: warn `>= 70%`, crit `>= 85%`
+- `DB`: warn `>= 55%`, crit `>= 70%`
+- `CACHE`: warn `>= 75%`, crit `>= 90%`
+
+Use `y` in live mode to cycle profile instantly.
+Use `Shift+Y` to open quick in-app explain for profile thresholds.
 
 ## 5) Diagnosis
 
@@ -124,7 +140,7 @@ Common operating thresholds:
   - `Likely Cause`: short operator interpretation of the top suspected cause
   - `Confidence`: `LOW` / `MEDIUM` / `HIGH` confidence on that diagnosis
   - `Why`: concise evidence summary behind the diagnosis
-  - `Next Actions`: concrete next checks (up to 2 actions)
+  - `Next Actions`: concrete next checks (up to 3 actions)
 - It stays host-global in v1, so filter/search/group selection in `Top Connections` does not narrow it.
 - It is meant to connect the other panels quickly, not replace them.
 - `d` opens `Diagnosis History`, an in-memory modal of the latest diagnosis changes in the current live session.
@@ -144,6 +160,18 @@ Common operating thresholds:
   - replay stays aggregate-only in v1.
   - unlike live `GROUP`, replay does not apply the top-20 business cap; it shows all stored rows for the selected direction.
   - `Diagnosis` is not rendered in this phase.
+
+## Alert Threshold Profiles (WEB/DB/CACHE)
+
+- Purpose: avoid one-size-fits-all alert sensitivity across different host roles.
+- Scope in current phase:
+  - `3. Interface Stats` (`Traffic` spike verdict)
+  - `4. Conntrack` warning/critical thresholds
+  - `Connection States` health strip and `Diagnosis` conntrack severity path
+- Runtime controls:
+  - CLI startup: `--alert-profile web|db|cache`
+  - Live switch: press `y` to cycle profiles without restart
+  - Live explain: press `Shift+Y` for quick profile threshold guide modal
 
 ## Block vs Kill
 

@@ -5,13 +5,14 @@ import (
 	"strings"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
+	"github.com/BlackMetalz/holyf-network/internal/config"
 )
 
 // panel_conntrack.go — Renders the Conntrack panel content.
 // Focuses on usage pressure, drops, and warning thresholds.
 
 // renderConntrackPanel formats conntrack data for the TUI panel.
-func renderConntrackPanel(rates collector.ConntrackRates) string {
+func renderConntrackPanel(rates collector.ConntrackRates, threshold config.ThresholdBand, profileLabel string) string {
 	var sb strings.Builder
 
 	// Usage: "Used: 45,231 / 262,144 (17%)"
@@ -29,12 +30,21 @@ func renderConntrackPanel(rates collector.ConntrackRates) string {
 		sb.WriteString(fmt.Sprintf("  [bold]Used:[white] %s\n\n", formatNumber(rates.Current)))
 	}
 
-	// Warning when near limit (Story 6.4)
-	if rates.UsagePercent > 80 {
-		sb.WriteString("  [red][WARN] Conntrack table > 80% full![white]\n")
+	warnPct := threshold.Warn
+	critPct := threshold.Crit
+	if warnPct <= 0 {
+		warnPct = 70
+	}
+	if critPct <= 0 {
+		critPct = 85
+	}
+
+	// Warning when near limit (profile-aware)
+	if rates.UsagePercent >= critPct {
+		sb.WriteString(fmt.Sprintf("  [red][WARN] Conntrack table >= %.0f%% (%s profile)[white]\n", critPct, profileLabel))
 		sb.WriteString("  [dim]Consider: sysctl net.netfilter.nf_conntrack_max[white]\n\n")
-	} else if rates.UsagePercent > 50 {
-		sb.WriteString("  [yellow]Conntrack usage above 50%[white]\n\n")
+	} else if rates.UsagePercent >= warnPct {
+		sb.WriteString(fmt.Sprintf("  [yellow]Conntrack usage >= %.0f%% (%s profile)[white]\n\n", warnPct, profileLabel))
 	}
 
 	// Stats availability
@@ -51,6 +61,13 @@ func renderConntrackPanel(rates collector.ConntrackRates) string {
 		sb.WriteString(fmt.Sprintf("\n  [red]Drops: %s ⚠ (lost since boot)[white]",
 			formatNumber(int(rates.TotalDrops))))
 	}
+
+	sb.WriteString(fmt.Sprintf(
+		"\n  [dim]Profile: %s | Conntrack thresholds warn>=%.0f%% crit>=%.0f%%[white]",
+		profileLabel,
+		warnPct,
+		critPct,
+	))
 
 	return sb.String()
 }

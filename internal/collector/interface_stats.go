@@ -126,3 +126,27 @@ func CalculateRates(current InterfaceStats, previous *InterfaceStats) InterfaceR
 
 	return rates
 }
+
+// CollectInterfaceSpeedMbps reads /sys link speed in Mb/s.
+// Returns (speed, true) when a positive speed is available.
+// Virtual interfaces may expose -1/unknown and return (0, false).
+func CollectInterfaceSpeedMbps(ifaceName string) (float64, bool) {
+	path := fmt.Sprintf("/sys/class/net/%s/speed", ifaceName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, false
+	}
+	speed, ok := parseInterfaceSpeedMbpsValue(string(data))
+	if !ok {
+		return 0, false
+	}
+	return speed, true
+}
+
+func parseInterfaceSpeedMbpsValue(raw string) (float64, bool) {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
+}

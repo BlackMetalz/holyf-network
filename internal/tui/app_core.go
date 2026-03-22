@@ -112,6 +112,13 @@ type App struct {
 	zoomed bool // Whether a panel is zoomed to fullscreen
 
 	healthThresholds config.HealthThresholds
+	alertProfile     config.AlertProfile
+	alertProfileSpec config.AlertProfileSpec
+	ifaceSpikeEMA    float64
+	ifaceSpikeCount  int
+	ifaceSpeedMbps   float64
+	ifaceSpeedKnown  bool
+	ifaceSpeedSample bool
 }
 
 var livePanelFocusOrder = []int{2, 0, 1, 3, 4} // 1=Top, 2=States, 3=Interface, 4=Conntrack, 5=Diagnosis
@@ -130,12 +137,14 @@ func NewApp(
 	sensitiveIP bool,
 	appVersion string,
 	healthThresholds config.HealthThresholds,
+	alertProfile config.AlertProfile,
 ) *App {
 	version := strings.TrimSpace(appVersion)
 	if version == "" {
 		version = "dev"
 	}
 	healthThresholds.Normalize()
+	alertProfileSpec := config.AlertProfileSpecFor(alertProfile)
 
 	return &App{
 		app:                 tview.NewApplication(),
@@ -148,6 +157,8 @@ func NewApp(
 		stopChan:            make(chan struct{}),
 		refreshChan:         make(chan struct{}, 1), // Buffered: so send never blocks
 		healthThresholds:    healthThresholds,
+		alertProfile:        alertProfileSpec.Name,
+		alertProfileSpec:    alertProfileSpec,
 		actionLogs:          make([]string, 0, 32),
 		actionHistoryPath:   defaultActionHistoryPath(),
 		traceHistory:        make([]traceHistoryEntry, 0, 32),
@@ -323,13 +334,28 @@ func (a *App) refreshInterfacePanel() {
 	}
 
 	rates := collector.CalculateRates(ifaceStats, a.prevIfaceStats)
-	a.panels[1].SetText(renderInterfacePanel(rates))
+	linkSpeedMbps, linkSpeedKnown := collector.CollectInterfaceSpeedMbps(a.ifaceName)
+	linkSpeedBps := 0.0
+	if linkSpeedKnown && linkSpeedMbps > 0 {
+		linkSpeedBps = linkSpeedMbps * 1_000_000 / 8.0
+	}
+	a.ifaceSpeedSample = true
+	a.ifaceSpeedKnown = linkSpeedKnown
+	if linkSpeedKnown {
+		a.ifaceSpeedMbps = linkSpeedMbps
+	} else {
+		a.ifaceSpeedMbps = 0
+	}
+	spike := a.evaluateInterfaceSpike(rates, linkSpeedBps, linkSpeedKnown)
+	a.panels[1].SetText(renderInterfacePanel(rates, spike))
 	a.prevIfaceStats = &ifaceStats
 }
 
 // refreshData collects data from system and updates all panels.
 func (a *App) refreshData() {
 	a.lastRefresh = time.Now()
+	activeThresholds := a.activeHealthThresholds()
+	profileSpec := a.currentAlertProfileSpec()
 
 	// Collect conntrack early so panel 0 health strip can use it too.
 	var conntrackRates *collector.ConntrackRates
@@ -339,7 +365,7 @@ func (a *App) refreshData() {
 	} else {
 		rates := collector.CalculateConntrackRates(ctData, a.prevConntrack)
 		conntrackRates = &rates
-		a.panels[3].SetText(renderConntrackPanel(rates))
+		a.panels[3].SetText(renderConntrackPanel(rates, profileSpec.Thresholds.ConntrackPercent, profileSpec.Label))
 		a.prevConntrack = &ctData
 	}
 
@@ -359,7 +385,7 @@ func (a *App) refreshData() {
 		a.panels[0].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
 		connDataAvailable = true
-		a.panels[0].SetText(renderConnectionsPanelWithStateSort(connData, retransRates, conntrackRates, a.healthThresholds, a.connStateSortDesc))
+		a.panels[0].SetText(renderConnectionsPanelWithStateSort(connData, retransRates, conntrackRates, activeThresholds, a.connStateSortDesc))
 	}
 
 	a.ensureListenPortsKnown()
@@ -513,6 +539,12 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'p':
 			a.paused.Store(!a.paused.Load())
 			a.updateStatusBar()
+			return nil
+		case 'y':
+			a.cycleAlertProfile()
+			return nil
+		case 'Y':
+			a.promptAlertProfileExplain()
 			return nil
 		case 's':
 			if a.focusIndex != 0 {
@@ -785,6 +817,8 @@ func (a *App) updateStatusBar() {
 	if a.sensitiveIP {
 		stateText += " [yellow]IP MASK[white] |"
 	}
+	stateText += fmt.Sprintf(" [aqua]PROFILE-%s[white] |", a.currentAlertProfileSpec().Label)
+	stateText += a.linkSpeedStatusIndicator()
 	if time.Now().Before(a.statusNoteUntil) && a.statusNote != "" {
 		stateText += fmt.Sprintf(" [yellow]%s[white] |", a.statusNote)
 	} else if strings.TrimSpace(a.lastStatusNote) != "" {
@@ -840,6 +874,16 @@ func (a *App) frontPageName() string {
 	return name
 }
 
+func (a *App) linkSpeedStatusIndicator() string {
+	if !a.ifaceSpeedSample {
+		return " [dim]LINK(sysfs):warming[white] |"
+	}
+	if a.ifaceSpeedKnown && a.ifaceSpeedMbps > 0 {
+		return fmt.Sprintf(" [aqua]LINK(sysfs):%.0fMb/s[white] |", a.ifaceSpeedMbps)
+	}
+	return " [yellow]LINK(sysfs):UNKNOWN[white] |"
+}
+
 func (a *App) statusHotkeysForPage(page string) (styled string, plain string) {
 	switch page {
 	case "help":
@@ -874,6 +918,8 @@ func (a *App) statusHotkeysForPage(page string) (styled string, plain string) {
 	case "socket-queue-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "interface-stats-explain":
+		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
+	case "alert-profile-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "blocked-peers-remove-result", "block-summary":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"

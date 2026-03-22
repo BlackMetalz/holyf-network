@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
+	"github.com/BlackMetalz/holyf-network/internal/config"
 )
 
 func TestRenderConntrackPanelHidesZeroDropsWhenStatsAvailable(t *testing.T) {
@@ -17,7 +18,7 @@ func TestRenderConntrackPanelHidesZeroDropsWhenStatsAvailable(t *testing.T) {
 		StatsAvailable: true,
 		FirstReading:   false,
 		TotalDrops:     0,
-	})
+	}, config.ThresholdBand{Warn: 70, Crit: 85}, "WEB")
 
 	if strings.Contains(rendered, "Drops: 0") {
 		t.Fatalf("expected zero drops to be hidden, got: %q", rendered)
@@ -37,7 +38,7 @@ func TestRenderConntrackPanelShowsDropCountWhenNonZero(t *testing.T) {
 		StatsAvailable: true,
 		FirstReading:   false,
 		TotalDrops:     12,
-	})
+	}, config.ThresholdBand{Warn: 70, Crit: 85}, "WEB")
 
 	if !strings.Contains(rendered, "Drops: 12") {
 		t.Fatalf("expected non-zero drops to remain visible, got: %q", rendered)

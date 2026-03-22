@@ -37,11 +37,12 @@ func (a *App) buildTopDiagnosis(
 	retrans *collector.RetransmitRates,
 	conntrack *collector.ConntrackRates,
 ) *topDiagnosis {
-	conntrackLevel := diagnosisConntrackLevel(conntrack, a.healthThresholds)
-	retransLevel, sample := diagnosisRetransLevel(data, retrans, a.healthThresholds)
+	thresholds := a.activeHealthThresholds()
+	conntrackLevel := diagnosisConntrackLevel(conntrack, thresholds)
+	retransLevel, sample := diagnosisRetransLevel(data, retrans, thresholds)
 
 	if conntrack != nil && conntrack.StatsAvailable && !conntrack.FirstReading && conntrack.DropsPerSec > 0 {
-		level := classifyMetric(conntrack.DropsPerSec, a.healthThresholds.DropsPerSec)
+		level := classifyMetric(conntrack.DropsPerSec, thresholds.DropsPerSec)
 		if level < healthWarn {
 			level = healthWarn
 		}

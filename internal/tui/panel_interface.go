@@ -11,7 +11,7 @@ import (
 // Combines Stories 4.1 (RX/TX bytes/sec), 4.2 (packet rate), 4.3 (errors/drops).
 
 // renderInterfacePanel formats interface stats for the TUI panel.
-func renderInterfacePanel(rates collector.InterfaceRates) string {
+func renderInterfacePanel(rates collector.InterfaceRates, spike interfaceSpikeAssessment) string {
 	var sb strings.Builder
 
 	if rates.FirstReading {
@@ -31,6 +31,44 @@ func renderInterfacePanel(rates collector.InterfaceRates) string {
 			formatPacketRate(rates.TxPktsPerSec),
 		))
 		sb.WriteString("\n")
+
+		spikeState := "warming baseline"
+		spikeColor := "dim"
+		switch spike.Level {
+		case healthCrit:
+			spikeState = "SPIKE CRIT"
+			spikeColor = "red"
+		case healthWarn:
+			spikeState = "SPIKE WARN"
+			spikeColor = "yellow"
+		case healthOK:
+			if spike.Ready {
+				spikeState = "stable"
+				spikeColor = "green"
+			}
+		}
+		if spike.Ready && spike.Level == healthUnknown {
+			spikeState = "stable"
+			spikeColor = "green"
+		}
+
+		if spike.Ratio <= 0 {
+			spike.Ratio = 1.0
+		}
+		linkInfo := "speed n/a"
+		if spike.LinkSpeedKnown && spike.LinkSpeedBps > 0 {
+			linkInfo = fmt.Sprintf("link %s, util %.1f%%", formatLinkSpeed(spike.LinkSpeedBps), spike.LinkUtilPercent)
+		}
+		sb.WriteString(fmt.Sprintf(
+			"  [bold]Traffic:[white] [%s]%s[white]  [dim](%s profile | peak %s, base %s, x%.2f | %s)[white]\n\n",
+			spikeColor,
+			spikeState,
+			spike.ProfileLabel,
+			formatBytesRate(spike.PeakBytesPerSec),
+			formatBytesRate(spike.BaselineBytesPerSec),
+			spike.Ratio,
+			linkInfo,
+		))
 	}
 
 	// Errors and drops (cumulative, always shown)
@@ -90,4 +128,12 @@ func formatPacketRate(pktsPerSec float64) string {
 		return fmt.Sprintf("%.1fk/s", pktsPerSec/1_000)
 	}
 	return fmt.Sprintf("%.0f/s", pktsPerSec)
+}
+
+func formatLinkSpeed(bytesPerSec float64) string {
+	bitsPerSec := bytesPerSec * 8.0
+	if bitsPerSec >= 1_000_000_000 {
+		return fmt.Sprintf("%.1f Gb/s", bitsPerSec/1_000_000_000)
+	}
+	return fmt.Sprintf("%.0f Mb/s", bitsPerSec/1_000_000)
 }

@@ -172,10 +172,10 @@ func TestStatusHotkeysIncludeHelp(t *testing.T) {
 		direction topConnectionDirection
 		want      []string
 	}{
-		{name: "top incoming", focus: 2, direction: topConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "T=trace", "t=traces", "Enter/k=act", "?=help"}},
-		{name: "top outgoing", focus: 2, direction: topConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "T=trace", "t=traces", "Enter/k=disabled", "?=help"}},
-		{name: "states", focus: 0, direction: topConnectionIncoming, want: []string{"s=sort", "Ctrl+1..5=focus", "?=help"}},
-		{name: "diagnosis", focus: 4, direction: topConnectionIncoming, want: []string{"d=history", "Ctrl+1..5=focus", "?=help"}},
+		{name: "top incoming", focus: 2, direction: topConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "T=trace", "t=traces", "y=profile", "Y=p-help", "Enter/k=act", "?=help"}},
+		{name: "top outgoing", focus: 2, direction: topConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "T=trace", "t=traces", "y=profile", "Y=p-help", "Enter/k=disabled", "?=help"}},
+		{name: "states", focus: 0, direction: topConnectionIncoming, want: []string{"s=sort", "y=profile", "Y=p-help", "Ctrl+1..5=focus", "?=help"}},
+		{name: "diagnosis", focus: 4, direction: topConnectionIncoming, want: []string{"d=history", "y=profile", "Y=p-help", "Ctrl+1..5=focus", "?=help"}},
 	}
 
 	for _, tc := range tests {

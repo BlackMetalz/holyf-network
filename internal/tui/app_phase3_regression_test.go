@@ -213,6 +213,7 @@ func TestStatusHotkeysForModalPages(t *testing.T) {
 		{page: traceHistoryComparePage, wantPlain: "Enter=close Esc=close"},
 		{page: "socket-queue-explain", wantPlain: "Enter=close Esc=close"},
 		{page: "interface-stats-explain", wantPlain: "Enter=close Esc=close"},
+		{page: "alert-profile-explain", wantPlain: "Enter=close Esc=close"},
 		{page: "blocked-peers-remove-result", wantPlain: "Enter=close Esc=close"},
 		{page: "block-summary", wantPlain: "Enter=close Esc=close"},
 	}
@@ -272,6 +273,35 @@ func TestLiveStatusBarKeepsBaseVersionWhenNoUpdateTag(t *testing.T) {
 	}
 	if !strings.Contains(text, "holyf-network test") {
 		t.Fatalf("status bar should keep base version label, got=%q", text)
+	}
+}
+
+func TestLiveStatusBarShowsLinkSpeedUnknownWhenNotReadable(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.ifaceSpeedSample = true
+	a.ifaceSpeedKnown = false
+	a.updateStatusBar()
+
+	text := a.statusBar.GetText(true)
+	if !strings.Contains(text, "LINK(sysfs):UNKNOWN") {
+		t.Fatalf("expected unknown link speed marker, got=%q", text)
+	}
+}
+
+func TestLiveStatusBarShowsLinkSpeedWhenKnown(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.ifaceSpeedSample = true
+	a.ifaceSpeedKnown = true
+	a.ifaceSpeedMbps = 25000
+	a.updateStatusBar()
+
+	text := a.statusBar.GetText(true)
+	if !strings.Contains(text, "LINK(sysfs):25000Mb/s") {
+		t.Fatalf("expected known link speed marker, got=%q", text)
 	}
 }
 
