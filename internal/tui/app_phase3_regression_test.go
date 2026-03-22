@@ -202,7 +202,7 @@ func TestStatusHotkeysForModalPages(t *testing.T) {
 	}{
 		{page: "kill-peer-form", wantPlain: "Tab=field Enter=next Esc=cancel"},
 		{page: "kill-peer", wantPlain: "<-/->=choose Enter=confirm Esc=cancel"},
-		{page: tracePacketPageForm, wantPlain: "Tab=field Enter=next Esc=cancel"},
+		{page: tracePacketPageForm, wantPlain: "Tab=field Enter=start Esc=cancel"},
 		{page: tracePacketPageProgress, wantPlain: "Esc=abort q=abort"},
 		{page: tracePacketPageResult, wantPlain: "Enter=close Esc=close"},
 		{page: "blocked-peers", wantPlain: "Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"},

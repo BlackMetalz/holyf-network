@@ -82,6 +82,19 @@ sudo holyf-network -r 5
 # q: quit
 ```
 
+## Local Dev With Make
+
+```bash
+# Build local binary
+make build
+
+# Build + run with sudo
+make local
+
+# Build + run with extra args
+make local ARGS="-r 5"
+```
+
 Live refresh model:
 - `-r/--refresh` controls the main full refresh loop (Top/States/Conntrack/Diagnosis and full data recompute).
 - `3. Interface Stats` has a dedicated `1s` refresh lane in live mode for faster RX/TX visibility.

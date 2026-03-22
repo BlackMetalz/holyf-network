@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/rivo/tview"
 )
 
 func TestBuildTracePacketFilter(t *testing.T) {
@@ -53,6 +55,22 @@ func TestBuildTracePacketFilterPresets(t *testing.T) {
 	}
 }
 
+func TestBuildTracePacketFilterAppendsCustomClauseOnStrategy(t *testing.T) {
+	t.Parallel()
+
+	req := tracePacketRequest{
+		PeerIP:       "203.0.113.10",
+		Port:         443,
+		Scope:        traceScopePeerPort,
+		Preset:       traceFilterPresetSynRstOnly,
+		CustomClause: "tcp[13] & 0x10 != 0",
+	}
+	want := "tcp and host 203.0.113.10 and port 443 and (tcp[tcpflags] & (tcp-syn|tcp-rst) != 0) and (tcp[13] & 0x10 != 0)"
+	if got := buildTracePacketFilter(req); got != want {
+		t.Fatalf("unexpected strategy+custom filter: %q", got)
+	}
+}
+
 func TestTracePacketFilterPresetSlug(t *testing.T) {
 	t.Parallel()
 
@@ -71,6 +89,89 @@ func TestTracePacketFilterPresetSlug(t *testing.T) {
 		if got := tc.preset.Slug(); got != tc.want {
 			t.Fatalf("unexpected slug for preset=%v: got=%q want=%q", tc.preset, got, tc.want)
 		}
+	}
+}
+
+func TestTracePacketCaptureProfileDefaults(t *testing.T) {
+	t.Parallel()
+
+	seedWithPort := tracePacketSeed{PeerIP: "203.0.113.10", Port: 443}
+	general, ok := traceCaptureProfileDefaultsFor(traceCaptureProfileGeneral, seedWithPort, topConnectionIncoming)
+	if !ok {
+		t.Fatalf("general profile should return defaults")
+	}
+	if general.Preset != traceFilterPresetPeerPort || general.Direction != traceDirectionIn {
+		t.Fatalf("unexpected general defaults: %+v", general)
+	}
+
+	handshake, ok := traceCaptureProfileDefaultsFor(traceCaptureProfileHandshake, seedWithPort, topConnectionOutgoing)
+	if !ok {
+		t.Fatalf("handshake profile should return defaults")
+	}
+	if handshake.Preset != traceFilterPresetSynRstOnly || handshake.Direction != traceDirectionOut {
+		t.Fatalf("unexpected handshake defaults: %+v", handshake)
+	}
+
+	loss, ok := traceCaptureProfileDefaultsFor(traceCaptureProfilePacketLoss, tracePacketSeed{PeerIP: "203.0.113.10"}, topConnectionIncoming)
+	if !ok {
+		t.Fatalf("packet-loss profile should return defaults")
+	}
+	if loss.Preset != traceFilterPresetPeerOnly || loss.Direction != traceDirectionAny {
+		t.Fatalf("unexpected packet-loss defaults: %+v", loss)
+	}
+
+	if _, ok := traceCaptureProfileDefaultsFor(traceCaptureProfileCustom, seedWithPort, topConnectionIncoming); ok {
+		t.Fatalf("custom profile should not force defaults")
+	}
+}
+
+func TestShouldSubmitTracePacketOnEnter(t *testing.T) {
+	t.Parallel()
+
+	form := tview.NewForm()
+	input := tview.NewInputField().SetLabel("Peer")
+	drop := tview.NewDropDown().SetLabel("Preset").SetOptions([]string{"A", "B"}, nil)
+	check := tview.NewCheckbox().SetLabel("Save")
+	form.AddFormItem(input)
+	form.AddFormItem(drop)
+	form.AddFormItem(check)
+	form.AddButton("Start", nil)
+
+	form.SetFocus(0)
+	if !shouldSubmitTracePacketOnEnter(form, drop, drop, drop) {
+		t.Fatalf("expected enter submit on input field focus")
+	}
+
+	form.SetFocus(1)
+	if shouldSubmitTracePacketOnEnter(form, drop, drop, drop) {
+		t.Fatalf("dropdown focus should not auto submit")
+	}
+
+	form.SetFocus(2)
+	if shouldSubmitTracePacketOnEnter(form, drop, drop, drop) {
+		t.Fatalf("checkbox focus should not auto submit")
+	}
+
+	form.SetFocus(3)
+	if shouldSubmitTracePacketOnEnter(form, drop, drop, drop) {
+		t.Fatalf("button focus should not auto submit")
+	}
+}
+
+func TestShouldCloseTracePacketFormOnEsc(t *testing.T) {
+	t.Parallel()
+
+	if !shouldCloseTracePacketFormOnEscByState(false, false, false) {
+		t.Fatalf("expected esc to close form when no dropdown is open")
+	}
+	if shouldCloseTracePacketFormOnEscByState(true, false, false) {
+		t.Fatalf("expected esc to close dropdown (not form) when profile dropdown is open")
+	}
+	if shouldCloseTracePacketFormOnEscByState(false, true, false) {
+		t.Fatalf("expected esc to close dropdown (not form) when preset dropdown is open")
+	}
+	if shouldCloseTracePacketFormOnEscByState(false, false, true) {
+		t.Fatalf("expected esc to close dropdown (not form) when direction dropdown is open")
 	}
 }
 
@@ -132,7 +233,7 @@ func TestBuildTracePacketActionSummaryIncludesKeyFields(t *testing.T) {
 	summary := buildTracePacketActionSummary(result, false)
 	for _, want := range []string{
 		"Trace ok 203.0.113.10:443",
-		"dir=IN scope=Peer + Port",
+		"profile=General triage dir=IN scope=Peer + Port",
 		"captured=12 drop=1 rst=2",
 		"saved=/tmp/holyf-network-captures/trace-test.pcap",
 	} {

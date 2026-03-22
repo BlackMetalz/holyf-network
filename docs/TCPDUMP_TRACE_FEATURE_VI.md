@@ -24,19 +24,26 @@ Field trong form:
   - `IN`: lấy local service port.
   - `OUT`: lấy remote service port.
 - `Interface`: prefill từ interface hiện tại.
-- `Preset Filter`:
-  - `Peer + Port` (mặc định, khuyến nghị)
-  - `Peer only`
-  - `5-tuple` (bám 1 flow cụ thể; cần row connection đủ local/remote tuple)
-  - `SYN/RST only` (phục vụ triage handshake/reset)
-  - `Custom (base + clause)` (thêm clause BPF do user nhập, vẫn giữ base filter an toàn)
-- `Custom clause`:
-  - chỉ dùng khi chọn preset `Custom`,
-  - app sẽ ghép theo dạng: `(base filter) and (<custom clause>)`.
+- `Mode` (control chính):
+  - `General triage` (mặc định)
+  - `Handshake`
+  - `Packet loss`
+  - `Reset storm`
+  - `Custom` (manual mode).
+- `Filter strategy`:
+  - chỉ hiện khi `Mode=Custom`,
+  - gồm `Peer + Port`, `Peer only`, `5-tuple`, `SYN/RST only`.
+- `Extra BPF clause`:
+  - chỉ hiện khi `Mode=Custom`,
+  - app sẽ ghép theo dạng: `(strategy filter) and (<extra clause>)`.
 - `Direction`: `ANY` / `IN` / `OUT` (prefill theo mode `IN/OUT` hiện tại).
 - `Duration (s)`: mặc định `10`, max `60`.
 - `Packet cap`: mặc định `2000`, max `20000`.
 - `Save pcap`: mặc định bật.
+- `Enter` trong form sẽ chạy `Start` ngay (không cần tab tới nút `Start`).
+- Form luôn hiển thị `Mode / Strategy Guide` ở phía dưới để xem nhanh context.
+- Form luôn hiển thị `Tcpdump Command Preview` realtime theo input hiện tại.
+- Form có thêm `Tcpdump Flags Guide` ngay dưới preview để giải thích nhanh `-nn`, `-tt`, `-s 128` (kèm `-c`, `-Q` theo context hiện tại).
 
 ### Bước 2: Chạy capture và theo dõi tiến trình
 
@@ -94,12 +101,14 @@ Field trong form:
 
 - Chỉ chạy nếu có `tcpdump` trên host.
 - Filter luôn bị giới hạn vào `tcp and host <peer>` (base).
-- Preset sẽ mở rộng base:
+- Strategy sẽ mở rộng base:
   - `Peer + Port`: thêm `and port <port>`.
   - `Peer only`: giữ base.
   - `5-tuple`: sinh filter tuple hai chiều cho 1 flow cụ thể.
   - `SYN/RST only`: thêm điều kiện tcp flags SYN/RST.
-  - `Custom`: ghép thêm clause do user nhập.
+- `Mode` là lớp UX/runbook:
+  - `General/Handshake/Packet loss/Reset storm` tự gán strategy + direction + duration + cap mặc định,
+  - `Custom` cho phép chọn strategy thủ công + thêm extra BPF clause.
 - Capture luôn bounded bởi cả:
   - timeout (`Duration`),
   - packet cap (`-c`).

@@ -853,7 +853,7 @@ func (a *App) statusHotkeysForPage(page string) (styled string, plain string) {
 	case "kill-peer":
 		return "[dim]<-/->[white]=choose [dim]Enter[white]=confirm [dim]Esc[white]=cancel", "<-/->=choose Enter=confirm Esc=cancel"
 	case tracePacketPageForm:
-		return "[dim]Tab[white]=field [dim]Enter[white]=next [dim]Esc[white]=cancel", "Tab=field Enter=next Esc=cancel"
+		return "[dim]Tab[white]=field [dim]Enter[white]=start [dim]Esc[white]=cancel", "Tab=field Enter=start Esc=cancel"
 	case tracePacketPageProgress:
 		return "[dim]Esc[white]=abort [dim]q[white]=abort", "Esc=abort q=abort"
 	case tracePacketPageResult:

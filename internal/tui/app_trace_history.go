@@ -35,6 +35,7 @@ type traceHistoryEntry struct {
 	Interface   string `json:"interface"`
 	PeerIP      string `json:"peer_ip"`
 	Port        int    `json:"port"`
+	Profile     string `json:"profile,omitempty"`
 	Scope       string `json:"scope"`
 	Preset      string `json:"preset,omitempty"`
 	Direction   string `json:"direction"`
@@ -106,6 +107,7 @@ func newTraceHistoryEntry(result tracePacketResult) traceHistoryEntry {
 		Interface:   result.Request.Interface,
 		PeerIP:      normalizeIP(result.Request.PeerIP),
 		Port:        result.Request.Port,
+		Profile:     result.Request.Profile.Label(),
 		Scope:       tracePacketScopeDisplay(result.Request),
 		Preset:      tracePacketHistoryCategory(result.Request),
 		Direction:   result.Request.Direction.Label(),
@@ -404,8 +406,9 @@ func formatTraceHistoryListItem(entry traceHistoryEntry, sensitiveIP bool) (main
 		port,
 	)
 	secondary = fmt.Sprintf(
-		"status=%s dir=%s cat=%s scope=%s cap=%s drop=%s rst=%d conf=%s",
+		"status=%s profile=%s dir=%s cat=%s scope=%s cap=%s drop=%s rst=%d conf=%s",
 		blankIfUnknown(entry.Status, "completed"),
+		traceHistoryProfile(entry),
 		blankIfUnknown(entry.Direction, "ANY"),
 		traceHistoryCategory(entry),
 		blankIfUnknown(entry.Scope, "Peer + Port"),
@@ -439,7 +442,8 @@ func buildTraceHistoryDetailText(entry traceHistoryEntry, sensitiveIP bool) stri
 	b.WriteString(fmt.Sprintf("  Interface: [green]%s[white]\n", blankIfUnknown(entry.Interface, "n/a")))
 	b.WriteString(fmt.Sprintf("  Target: [green]%s:%s[white]\n", peer, traceHistoryPortLabel(entry.Port)))
 	b.WriteString(fmt.Sprintf(
-		"  Category: [green]%s[white] | Scope: [green]%s[white] | Direction: [green]%s[white]\n",
+		"  Profile: [green]%s[white] | Category: [green]%s[white] | Scope: [green]%s[white] | Direction: [green]%s[white]\n",
+		traceHistoryProfile(entry),
 		traceHistoryCategory(entry),
 		blankIfUnknown(entry.Scope, "Peer + Port"),
 		blankIfUnknown(entry.Direction, "ANY"),
@@ -547,6 +551,14 @@ func traceHistoryCategory(entry traceHistoryEntry) string {
 	default:
 		return "Peer + Port"
 	}
+}
+
+func traceHistoryProfile(entry traceHistoryEntry) string {
+	profile := strings.TrimSpace(entry.Profile)
+	if profile != "" {
+		return profile
+	}
+	return "General triage"
 }
 
 func traceHistoryPortLabel(port int) string {
