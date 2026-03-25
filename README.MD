@@ -69,7 +69,7 @@ sudo holyf-network --alert-profile db
 # Shift+C: sort by Conns (press again toggles DESC/ASC)
 # Shift+P: sort by Port (press again toggles DESC/ASC)
 # i: explain Send-Q / Recv-Q / TX/s / RX/s
-# Shift+I: explain Interface Stats (RX/TX, Packets, Errors, Drops)
+# Shift+I: explain Interface Stats (RX/TX, Packets, App CPU/RSS, Errors, Drops)
 # g: toggle grouped view (peer + process, capped to top 20 groups by CONNS)
 # /: search Top Connections by text (contains match)
 # f: port filter (local port in IN mode, remote port in OUT mode; press f again to clear all filters)
@@ -103,6 +103,7 @@ make local ARGS="-r 5"
 Live refresh model:
 - `-r/--refresh` controls the main full refresh loop (Top/States/Conntrack/Diagnosis and full data recompute).
 - `3. Interface Stats` has a dedicated `1s` refresh lane in live mode for faster RX/TX visibility.
+- `System` line in that panel shows holyf-network app CPU + RSS sampled on the global `-r/--refresh` interval and cached between 1s redraws.
 - `p` (pause) pauses both lanes.
 - `--alert-profile` picks workload-aware alert thresholds for interface spike + conntrack pressure (`web`, `db`, `cache`).
   - You can switch at runtime with `y` without restarting.

@@ -37,11 +37,15 @@ type App struct {
 	updateLatestTag string
 
 	// Previous snapshots for rate calculation (need 2 readings for delta)
-	prevIfaceStats *collector.InterfaceStats
-	prevConntrack  *collector.ConntrackData
-	prevRetransmit *collector.RetransmitData
-	bwTracker      *collector.BandwidthTracker
-	ssBWTracker    *collector.SocketBandwidthTracker
+	prevIfaceStats    *collector.InterfaceStats
+	prevCPUStats      *collector.CPUStats
+	prevConntrack     *collector.ConntrackData
+	latestSystemUsage collector.SystemUsage
+	systemUsageReady  bool
+	systemUsageErr    string
+	prevRetransmit    *collector.RetransmitData
+	bwTracker         *collector.BandwidthTracker
+	ssBWTracker       *collector.SocketBandwidthTracker
 
 	// Port filter for Top Connections panel. Empty = show all.
 	portFilter string
@@ -347,7 +351,12 @@ func (a *App) refreshInterfacePanel() {
 		a.ifaceSpeedMbps = 0
 	}
 	spike := a.evaluateInterfaceSpike(rates, linkSpeedBps, linkSpeedKnown)
-	a.panels[1].SetText(renderInterfacePanel(rates, spike))
+	a.panels[1].SetText(renderInterfacePanel(rates, spike, interfaceSystemSnapshot{
+		Usage:      a.latestSystemUsage,
+		Ready:      a.systemUsageReady,
+		Err:        a.systemUsageErr,
+		RefreshSec: a.refreshSec,
+	}))
 	a.prevIfaceStats = &ifaceStats
 }
 
@@ -356,6 +365,15 @@ func (a *App) refreshData() {
 	a.lastRefresh = time.Now()
 	activeThresholds := a.activeHealthThresholds()
 	profileSpec := a.currentAlertProfileSpec()
+
+	if usage, cpuStats, usageErr := collector.CollectSystemUsage(a.prevCPUStats); usageErr != nil {
+		a.systemUsageErr = shortStatus(usageErr.Error(), 96)
+	} else {
+		a.latestSystemUsage = usage
+		a.systemUsageReady = true
+		a.systemUsageErr = ""
+		a.prevCPUStats = cpuStats
+	}
 
 	// Collect conntrack early so panel 0 health strip can use it too.
 	var conntrackRates *collector.ConntrackRates

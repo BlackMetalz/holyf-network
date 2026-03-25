@@ -10,8 +10,15 @@ import (
 // panel_interface.go — Renders the Interface Stats panel content.
 // Combines Stories 4.1 (RX/TX bytes/sec), 4.2 (packet rate), 4.3 (errors/drops).
 
+type interfaceSystemSnapshot struct {
+	Usage      collector.SystemUsage
+	Ready      bool
+	Err        string
+	RefreshSec int
+}
+
 // renderInterfacePanel formats interface stats for the TUI panel.
-func renderInterfacePanel(rates collector.InterfaceRates, spike interfaceSpikeAssessment) string {
+func renderInterfacePanel(rates collector.InterfaceRates, spike interfaceSpikeAssessment, sys interfaceSystemSnapshot) string {
 	var sb strings.Builder
 
 	if rates.FirstReading {
@@ -71,6 +78,9 @@ func renderInterfacePanel(rates collector.InterfaceRates, spike interfaceSpikeAs
 		))
 	}
 
+	sb.WriteString(renderSystemUsageLine(sys))
+	sb.WriteString("\n\n")
+
 	// Errors and drops (cumulative, always shown)
 	errColor := "green"
 	if rates.RxErrors+rates.TxErrors > 0 {
@@ -100,8 +110,44 @@ func renderInterfacePanel(rates collector.InterfaceRates, spike interfaceSpikeAs
 	return sb.String()
 }
 
+func renderSystemUsageLine(sys interfaceSystemSnapshot) string {
+	refreshSec := sys.RefreshSec
+	if refreshSec <= 0 {
+		refreshSec = 1
+	}
+	errText := strings.TrimSpace(sys.Err)
+
+	if !sys.Ready {
+		if errText != "" {
+			return fmt.Sprintf("  [bold]App:[white] [yellow]unavailable[white] [dim](%s)[white]", errText)
+		}
+		return fmt.Sprintf("  [bold]App:[white] [dim]CPU warming[white] [dim](global %ds sample)[white]", refreshSec)
+	}
+
+	cpuText := "warming"
+	if sys.Usage.CPUReady {
+		cpuText = fmt.Sprintf("%.1f%%", sys.Usage.CPUPercent)
+	}
+
+	memText := "n/a"
+	if sys.Usage.Memory.RSSBytes > 0 {
+		memText = formatMemoryBytes(sys.Usage.Memory.RSSBytes) + " RSS"
+	}
+
+	line := fmt.Sprintf(
+		"  [bold]App:[white] CPU %s | Mem %s [dim](global %ds sample)[white]",
+		cpuText,
+		memText,
+		refreshSec,
+	)
+	if errText != "" {
+		line += fmt.Sprintf(" [yellow]stale (%s)[white]", errText)
+	}
+	return line
+}
+
 // formatBytesRate converts bytes/sec to human-readable format.
-// Auto-scales: B/s → KB/s → MB/s → GB/s
+// Auto-scales: B/s -> KB/s -> MB/s -> GB/s
 func formatBytesRate(bytesPerSec float64) string {
 	units := []string{"B/s", "KB/s", "MB/s", "GB/s"}
 	idx := 0
@@ -136,4 +182,18 @@ func formatLinkSpeed(bytesPerSec float64) string {
 		return fmt.Sprintf("%.1f Gb/s", bitsPerSec/1_000_000_000)
 	}
 	return fmt.Sprintf("%.0f Mb/s", bitsPerSec/1_000_000)
+}
+
+func formatMemoryBytes(bytes uint64) string {
+	units := []string{"B", "KiB", "MiB", "GiB", "TiB"}
+	value := float64(bytes)
+	idx := 0
+	for value >= 1024 && idx < len(units)-1 {
+		value /= 1024
+		idx++
+	}
+	if idx == 0 {
+		return fmt.Sprintf("%d %s", bytes, units[idx])
+	}
+	return fmt.Sprintf("%.1f %s", value, units[idx])
 }

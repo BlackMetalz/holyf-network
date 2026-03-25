@@ -11,6 +11,8 @@ func buildInterfaceStatsExplainText() string {
 	lines := []string{
 		"  [yellow]RX / TX[white]: interface throughput (bytes/sec) across all traffic on this NIC.",
 		"  [yellow]Packets RX / TX[white]: packet rate (packets/sec) on this NIC, not per process.",
+		"  [yellow]CPU / Mem[white]: CPU % and RSS memory of the current holyf-network process.",
+		"  [dim]CPU/Mem is sampled on global refresh interval (-r), not the 1s interface lane.[white]",
 		"",
 		"  [dim]Why bytes and packets both matter:[white]",
 		"  - High packets with low bytes => many small packets (chatty traffic).",
@@ -20,6 +22,7 @@ func buildInterfaceStatsExplainText() string {
 		"  [dim]These are totals since boot/driver reset, not per-interval deltas.[white]",
 		"",
 		"  [dim]First refresh shows baseline only. Rates appear from next sample onward.[white]",
+		"  [dim]CPU also needs two global samples before a stable percentage is shown.[white]",
 		"",
 		"  [dim]Press Enter/Esc to close[white]",
 	}
