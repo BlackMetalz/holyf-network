@@ -88,14 +88,14 @@ When to worry:
 
 - `RX/TX`: NIC-level throughput (bytes/s).
 - `Packet rate`: packet rate RX/TX.
-- `App`: CPU % and RSS memory of the current holyf-network process, not host-wide usage.
+- `App`: CPU cores used and RSS memory of the current holyf-network process, not host-wide usage.
 - `Traffic`: short spike verdict, shown only when interface traffic needs attention.
 - `Errors`, `Drops`: NIC error/drop counters.
 - In live mode, this panel refreshes every `1s` so bandwidth spikes are visible faster.
 - This `1s` cadence is only for NIC throughput/packet counters.
-- `App` (CPU/RSS) is sampled on the global refresh interval (`-r/--refresh`) and cached between 1s redraws.
+- `App` (CPU/RSS) is sampled on the configured refresh interval (`-r/--refresh`).
 - Right after startup, one early warm-up refresh runs (~1s) to stabilize first-sample volatility.
-- App CPU percentage needs two global samples before a stable value appears.
+- App CPU needs two refresh-interval samples before a stable core value appears.
 
 `Traffic` line meaning:
 

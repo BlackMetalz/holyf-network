@@ -13,13 +13,13 @@ func TestRenderSystemUsageLineReady(t *testing.T) {
 	line := renderSystemUsageLine(interfaceSystemSnapshot{
 		Ready: true,
 		Usage: collector.SystemUsage{
-			CPUPercent: 23.5,
-			CPUReady:   true,
-			Memory:     collector.MemoryStats{RSSBytes: 3 * 1024 * 1024},
+			CPUCores: 0.24,
+			CPUReady: true,
+			Memory:   collector.MemoryStats{RSSBytes: 3 * 1024 * 1024},
 		},
 	})
 
-	checks := []string{"CPU 23.5%", "Mem 3.0 MiB RSS"}
+	checks := []string{"CPU 0.24 cores", "Mem 3.0 MiB RSS"}
 	for _, want := range checks {
 		if !strings.Contains(line, want) {
 			t.Fatalf("renderSystemUsageLine missing %q in %q", want, line)
@@ -95,7 +95,7 @@ func TestRenderInterfacePanelUsesPacketRateLabel(t *testing.T) {
 	out := renderInterfacePanel(
 		collector.InterfaceRates{RxBytesPerSec: 1024, TxBytesPerSec: 2048, RxPktsPerSec: 10, TxPktsPerSec: 20},
 		interfaceSpikeAssessment{Ready: true, DisplayLevel: healthOK},
-		interfaceSystemSnapshot{Ready: true, Usage: collector.SystemUsage{CPUReady: true, CPUPercent: 10}},
+		interfaceSystemSnapshot{Ready: true, Usage: collector.SystemUsage{CPUReady: true, CPUCores: 0.10}},
 	)
 	if !strings.Contains(out, "Packet rate:") {
 		t.Fatalf("expected packet-rate label in panel output, got: %q", out)

@@ -6,14 +6,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
-const processClockTicksPerSecond = 100
-
-// CPUStats holds process CPU counters from /proc/self/stat.
+// CPUStats holds process CPU counters from getrusage(RUSAGE_SELF).
 type CPUStats struct {
-	ProcessTicks uint64
-	Timestamp    time.Time
+	ProcessMicros uint64
+	Timestamp     time.Time
 }
 
 // MemoryStats holds process memory footprint.
@@ -23,9 +23,9 @@ type MemoryStats struct {
 
 // SystemUsage is the operator-facing CPU/memory snapshot.
 type SystemUsage struct {
-	CPUPercent float64
-	CPUReady   bool
-	Memory     MemoryStats
+	CPUCores float64
+	CPUReady bool
+	Memory   MemoryStats
 }
 
 // CollectSystemUsage collects CPU and memory stats for the current process.
@@ -43,18 +43,21 @@ func CollectSystemUsage(previousCPU *CPUStats) (SystemUsage, *CPUStats, error) {
 	}
 
 	usage.Memory = mem
-	usage.CPUPercent, usage.CPUReady = CalculateCPUPercent(cpu, previousCPU)
+	usage.CPUCores, usage.CPUReady = CalculateCPUCores(cpu, previousCPU)
 
 	return usage, &cpu, nil
 }
 
-// CollectCPUStats reads /proc/self/stat and parses utime+stime for this process.
+// CollectCPUStats reads process user+system CPU time for the current process.
 func CollectCPUStats() (CPUStats, error) {
-	data, err := os.ReadFile("/proc/self/stat")
-	if err != nil {
-		return CPUStats{}, fmt.Errorf("cannot read /proc/self/stat: %w", err)
+	var usage unix.Rusage
+	if err := unix.Getrusage(unix.RUSAGE_SELF, &usage); err != nil {
+		return CPUStats{}, fmt.Errorf("cannot read process rusage: %w", err)
 	}
-	return parseCPUStats(string(data), time.Now())
+	return CPUStats{
+		ProcessMicros: rusageCPUTimeMicros(usage),
+		Timestamp:     time.Now(),
+	}, nil
 }
 
 // CollectMemoryStats reads /proc/self/statm and returns resident set size.
@@ -66,13 +69,13 @@ func CollectMemoryStats() (MemoryStats, error) {
 	return parseMemoryStats(string(data))
 }
 
-// CalculateCPUPercent calculates process CPU % between two snapshots.
-// The result is process-local utilization, so multithreaded workloads may exceed 100%.
-func CalculateCPUPercent(current CPUStats, previous *CPUStats) (float64, bool) {
+// CalculateCPUCores calculates process CPU usage as logical CPU cores used between two snapshots.
+// The result is process-local utilization, so multithreaded workloads may exceed 1.0 cores.
+func CalculateCPUCores(current CPUStats, previous *CPUStats) (float64, bool) {
 	if previous == nil {
 		return 0, false
 	}
-	if current.ProcessTicks < previous.ProcessTicks {
+	if current.ProcessMicros < previous.ProcessMicros {
 		return 0, false
 	}
 
@@ -81,40 +84,23 @@ func CalculateCPUPercent(current CPUStats, previous *CPUStats) (float64, bool) {
 		return 0, false
 	}
 
-	tickDelta := current.ProcessTicks - previous.ProcessTicks
-	cpuSeconds := float64(tickDelta) / processClockTicksPerSecond
-	percent := (cpuSeconds / elapsedSeconds) * 100.0
-	if percent < 0 {
-		percent = 0
+	microsDelta := current.ProcessMicros - previous.ProcessMicros
+	cpuSeconds := float64(microsDelta) / 1_000_000.0
+	cores := cpuSeconds / elapsedSeconds
+	if cores < 0 {
+		cores = 0
 	}
-	return percent, true
+	return cores, true
 }
 
-func parseCPUStats(raw string, ts time.Time) (CPUStats, error) {
-	raw = strings.TrimSpace(raw)
-	closeIdx := strings.LastIndex(raw, ")")
-	if closeIdx == -1 || closeIdx+2 >= len(raw) {
-		return CPUStats{}, fmt.Errorf("invalid /proc/self/stat format")
-	}
+func rusageCPUTimeMicros(usage unix.Rusage) uint64 {
+	return timevalToMicros(usage.Utime) + timevalToMicros(usage.Stime)
+}
 
-	fields := strings.Fields(raw[closeIdx+2:])
-	if len(fields) <= 12 {
-		return CPUStats{}, fmt.Errorf("short /proc/self/stat data")
-	}
-
-	utime, err := strconv.ParseUint(fields[11], 10, 64)
-	if err != nil {
-		return CPUStats{}, fmt.Errorf("invalid utime in /proc/self/stat: %w", err)
-	}
-	stime, err := strconv.ParseUint(fields[12], 10, 64)
-	if err != nil {
-		return CPUStats{}, fmt.Errorf("invalid stime in /proc/self/stat: %w", err)
-	}
-
-	return CPUStats{
-		ProcessTicks: utime + stime,
-		Timestamp:    ts,
-	}, nil
+func timevalToMicros(tv unix.Timeval) uint64 {
+	sec := uint64(tv.Sec)
+	usec := uint64(tv.Usec)
+	return sec*1_000_000 + usec
 }
 
 func parseMemoryStats(raw string) (MemoryStats, error) {

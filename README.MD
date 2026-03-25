@@ -98,7 +98,7 @@ make local ARGS="-r 5"
 Live refresh model:
 - `-r/--refresh` controls the main full refresh loop (Top/States/Conntrack/Diagnosis and full data recompute).
 - `3. Interface Stats` has a dedicated `1s` refresh lane in live mode for faster RX/TX visibility.
-- `App` line in that panel shows holyf-network process CPU + RSS only, sampled on the global `-r/--refresh` interval and cached between 1s redraws.
+- `App` line in that panel shows holyf-network process CPU cores used + RSS only, sampled on the configured `-r/--refresh` interval.
 - `p` (pause) pauses both lanes.
 - Footer shows `LINK(sysfs):<speed>` or `LINK(sysfs):UNKNOWN` for quick NIC speed debug.
 

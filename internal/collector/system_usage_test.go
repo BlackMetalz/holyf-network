@@ -4,40 +4,35 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
-func TestCalculateCPUPercent(t *testing.T) {
+func TestCalculateCPUCores(t *testing.T) {
 	t.Parallel()
 
-	prev := &CPUStats{ProcessTicks: 1000, Timestamp: time.Unix(100, 0)}
-	curr := CPUStats{ProcessTicks: 1180, Timestamp: time.Unix(103, 0)}
+	prev := &CPUStats{ProcessMicros: 1_000_000, Timestamp: time.Unix(100, 0)}
+	curr := CPUStats{ProcessMicros: 2_800_000, Timestamp: time.Unix(103, 0)}
 
-	got, ok := CalculateCPUPercent(curr, prev)
+	got, ok := CalculateCPUCores(curr, prev)
 	if !ok {
-		t.Fatalf("expected CPU percent to be ready")
+		t.Fatalf("expected CPU cores to be ready")
 	}
 
-	// delta = 180 ticks = 1.8 CPU seconds over 3 wall seconds => 60%
-	if got < 59.99 || got > 60.01 {
-		t.Fatalf("unexpected CPU percent: got=%v want~60", got)
+	if got < 0.599 || got > 0.601 {
+		t.Fatalf("unexpected CPU cores: got=%v want~0.6", got)
 	}
 }
 
-func TestParseCPUStats(t *testing.T) {
+func TestRusageCPUTimeMicros(t *testing.T) {
 	t.Parallel()
 
-	raw := "123 (holyf-network) S 1 2 3 4 5 6 7 8 9 10 120 80 14 15 16 17 18 19 20 21 22 23 24 25"
-	ts := time.Unix(123, 0)
-	stats, err := parseCPUStats(raw, ts)
-	if err != nil {
-		t.Fatalf("parseCPUStats error: %v", err)
+	usage := unix.Rusage{
+		Utime: unix.Timeval{Sec: 1, Usec: 250000},
+		Stime: unix.Timeval{Sec: 0, Usec: 750000},
 	}
-
-	if stats.ProcessTicks != 200 {
-		t.Fatalf("ProcessTicks: got=%d want=200", stats.ProcessTicks)
-	}
-	if !stats.Timestamp.Equal(ts) {
-		t.Fatalf("Timestamp: got=%v want=%v", stats.Timestamp, ts)
+	if got := rusageCPUTimeMicros(usage); got != 2_000_000 {
+		t.Fatalf("rusageCPUTimeMicros: got=%d want=%d", got, 2_000_000)
 	}
 }
 

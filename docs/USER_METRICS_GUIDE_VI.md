@@ -88,14 +88,14 @@ Khi nào đáng lo:
 
 - `RX/TX`: tổng lưu lượng theo NIC (bytes/s).
 - `Packet rate`: số packet/s RX/TX.
-- `App`: CPU % và RSS memory của process holyf-network hiện tại, không phải số host-wide của cả máy.
+- `App`: số core CPU đang dùng và RSS memory của process holyf-network hiện tại, không phải số host-wide của cả máy.
 - `Traffic`: cảnh báo spike ngắn, chỉ hiện khi traffic cần chú ý.
 - `Errors`, `Drops`: lỗi và drop của interface.
 - Ở live mode, panel này refresh mỗi `1s` để thấy spike bandwidth nhanh hơn.
 - Nhịp `1s` này chỉ áp dụng cho throughput/packet của NIC.
-- Dòng `App` (CPU/RSS) lấy mẫu theo refresh interval toàn cục (`-r/--refresh`) và giữ cache giữa các lần redraw 1s.
+- Dòng `App` (CPU/RSS) lấy mẫu theo refresh interval cấu hình (`-r/--refresh`).
 - Ngay sau lúc startup có một warm-up refresh sớm (~1s) để ổn định sample đầu.
-- App CPU % cần 2 mẫu global refresh để ra giá trị ổn định.
+- App CPU cần 2 mẫu theo refresh interval để ra giá trị core ổn định.
 
 Ý nghĩa dòng `Traffic`:
 

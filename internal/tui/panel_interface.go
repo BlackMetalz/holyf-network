@@ -93,7 +93,7 @@ func renderSystemUsageLine(sys interfaceSystemSnapshot) string {
 
 	cpuText := "warming"
 	if sys.Usage.CPUReady {
-		cpuText = fmt.Sprintf("%.1f%%", sys.Usage.CPUPercent)
+		cpuText = formatCPUCores(sys.Usage.CPUCores)
 	}
 
 	memText := "n/a"
@@ -152,4 +152,12 @@ func formatMemoryBytes(bytes uint64) string {
 		return fmt.Sprintf("%d %s", bytes, units[idx])
 	}
 	return fmt.Sprintf("%.1f %s", value, units[idx])
+}
+
+func formatCPUCores(cores float64) string {
+	unit := "cores"
+	if cores >= 0.995 && cores <= 1.005 {
+		unit = "core"
+	}
+	return fmt.Sprintf("%.2f %s", cores, unit)
 }
