@@ -12,10 +12,9 @@ import (
 // Focuses on usage pressure, drops, and warning thresholds.
 
 // renderConntrackPanel formats conntrack data for the TUI panel.
-func renderConntrackPanel(rates collector.ConntrackRates, threshold config.ThresholdBand, profileLabel string) string {
+func renderConntrackPanel(rates collector.ConntrackRates, threshold config.ThresholdBand) string {
 	var sb strings.Builder
 
-	// Usage: "Used: 45,231 / 262,144 (17%)"
 	if rates.Max > 0 {
 		sb.WriteString(fmt.Sprintf("  [bold]Used:[white] %s / %s (%s)\n\n",
 			formatNumber(rates.Current),
@@ -23,7 +22,6 @@ func renderConntrackPanel(rates collector.ConntrackRates, threshold config.Thres
 			formatConntrackPercentDetailed(rates.UsagePercent),
 		))
 
-		// Visual usage bar (Story 6.2)
 		bar := renderUsageBar(rates.UsagePercent)
 		sb.WriteString(fmt.Sprintf("  %s\n\n", bar))
 	} else {
@@ -39,35 +37,25 @@ func renderConntrackPanel(rates collector.ConntrackRates, threshold config.Thres
 		critPct = 85
 	}
 
-	// Warning when near limit (profile-aware)
 	if rates.UsagePercent >= critPct {
-		sb.WriteString(fmt.Sprintf("  [red][WARN] Conntrack table >= %.0f%% (%s profile)[white]\n", critPct, profileLabel))
+		sb.WriteString(fmt.Sprintf("  [red][WARN] Conntrack table >= %.0f%%[white]\n", critPct))
 		sb.WriteString("  [dim]Consider: sysctl net.netfilter.nf_conntrack_max[white]\n\n")
 	} else if rates.UsagePercent >= warnPct {
-		sb.WriteString(fmt.Sprintf("  [yellow]Conntrack usage >= %.0f%% (%s profile)[white]\n\n", warnPct, profileLabel))
+		sb.WriteString(fmt.Sprintf("  [yellow]Conntrack usage >= %.0f%%[white]\n\n", warnPct))
 	}
 
-	// Stats availability
 	if !rates.StatsAvailable {
 		sb.WriteString("  [dim]Stats unavailable (install conntrack plz)[white]\n")
 	} else if rates.FirstReading {
 		sb.WriteString("  [dim]Rates available after next refresh[white]\n")
 	}
 
-	// Drops — any drops are BAD
 	if !rates.StatsAvailable {
 		sb.WriteString("\n  [dim]Drops: N/A[white]")
 	} else if rates.TotalDrops > 0 {
 		sb.WriteString(fmt.Sprintf("\n  [red]Drops: %s ⚠ (lost since boot)[white]",
 			formatNumber(int(rates.TotalDrops))))
 	}
-
-	sb.WriteString(fmt.Sprintf(
-		"\n  [dim]Profile: %s | Conntrack thresholds warn>=%.0f%% crit>=%.0f%%[white]",
-		profileLabel,
-		warnPct,
-		critPct,
-	))
 
 	return sb.String()
 }
@@ -85,7 +73,6 @@ func renderUsageBar(percent float64) string {
 		filled = 0
 	}
 
-	// Pick color based on usage
 	color := "green"
 	if percent > 80 {
 		color = "red"

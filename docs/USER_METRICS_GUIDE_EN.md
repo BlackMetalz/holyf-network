@@ -10,11 +10,11 @@ If you are still new to TCP states / queues / conntrack, read this first:
 
 1. Check `Connection States`:
    - Is `HEALTH` yellow/red?
-   - Are `Retrans`, `Drops`, `Conntrack%` rising?
+   - Are `Retrans` or `Drops` rising?
 2. Check `Interface Stats`:
    - Is `RX/TX` spiking?
    - Are `Errors/Drops` non-zero?
-   - If needed, press `y` to switch profile (`WEB/DB/CACHE`) and re-evaluate spike sensitivity for this host role.
+   - If the `Traffic` line appears, treat it as a short interface spike warning.
 3. Open `Top Connections`:
    - Sort by bandwidth (`Shift+B`) to find heavy flows first.
    - Look for unusual `Send-Q/Recv-Q`.
@@ -87,24 +87,21 @@ When to worry:
 ## 3) Interface Stats
 
 - `RX/TX`: NIC-level throughput (bytes/s).
-- `Packets`: packet rate RX/TX.
-- `System`: CPU % and RSS memory of the current holyf-network process.
-- `Traffic`: profile-aware spike verdict from peak throughput + moving baseline ratio.
+- `Packet rate`: packet rate RX/TX.
+- `App`: CPU % and RSS memory of the current holyf-network process, not host-wide usage.
+- `Traffic`: short spike verdict, shown only when interface traffic needs attention.
 - `Errors`, `Drops`: NIC error/drop counters.
 - In live mode, this panel refreshes every `1s` so bandwidth spikes are visible faster.
 - This `1s` cadence is only for NIC throughput/packet counters.
-- `System` (app CPU/RSS) is sampled on the global refresh interval (`-r/--refresh`) and cached between 1s redraws.
+- `App` (CPU/RSS) is sampled on the global refresh interval (`-r/--refresh`) and cached between 1s redraws.
 - Right after startup, one early warm-up refresh runs (~1s) to stabilize first-sample volatility.
 - App CPU percentage needs two global samples before a stable value appears.
 
 `Traffic` line meaning:
 
-- Uses current profile (`WEB`, `DB`, or `CACHE`).
-- Evaluates both:
-  - interface utilization threshold when NIC speed is known, and
-  - absolute throughput threshold (peak of RX/TX) as fallback when NIC speed is unknown, and
-  - spike ratio threshold (`peak / moving_baseline`).
-- `DB` profile is stricter (alerts earlier), `CACHE` profile is more tolerant, `WEB` is balanced for bursty edge/API nodes.
+- Hidden when the interface is quiet/stable.
+- Appears only for spike warn/crit conditions.
+- Uses NIC speed when available, otherwise falls back to throughput + moving-baseline ratio.
 - Footer shows link-speed debug: `LINK(sysfs):<Mb/s>` or `LINK(sysfs):UNKNOWN`.
 
 How to correlate:
@@ -125,14 +122,8 @@ In the live panel, focus on state-table pressure:
 - pay special attention to `Drops` only when it is non-zero
   - `Drops: 0` is intentionally hidden in the panel to keep noise down
 
-Conntrack thresholds are profile-aware:
-
-- `WEB`: warn `>= 70%`, crit `>= 85%`
-- `DB`: warn `>= 55%`, crit `>= 70%`
-- `CACHE`: warn `>= 75%`, crit `>= 90%`
-
-Use `y` in live mode to cycle profile instantly.
-Use `Shift+Y` to open quick in-app explain for profile thresholds.
+Conntrack thresholds come from `config/health_thresholds.toml` (or built-in defaults if no file is provided).
+Default conntrack thresholds are `warn >= 70%` and `crit >= 85%`.
 
 ## 5) Diagnosis
 
@@ -163,18 +154,6 @@ Use `Shift+Y` to open quick in-app explain for profile thresholds.
   - replay stays aggregate-only in v1.
   - unlike live `GROUP`, replay does not apply the top-20 business cap; it shows all stored rows for the selected direction.
   - `Diagnosis` is not rendered in this phase.
-
-## Alert Threshold Profiles (WEB/DB/CACHE)
-
-- Purpose: avoid one-size-fits-all alert sensitivity across different host roles.
-- Scope in current phase:
-  - `3. Interface Stats` (`Traffic` spike verdict)
-  - `4. Conntrack` warning/critical thresholds
-  - `Connection States` health strip and `Diagnosis` conntrack severity path
-- Runtime controls:
-  - CLI startup: `--alert-profile web|db|cache`
-  - Live switch: press `y` to cycle profiles without restart
-  - Live explain: press `Shift+Y` for quick profile threshold guide modal
 
 ## Block vs Kill
 

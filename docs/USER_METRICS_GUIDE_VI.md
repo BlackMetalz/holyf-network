@@ -10,11 +10,11 @@ Nếu bạn còn mới với TCP state / queue / conntrack, nên đọc trước
 
 1. Nhìn `Connection States`:
    - `HEALTH` có đỏ/vàng không.
-   - `Retrans`, `Drops`, `Conntrack%` có tăng bất thường không.
+   - `Retrans` hoặc `Drops` có tăng bất thường không.
 2. Nhìn `Interface Stats`:
    - `RX/TX` có tăng mạnh không.
    - `Errors/Drops` có khác `0` không.
-   - Nếu cần, bấm `y` để đổi profile (`WEB/DB/CACHE`) rồi đánh giá lại độ nhạy spike theo vai trò host.
+   - Nếu dòng `Traffic` xuất hiện thì coi đó là cảnh báo spike ngắn ở interface.
 3. Qua `Top Connections`:
    - Sort theo băng thông (`Shift+B`) để thấy flow nặng nhất.
    - Dò `Send-Q/Recv-Q` bất thường.
@@ -87,24 +87,21 @@ Khi nào đáng lo:
 ## 3) Interface Stats
 
 - `RX/TX`: tổng lưu lượng theo NIC (bytes/s).
-- `Packets`: số packet/s RX/TX.
-- `System`: CPU % và RSS memory của process holyf-network hiện tại.
-- `Traffic`: kết luận spike theo profile dựa trên peak throughput + tỷ lệ so với baseline di động.
+- `Packet rate`: số packet/s RX/TX.
+- `App`: CPU % và RSS memory của process holyf-network hiện tại, không phải số host-wide của cả máy.
+- `Traffic`: cảnh báo spike ngắn, chỉ hiện khi traffic cần chú ý.
 - `Errors`, `Drops`: lỗi và drop của interface.
 - Ở live mode, panel này refresh mỗi `1s` để thấy spike bandwidth nhanh hơn.
 - Nhịp `1s` này chỉ áp dụng cho throughput/packet của NIC.
-- Dòng `System` (app CPU/RSS) lấy mẫu theo refresh interval toàn cục (`-r/--refresh`) và giữ cache giữa các lần redraw 1s.
+- Dòng `App` (CPU/RSS) lấy mẫu theo refresh interval toàn cục (`-r/--refresh`) và giữ cache giữa các lần redraw 1s.
 - Ngay sau lúc startup có một warm-up refresh sớm (~1s) để ổn định sample đầu.
 - App CPU % cần 2 mẫu global refresh để ra giá trị ổn định.
 
 Ý nghĩa dòng `Traffic`:
 
-- Dựa theo profile đang chọn (`WEB`, `DB`, `CACHE`).
-- Đánh giá đồng thời:
-  - ngưỡng utilization theo speed NIC (khi đọc được speed), và
-  - ngưỡng tuyệt đối theo throughput (peak của RX/TX) khi không đọc được speed, và
-  - ngưỡng spike ratio (`peak / baseline_di_động`).
-- `DB` nhạy hơn (cảnh báo sớm), `CACHE` chịu burst tốt hơn, `WEB` cân bằng cho node edge/API.
+- Mặc định bị ẩn khi interface đang yên / ổn định.
+- Chỉ hiện khi có spike mức warn/crit.
+- Ưu tiên dùng speed NIC nếu đọc được; nếu không thì fallback về throughput + tỷ lệ so với baseline di động.
 - Footer có debug link-speed: `LINK(sysfs):<Mb/s>` hoặc `LINK(sysfs):UNKNOWN`.
 
 Cách đối chiếu:
@@ -125,14 +122,8 @@ Panel live ưu tiên nhìn áp lực bảng state:
 - chỉ cần đặc biệt chú ý `Drops` nếu khác `0`
   - `Drops: 0` được ẩn đi chủ đích để panel đỡ nhiễu
 
-Ngưỡng Conntrack theo profile:
-
-- `WEB`: cảnh báo `>= 70%`, nguy hiểm `>= 85%`
-- `DB`: cảnh báo `>= 55%`, nguy hiểm `>= 70%`
-- `CACHE`: cảnh báo `>= 75%`, nguy hiểm `>= 90%`
-
-Bấm `y` trong live mode để đổi profile ngay.
-Bấm `Shift+Y` để mở modal giải thích nhanh profile/threshold ngay trong live mode.
+Ngưỡng Conntrack lấy từ `config/health_thresholds.toml` (hoặc dùng default built-in nếu không có file).
+Mặc định conntrack là `warn >= 70%` và `crit >= 85%`.
 
 ## 5) Diagnosis
 
@@ -163,18 +154,6 @@ Bấm `Shift+Y` để mở modal giải thích nhanh profile/threshold ngay tron
   - replay ở v1 vẫn chỉ có aggregate view, không có raw conn view.
   - khác với `GROUP` ở live, replay không áp business cap top-20; nó hiển thị toàn bộ row đã lưu cho direction đang chọn.
   - không render `Diagnosis` ở phase hiện tại.
-
-## Alert Threshold Profiles (WEB/DB/CACHE)
-
-- Mục tiêu: tránh dùng một bộ ngưỡng cố định cho mọi loại workload.
-- Phạm vi tác động ở phase hiện tại:
-  - `3. Interface Stats` (dòng `Traffic` đánh giá spike)
-  - `4. Conntrack` (mốc cảnh báo/nguy hiểm)
-  - health strip ở `Connection States` và nhánh conntrack trong `Diagnosis`
-- Cách dùng:
-  - Lúc chạy app: `--alert-profile web|db|cache`
-  - Đang live: bấm `y` để cycle profile, không cần restart
-  - Giải thích nhanh trong live: bấm `Shift+Y` để mở guide modal
 
 ## Block vs Kill
 

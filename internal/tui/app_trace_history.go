@@ -35,7 +35,7 @@ type traceHistoryEntry struct {
 	Interface   string `json:"interface"`
 	PeerIP      string `json:"peer_ip"`
 	Port        int    `json:"port"`
-	Profile     string `json:"profile,omitempty"`
+	Mode        string `json:"mode,omitempty"`
 	Scope       string `json:"scope"`
 	Preset      string `json:"preset,omitempty"`
 	Direction   string `json:"direction"`
@@ -66,6 +66,22 @@ type traceHistoryEntry struct {
 	CaptureErr string   `json:"capture_err,omitempty"`
 	ReadErr    string   `json:"read_err,omitempty"`
 	Sample     []string `json:"sample_packets,omitempty"`
+}
+
+func (e *traceHistoryEntry) UnmarshalJSON(data []byte) error {
+	type traceHistoryEntryAlias traceHistoryEntry
+	var raw struct {
+		traceHistoryEntryAlias
+		LegacyProfile string `json:"profile,omitempty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*e = traceHistoryEntry(raw.traceHistoryEntryAlias)
+	if strings.TrimSpace(e.Mode) == "" {
+		e.Mode = strings.TrimSpace(raw.LegacyProfile)
+	}
+	return nil
 }
 
 func (a *App) appendTraceHistory(result tracePacketResult) {
@@ -107,7 +123,7 @@ func newTraceHistoryEntry(result tracePacketResult) traceHistoryEntry {
 		Interface:   result.Request.Interface,
 		PeerIP:      normalizeIP(result.Request.PeerIP),
 		Port:        result.Request.Port,
-		Profile:     result.Request.Profile.Label(),
+		Mode:        result.Request.Profile.Label(),
 		Scope:       tracePacketScopeDisplay(result.Request),
 		Preset:      tracePacketHistoryCategory(result.Request),
 		Direction:   result.Request.Direction.Label(),
@@ -406,9 +422,9 @@ func formatTraceHistoryListItem(entry traceHistoryEntry, sensitiveIP bool) (main
 		port,
 	)
 	secondary = fmt.Sprintf(
-		"status=%s profile=%s dir=%s cat=%s scope=%s cap=%s drop=%s rst=%d conf=%s",
+		"status=%s mode=%s dir=%s cat=%s scope=%s cap=%s drop=%s rst=%d conf=%s",
 		blankIfUnknown(entry.Status, "completed"),
-		traceHistoryProfile(entry),
+		traceHistoryMode(entry),
 		blankIfUnknown(entry.Direction, "ANY"),
 		traceHistoryCategory(entry),
 		blankIfUnknown(entry.Scope, "Peer + Port"),
@@ -442,8 +458,8 @@ func buildTraceHistoryDetailText(entry traceHistoryEntry, sensitiveIP bool) stri
 	b.WriteString(fmt.Sprintf("  Interface: [green]%s[white]\n", blankIfUnknown(entry.Interface, "n/a")))
 	b.WriteString(fmt.Sprintf("  Target: [green]%s:%s[white]\n", peer, traceHistoryPortLabel(entry.Port)))
 	b.WriteString(fmt.Sprintf(
-		"  Profile: [green]%s[white] | Category: [green]%s[white] | Scope: [green]%s[white] | Direction: [green]%s[white]\n",
-		traceHistoryProfile(entry),
+		"  Mode: [green]%s[white] | Category: [green]%s[white] | Scope: [green]%s[white] | Direction: [green]%s[white]\n",
+		traceHistoryMode(entry),
 		traceHistoryCategory(entry),
 		blankIfUnknown(entry.Scope, "Peer + Port"),
 		blankIfUnknown(entry.Direction, "ANY"),
@@ -553,10 +569,10 @@ func traceHistoryCategory(entry traceHistoryEntry) string {
 	}
 }
 
-func traceHistoryProfile(entry traceHistoryEntry) string {
-	profile := strings.TrimSpace(entry.Profile)
-	if profile != "" {
-		return profile
+func traceHistoryMode(entry traceHistoryEntry) string {
+	mode := strings.TrimSpace(entry.Mode)
+	if mode != "" {
+		return mode
 	}
 	return "General triage"
 }

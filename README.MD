@@ -53,9 +53,6 @@ sudo holyf-network
 # Set refresh rate to 5 seconds
 sudo holyf-network -r 5
 
-# Start with DB-oriented alert thresholds
-sudo holyf-network --alert-profile db
-
 # Keyboard shortcuts inside TUI
 # Tab / Shift+Tab: move focus between panels
 # Ctrl+1..5: focus panel (1=Top, 2=States, 3=Interface, 4=Conntrack, 5=Diagnosis)
@@ -69,12 +66,10 @@ sudo holyf-network --alert-profile db
 # Shift+C: sort by Conns (press again toggles DESC/ASC)
 # Shift+P: sort by Port (press again toggles DESC/ASC)
 # i: explain Send-Q / Recv-Q / TX/s / RX/s
-# Shift+I: explain Interface Stats (RX/TX, Packets, App CPU/RSS, Errors, Drops)
+# Shift+I: explain Interface Stats (RX/TX, Packet rate, App CPU/RSS, Errors, Drops)
 # g: toggle grouped view (peer + process, capped to top 20 groups by CONNS)
 # /: search Top Connections by text (contains match)
 # f: port filter (local port in IN mode, remote port in OUT mode; press f again to clear all filters)
-# y: cycle alert threshold profile (WEB -> DB -> CACHE)
-# Shift+Y: quick explain for alert profile thresholds and spike logic
 # m: toggle sensitive IP masking
 # s: sort Connection States by count (toggle DESC/ASC)
 # b: list active blocks and remove selected peer block
@@ -103,11 +98,9 @@ make local ARGS="-r 5"
 Live refresh model:
 - `-r/--refresh` controls the main full refresh loop (Top/States/Conntrack/Diagnosis and full data recompute).
 - `3. Interface Stats` has a dedicated `1s` refresh lane in live mode for faster RX/TX visibility.
-- `System` line in that panel shows holyf-network app CPU + RSS sampled on the global `-r/--refresh` interval and cached between 1s redraws.
+- `App` line in that panel shows holyf-network process CPU + RSS only, sampled on the global `-r/--refresh` interval and cached between 1s redraws.
 - `p` (pause) pauses both lanes.
-- `--alert-profile` picks workload-aware alert thresholds for interface spike + conntrack pressure (`web`, `db`, `cache`).
-  - You can switch at runtime with `y` without restarting.
-  - Footer shows `LINK(sysfs):<speed>` or `LINK(sysfs):UNKNOWN` for quick NIC speed debug.
+- Footer shows `LINK(sysfs):<speed>` or `LINK(sysfs):UNKNOWN` for quick NIC speed debug.
 
 Mitigation behavior:
 - `minutes > 0`: block first, then kill active connections, then auto-unblock when timer expires.
@@ -124,8 +117,6 @@ Mitigation behavior:
 - Incident mental checklist (Vietnamese, 1-page quick reference): `docs/INCIDENT_MENTAL_CHECKLIST_VI.md`
 - Vietnamese (practical ops): `docs/USER_METRICS_GUIDE_VI.md`
 - English (practical ops): `docs/USER_METRICS_GUIDE_EN.md`
-- Alert threshold profiles (English): `docs/ALERT_THRESHOLD_PROFILES_EN.md`
-- Alert threshold profiles (Vietnamese): `docs/ALERT_THRESHOLD_PROFILES_VI.md`
 - Daemon snapshot file spec: `docs/SNAPSHOT_FORMAT.md`
 
 ### Top Connections process labels (short)

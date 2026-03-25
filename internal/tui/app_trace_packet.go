@@ -1094,7 +1094,7 @@ func (a *App) startTracePacketCapture(req tracePacketRequest) {
 			remaining = 0
 		}
 		progressView.SetText(fmt.Sprintf(
-			"  [yellow]Trace Packet Running[white]\n\n  Profile: [green]%s[white]\n  Interface: [green]%s[white]\n  Scope: [green]%s[white]\n  Direction: [green]%s[white]\n  Duration: [green]%ds[white] | Cap: [green]%d[white]\n  Remaining: [green]%ds[white]\n\n  [dim]Press Esc to abort.[white]",
+			"  [yellow]Trace Packet Running[white]\n\n  Mode: [green]%s[white]\n  Interface: [green]%s[white]\n  Scope: [green]%s[white]\n  Direction: [green]%s[white]\n  Duration: [green]%ds[white] | Cap: [green]%d[white]\n  Remaining: [green]%ds[white]\n\n  [dim]Press Esc to abort.[white]",
 			req.Profile.Label(),
 			req.Interface,
 			tracePacketScopeDisplay(req),
@@ -1560,7 +1560,7 @@ func buildTracePacketResultText(result tracePacketResult, sensitiveIP bool) stri
 	var b strings.Builder
 	b.WriteString("  [yellow]Trace Packet Summary[white]\n")
 	b.WriteString("  ─────────────────────────────────────────\n")
-	b.WriteString(fmt.Sprintf("  Profile: [green]%s[white]\n", result.Request.Profile.Label()))
+	b.WriteString(fmt.Sprintf("  Mode: [green]%s[white]\n", result.Request.Profile.Label()))
 	b.WriteString(fmt.Sprintf("  Interface: [green]%s[white]\n", result.Request.Interface))
 	b.WriteString(fmt.Sprintf("  Filter: [green]%s[white]\n", buildTracePacketDisplayFilter(result.Request, sensitiveIP)))
 	b.WriteString(fmt.Sprintf("  Scope: [green]%s[white] | Direction: [green]%s[white]\n", tracePacketScopeDisplay(result.Request), result.Request.Direction.Label()))
@@ -1679,7 +1679,7 @@ func buildTracePacketActionSummary(result tracePacketResult, sensitiveIP bool) s
 	}
 
 	return fmt.Sprintf(
-		"Trace %s %s:%s | profile=%s dir=%s scope=%s | captured=%s drop=%s rst=%d | saved=%s",
+		"Trace %s %s:%s | mode=%s dir=%s scope=%s | captured=%s drop=%s rst=%d | saved=%s",
 		status,
 		formatPreviewIP(result.Request.PeerIP, sensitiveIP),
 		portPart,

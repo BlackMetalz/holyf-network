@@ -115,14 +115,15 @@ type App struct {
 	// Zoom state
 	zoomed bool // Whether a panel is zoomed to fullscreen
 
-	healthThresholds config.HealthThresholds
-	alertProfile     config.AlertProfile
-	alertProfileSpec config.AlertProfileSpec
-	ifaceSpikeEMA    float64
-	ifaceSpikeCount  int
-	ifaceSpeedMbps   float64
-	ifaceSpeedKnown  bool
-	ifaceSpeedSample bool
+	healthThresholds         config.HealthThresholds
+	ifaceSpikeEMA            float64
+	ifaceSpikeCount          int
+	ifaceSpeedMbps           float64
+	ifaceSpeedKnown          bool
+	ifaceSpeedSample         bool
+	ifaceTrafficDisplayLevel healthLevel
+	ifaceTrafficWarnStreak   int
+	ifaceTrafficClearStreak  int
 }
 
 var livePanelFocusOrder = []int{2, 0, 1, 3, 4} // 1=Top, 2=States, 3=Interface, 4=Conntrack, 5=Diagnosis
@@ -141,14 +142,12 @@ func NewApp(
 	sensitiveIP bool,
 	appVersion string,
 	healthThresholds config.HealthThresholds,
-	alertProfile config.AlertProfile,
 ) *App {
 	version := strings.TrimSpace(appVersion)
 	if version == "" {
 		version = "dev"
 	}
 	healthThresholds.Normalize()
-	alertProfileSpec := config.AlertProfileSpecFor(alertProfile)
 
 	return &App{
 		app:                 tview.NewApplication(),
@@ -161,8 +160,6 @@ func NewApp(
 		stopChan:            make(chan struct{}),
 		refreshChan:         make(chan struct{}, 1), // Buffered: so send never blocks
 		healthThresholds:    healthThresholds,
-		alertProfile:        alertProfileSpec.Name,
-		alertProfileSpec:    alertProfileSpec,
 		actionLogs:          make([]string, 0, 32),
 		actionHistoryPath:   defaultActionHistoryPath(),
 		traceHistory:        make([]traceHistoryEntry, 0, 32),
@@ -364,7 +361,6 @@ func (a *App) refreshInterfacePanel() {
 func (a *App) refreshData() {
 	a.lastRefresh = time.Now()
 	activeThresholds := a.activeHealthThresholds()
-	profileSpec := a.currentAlertProfileSpec()
 
 	if usage, cpuStats, usageErr := collector.CollectSystemUsage(a.prevCPUStats); usageErr != nil {
 		a.systemUsageErr = shortStatus(usageErr.Error(), 96)
@@ -383,7 +379,7 @@ func (a *App) refreshData() {
 	} else {
 		rates := collector.CalculateConntrackRates(ctData, a.prevConntrack)
 		conntrackRates = &rates
-		a.panels[3].SetText(renderConntrackPanel(rates, profileSpec.Thresholds.ConntrackPercent, profileSpec.Label))
+		a.panels[3].SetText(renderConntrackPanel(rates, activeThresholds.ConntrackPercent))
 		a.prevConntrack = &ctData
 	}
 
@@ -557,12 +553,6 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'p':
 			a.paused.Store(!a.paused.Load())
 			a.updateStatusBar()
-			return nil
-		case 'y':
-			a.cycleAlertProfile()
-			return nil
-		case 'Y':
-			a.promptAlertProfileExplain()
 			return nil
 		case 's':
 			if a.focusIndex != 0 {
@@ -835,7 +825,6 @@ func (a *App) updateStatusBar() {
 	if a.sensitiveIP {
 		stateText += " [yellow]IP MASK[white] |"
 	}
-	stateText += fmt.Sprintf(" [aqua]PROFILE-%s[white] |", a.currentAlertProfileSpec().Label)
 	stateText += a.linkSpeedStatusIndicator()
 	if time.Now().Before(a.statusNoteUntil) && a.statusNote != "" {
 		stateText += fmt.Sprintf(" [yellow]%s[white] |", a.statusNote)
@@ -936,8 +925,6 @@ func (a *App) statusHotkeysForPage(page string) (styled string, plain string) {
 	case "socket-queue-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "interface-stats-explain":
-		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
-	case "alert-profile-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "blocked-peers-remove-result", "block-summary":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"

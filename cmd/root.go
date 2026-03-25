@@ -26,7 +26,6 @@ var (
 	flagListInterfaces bool
 	flagSensitiveIP    bool
 	flagHealthConfig   string
-	flagAlertProfile   string
 )
 
 // rootCmd is the base command. When the user runs "holyf-network" without
@@ -70,10 +69,6 @@ var rootCmd = &cobra.Command{
 		} else {
 			healthThresholds = loadedThresholds
 		}
-		alertProfile, ok := config.ParseAlertProfile(flagAlertProfile)
-		if !ok {
-			return fmt.Errorf("invalid --alert-profile %q (supported: web, db, cache)", flagAlertProfile)
-		}
 
 		// Launch the TUI dashboard
 		app := tui.NewApp(
@@ -82,7 +77,6 @@ var rootCmd = &cobra.Command{
 			flagSensitiveIP,
 			resolveBuildVersion(Version),
 			healthThresholds,
-			alertProfile,
 		)
 		return app.Run()
 	},
@@ -116,7 +110,6 @@ func init() {
 	rootCmd.Flags().BoolVar(&flagListInterfaces, "list-interfaces", false, "List available network interfaces and exit")
 	rootCmd.Flags().BoolVar(&flagSensitiveIP, "sensitive-ip", false, "Hide the first 2 IP octets/groups in Top Connections (for demos)")
 	rootCmd.Flags().StringVar(&flagHealthConfig, "health-config", "config/health_thresholds.toml", "Health strip thresholds TOML file")
-	rootCmd.Flags().StringVar(&flagAlertProfile, "alert-profile", string(config.DefaultAlertProfile()), "Alert threshold profile: web | db | cache")
 
 	rootCmd.AddCommand(newDaemonCmd())
 	rootCmd.AddCommand(newReplayCmd())

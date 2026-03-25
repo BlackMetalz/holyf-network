@@ -150,8 +150,8 @@ func TestBuildTraceHistoryDetailTextMasksSensitiveIP(t *testing.T) {
 	if !strings.Contains(text, "Trace Analyzer") {
 		t.Fatalf("expected Trace Analyzer section, got=%q", text)
 	}
-	if !strings.Contains(text, "Profile: [green]General triage[white]") {
-		t.Fatalf("expected profile line in detail text, got=%q", text)
+	if !strings.Contains(text, "Mode: [green]General triage[white]") {
+		t.Fatalf("expected mode line in detail text, got=%q", text)
 	}
 	if !strings.Contains(text, "Category: [green]Peer + Port[white]") {
 		t.Fatalf("expected category line in detail text, got=%q", text)

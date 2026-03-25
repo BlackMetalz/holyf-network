@@ -233,7 +233,7 @@ func TestBuildTracePacketActionSummaryIncludesKeyFields(t *testing.T) {
 	summary := buildTracePacketActionSummary(result, false)
 	for _, want := range []string{
 		"Trace ok 203.0.113.10:443",
-		"profile=General triage dir=IN scope=Peer + Port",
+		"mode=General triage dir=IN scope=Peer + Port",
 		"captured=12 drop=1 rst=2",
 		"saved=/tmp/holyf-network-captures/trace-test.pcap",
 	} {

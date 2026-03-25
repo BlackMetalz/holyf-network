@@ -26,14 +26,6 @@ Live scheduling now has 3 lanes:
 - Interface fast lane: every `1s` updates only `Interface Stats` for faster RX/TX visibility.
 - Warm-up lane: one early full refresh at ~`1s` after startup to settle first-sample volatility.
 
-Live alerting also supports workload profiles (`web`, `db`, `cache`):
-
-- Startup flag: `--alert-profile`
-- Runtime hotkey: `y` (cycle profile)
-- Current scope:
-  - Interface spike verdict (`Interface Stats` panel)
-  - Conntrack warn/crit thresholds (`Conntrack`, health strip, diagnosis conntrack severity)
-
 Inside `refreshData()`:
 
 1. Collect conntrack snapshot and rates.
@@ -163,11 +155,9 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
     - `cat /sys/class/net/<iface>/statistics/tx_bytes`
     - `ip -s link show dev <iface>`
   - Live alert overlay:
-    - `Traffic` line uses profile-aware evaluation:
-      - interface utilization threshold (when NIC speed is available)
-      - absolute peak fallback (`max(rx_bps, tx_bps)`) when NIC speed is unavailable
-      - spike ratio threshold (`peak / EWMA baseline`)
-    - baseline resets when profile changes via `y`.
+    - `Traffic` line is hidden while stable.
+    - It appears only for interface spike warn/crit conditions.
+    - Evaluation uses NIC speed when available, otherwise absolute throughput + spike ratio fallback.
 
 5. Top Connections queue columns (`internal/collector/top_connections.go`)
    - Source:

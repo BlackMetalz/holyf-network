@@ -174,16 +174,6 @@ func renderHealthStrip(
 		overall = maxHealthLevel(overall, dropsLevel)
 	}
 
-	conntrackValue := "n/a"
-	conntrackColor := "dim"
-	conntrackLevel := healthUnknown
-	if conntrack != nil && conntrack.Max > 0 {
-		conntrackLevel = classifyMetric(conntrack.UsagePercent, thresholds.ConntrackPercent)
-		conntrackColor = colorForHealthLevel(conntrackLevel)
-		conntrackValue = formatConntrackPercentShort(conntrack.UsagePercent)
-		overall = maxHealthLevel(overall, conntrackLevel)
-	}
-
 	headLabel := "HEALTH UNKNOWN"
 	headColor := "dim"
 	switch overall {
@@ -199,15 +189,13 @@ func renderHealthStrip(
 	}
 
 	return fmt.Sprintf(
-		"  [%s]%s[white]  Retrans:[%s]%s[white] | Drops:[%s]%s[white] | Conntrack:[%s]%s[white]",
+		"  [%s]%s[white]  Retrans:[%s]%s[white] | Drops:[%s]%s[white]",
 		headColor,
 		headLabel,
 		retransColor,
 		retransValue,
 		dropsColor,
 		dropsValue,
-		conntrackColor,
-		conntrackValue,
 	)
 }
 

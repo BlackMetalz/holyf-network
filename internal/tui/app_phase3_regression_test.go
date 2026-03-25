@@ -213,7 +213,6 @@ func TestStatusHotkeysForModalPages(t *testing.T) {
 		{page: traceHistoryComparePage, wantPlain: "Enter=close Esc=close"},
 		{page: "socket-queue-explain", wantPlain: "Enter=close Esc=close"},
 		{page: "interface-stats-explain", wantPlain: "Enter=close Esc=close"},
-		{page: "alert-profile-explain", wantPlain: "Enter=close Esc=close"},
 		{page: "blocked-peers-remove-result", wantPlain: "Enter=close Esc=close"},
 		{page: "block-summary", wantPlain: "Enter=close Esc=close"},
 	}

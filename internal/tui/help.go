@@ -46,23 +46,23 @@ func liveMainStatusHotkeys(focusIndex int, direction topConnectionDirection) (st
 	switch focusIndex {
 	case 2:
 		if direction == topConnectionOutgoing {
-			return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=IN [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]T[white]=trace [dim]t[white]=traces [dim]y[white]=profile [dim]Y[white]=p-help [dim]Enter/k[white]=disabled [dim]Tab[white]=panel [dim]?[white]=help",
-				"Up/Down=select [ ]=page o=IN g=group /=search f=filter T=trace t=traces y=profile Y=p-help Enter/k=disabled Tab=panel ?=help"
+			return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=IN [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]T[white]=trace [dim]t[white]=traces [dim]Enter/k[white]=disabled [dim]Tab[white]=panel [dim]?[white]=help",
+				"Up/Down=select [ ]=page o=IN g=group /=search f=filter T=trace t=traces Enter/k=disabled Tab=panel ?=help"
 		}
-		return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=OUT [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]T[white]=trace [dim]t[white]=traces [dim]y[white]=profile [dim]Y[white]=p-help [dim]Enter/k[white]=act [dim]Tab[white]=panel [dim]?[white]=help",
-			"Up/Down=select [ ]=page o=OUT g=group /=search f=filter T=trace t=traces y=profile Y=p-help Enter/k=act Tab=panel ?=help"
+		return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=OUT [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]T[white]=trace [dim]t[white]=traces [dim]Enter/k[white]=act [dim]Tab[white]=panel [dim]?[white]=help",
+			"Up/Down=select [ ]=page o=OUT g=group /=search f=filter T=trace t=traces Enter/k=act Tab=panel ?=help"
 	case 0:
-		return "[dim]s[white]=sort [dim]y[white]=profile [dim]Y[white]=p-help [dim]Tab[white]=panel [dim]Ctrl+1..5[white]=focus [dim]?[white]=help",
-			"s=sort y=profile Y=p-help Tab=panel Ctrl+1..5=focus ?=help"
+		return "[dim]s[white]=sort [dim]Tab[white]=panel [dim]Ctrl+1..5[white]=focus [dim]?[white]=help",
+			"s=sort Tab=panel Ctrl+1..5=focus ?=help"
 	case 1:
-		return "[dim]Shift+I[white]=explain [dim]y[white]=profile [dim]Y[white]=p-help [dim]Tab[white]=panel [dim]Ctrl+1..5[white]=focus [dim]?[white]=help",
-			"Shift+I=explain y=profile Y=p-help Tab=panel Ctrl+1..5=focus ?=help"
+		return "[dim]Shift+I[white]=explain [dim]Tab[white]=panel [dim]Ctrl+1..5[white]=focus [dim]?[white]=help",
+			"Shift+I=explain Tab=panel Ctrl+1..5=focus ?=help"
 	case 4:
-		return "[dim]d[white]=history [dim]y[white]=profile [dim]Y[white]=p-help [dim]Tab[white]=panel [dim]Ctrl+1..5[white]=focus [dim]?[white]=help",
-			"d=history y=profile Y=p-help Tab=panel Ctrl+1..5=focus ?=help"
+		return "[dim]d[white]=history [dim]Tab[white]=panel [dim]Ctrl+1..5[white]=focus [dim]?[white]=help",
+			"d=history Tab=panel Ctrl+1..5=focus ?=help"
 	default:
-		return "[dim]Tab[white]=panel [dim]Ctrl+1..5[white]=focus [dim]r[white]=refresh [dim]y[white]=profile [dim]Y[white]=p-help [dim]?[white]=help",
-			"Tab=panel Ctrl+1..5=focus r=refresh y=profile Y=p-help ?=help"
+		return "[dim]Tab[white]=panel [dim]Ctrl+1..5[white]=focus [dim]r[white]=refresh [dim]?[white]=help",
+			"Tab=panel Ctrl+1..5=focus r=refresh ?=help"
 	}
 }
 
@@ -72,8 +72,6 @@ func buildLiveHelpText(a *App) string {
 		{label: "Tab / Shift+Tab", desc: "Move focus between panels"},
 		{label: "Ctrl+1..5", desc: "Focus 1=Top 2=States 3=Interface 4=Conntrack 5=Diagnosis"},
 		{label: "r", desc: "Refresh now"},
-		{label: "y", desc: "Cycle alert profile (WEB/DB/CACHE)"},
-		{label: "Shift+Y", desc: "Open alert profile explain"},
 		{label: "p", desc: "Pause / resume auto-refresh"},
 		{label: "m", desc: "Toggle sensitive IP mask"},
 		{label: "t", desc: "Open trace packet history"},
@@ -123,15 +121,11 @@ func currentPanelHelpSection(a *App) (string, []liveHelpEntry) {
 		}
 	case 1:
 		return "Interface Stats", []liveHelpEntry{
-			{label: "Shift+I", desc: "Explain RX/TX, packets, errors, and drops"},
-			{label: "y", desc: "Cycle alert profile for spike/conntrack thresholds"},
-			{label: "Shift+Y", desc: "Open profile threshold guide"},
+			{label: "Shift+I", desc: "Explain RX/TX, packet rate, app CPU/mem, errors, and drops"},
 		}
 	case 3:
 		return "Conntrack", []liveHelpEntry{
 			{label: "Info", desc: "Read-only pressure panel; watch usage and drops"},
-			{label: "y", desc: "Cycle alert profile for conntrack warn/crit levels"},
-			{label: "Shift+Y", desc: "Open profile threshold guide"},
 		}
 	case 4:
 		return "Diagnosis", []liveHelpEntry{
@@ -220,21 +214,13 @@ func createHelpModal() (*tview.Flex, *tview.TextView) {
 	helpView.SetTitle(" Help ")
 	helpView.SetTitleAlign(tview.AlignCenter)
 
-	// Wrap in Flex to center it on screen
-	// The trick: add empty spacers around the content
-	//
-	// Layout:
-	//   [spacer] [spacer] [spacer]
-	//   [spacer] [HELP  ] [spacer]
-	//   [spacer] [spacer] [spacer]
-	//
 	inner := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(helpView, 0, 1, true)
 
 	modal := tview.NewFlex().
-		AddItem(nil, 0, 1, false).   // Left spacer
-		AddItem(inner, 88, 0, true). // Center column (fixed width)
-		AddItem(nil, 0, 1, false)    // Right spacer
+		AddItem(nil, 0, 1, false).
+		AddItem(inner, 88, 0, true).
+		AddItem(nil, 0, 1, false)
 
 	return modal, helpView
 }
@@ -251,10 +237,8 @@ func createHistoryHelpModal() *tview.Flex {
 	inner := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(helpView, 0, 1, true)
 
-	modal := tview.NewFlex().
+	return tview.NewFlex().
 		AddItem(nil, 0, 1, false).
-		AddItem(inner, 78, 0, true).
+		AddItem(inner, 88, 0, true).
 		AddItem(nil, 0, 1, false)
-
-	return modal
 }
