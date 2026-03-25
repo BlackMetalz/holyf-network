@@ -13,7 +13,7 @@ func buildInterfaceStatsExplainText() string {
 		"  [yellow]Packet rate[white]: packet rate on this NIC, not per process.",
 		"  [yellow]Speed[white]: interface link speed and current utilization when the NIC reports speed.",
 		"  [yellow]Traffic[white]: hidden when quiet; shown only when spike warn/crit needs attention.",
-		"  [yellow]App CPU / Mem[white]: logical CPU cores used and RSS memory of the current holyf-network process, not host-wide metrics.",
+		"  [yellow]App Usage[white]: logical CPU cores used and RSS memory of the current holyf-network process, not host-wide metrics.",
 		"  [dim]App CPU/Mem is sampled on the configured refresh interval (-r), not the 1s interface lane.[white]",
 		"",
 		"  [dim]Why bytes and packets both matter:[white]",

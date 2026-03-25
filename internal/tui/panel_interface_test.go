@@ -103,7 +103,7 @@ func TestRenderInterfacePanelUsesPacketRateLabel(t *testing.T) {
 	if strings.Contains(out, "Traffic:") {
 		t.Fatalf("stable traffic should be hidden from panel output, got: %q", out)
 	}
-	if !strings.Contains(out, "App:") {
+	if !strings.Contains(out, "App Usage:") {
 		t.Fatalf("expected app line in panel output, got: %q", out)
 	}
 	if strings.Contains(out, "global") {

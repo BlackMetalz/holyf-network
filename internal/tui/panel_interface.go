@@ -86,9 +86,9 @@ func renderSystemUsageLine(sys interfaceSystemSnapshot) string {
 	errText := strings.TrimSpace(sys.Err)
 	if !sys.Ready {
 		if errText != "" {
-			return fmt.Sprintf("  [bold]App:[white] [yellow]unavailable[white] [dim](%s)[white]", errText)
+			return fmt.Sprintf("  [bold]App Usage:[white] [yellow]unavailable[white] [dim](%s)[white]", errText)
 		}
-		return "  [bold]App:[white] [dim]CPU warming[white]"
+		return "  [bold]App Usage:[white] [dim]CPU warming[white]"
 	}
 
 	cpuText := "warming"
@@ -101,7 +101,7 @@ func renderSystemUsageLine(sys interfaceSystemSnapshot) string {
 		memText = formatMemoryBytes(sys.Usage.Memory.RSSBytes) + " RSS"
 	}
 
-	line := fmt.Sprintf("  [bold]App:[white] CPU %s | Mem %s", cpuText, memText)
+	line := fmt.Sprintf("  [bold]App Usage:[white] CPU %s | Mem %s", cpuText, memText)
 	if errText != "" {
 		line += fmt.Sprintf(" [yellow]stale (%s)[white]", errText)
 	}

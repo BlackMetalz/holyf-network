@@ -88,7 +88,7 @@ Khi nào đáng lo:
 
 - `RX/TX`: tổng lưu lượng theo NIC (bytes/s).
 - `Packet rate`: số packet/s RX/TX.
-- `App`: số core CPU đang dùng và RSS memory của process holyf-network hiện tại, không phải số host-wide của cả máy.
+- `App Usage`: số core CPU đang dùng và RSS memory của process holyf-network hiện tại, không phải số host-wide của cả máy.
 - `Traffic`: cảnh báo spike ngắn, chỉ hiện khi traffic cần chú ý.
 - `Errors`, `Drops`: lỗi và drop của interface.
 - Ở live mode, panel này refresh mỗi `1s` để thấy spike bandwidth nhanh hơn.
