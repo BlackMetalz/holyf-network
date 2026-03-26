@@ -4,7 +4,8 @@ package kernelapi
 
 import (
 	"fmt"
-	"net"
+	"net/netip"
+	"strings"
 
 	"github.com/ti-mo/conntrack"
 )
@@ -17,7 +18,6 @@ func (n *NetlinkConntrackManager) BackendName() string { return "netlink" }
 
 // NewNetlinkConntrackManager creates a new netlink-based conntrack manager.
 func NewNetlinkConntrackManager() (*NetlinkConntrackManager, error) {
-	// Verify connectivity by opening and immediately closing a connection.
 	c, err := conntrack.Dial(nil)
 	if err != nil {
 		return nil, fmt.Errorf("conntrack netlink dial: %w", err)
@@ -40,7 +40,7 @@ func (m *NetlinkConntrackManager) ReadStats() (inserts, drops int64, ok bool) {
 	}
 
 	for _, s := range stats {
-		inserts += int64(s.Inserted)
+		inserts += int64(s.Insert)
 		drops += int64(s.Drop)
 	}
 	return inserts, drops, true
@@ -54,7 +54,6 @@ func (m *NetlinkConntrackManager) CollectFlowsTCP() ([]ConntrackFlow, error) {
 	}
 	defer c.Close()
 
-	// Dump all conntrack entries.
 	flows, err := c.Dump(nil)
 	if err != nil {
 		return nil, fmt.Errorf("conntrack dump: %w", err)
@@ -62,23 +61,22 @@ func (m *NetlinkConntrackManager) CollectFlowsTCP() ([]ConntrackFlow, error) {
 
 	var result []ConntrackFlow
 	for _, f := range flows {
-		// Filter TCP only (protocol 6).
 		if f.TupleOrig.Proto.Protocol != 6 {
 			continue
 		}
 
 		cf := ConntrackFlow{
-			State: protoInfoStateString(f),
+			State: tcpConntrackStateString(f),
 			Orig: FlowTuple{
-				SrcIP:   normalizeConntrackIP(f.TupleOrig.IP.SourceAddress),
+				SrcIP:   normalizeNetipAddr(f.TupleOrig.IP.SourceAddress),
 				SrcPort: int(f.TupleOrig.Proto.SourcePort),
-				DstIP:   normalizeConntrackIP(f.TupleOrig.IP.DestinationAddress),
+				DstIP:   normalizeNetipAddr(f.TupleOrig.IP.DestinationAddress),
 				DstPort: int(f.TupleOrig.Proto.DestinationPort),
 			},
 			Reply: FlowTuple{
-				SrcIP:   normalizeConntrackIP(f.TupleReply.IP.SourceAddress),
+				SrcIP:   normalizeNetipAddr(f.TupleReply.IP.SourceAddress),
 				SrcPort: int(f.TupleReply.Proto.SourcePort),
-				DstIP:   normalizeConntrackIP(f.TupleReply.IP.DestinationAddress),
+				DstIP:   normalizeNetipAddr(f.TupleReply.IP.DestinationAddress),
 				DstPort: int(f.TupleReply.Proto.DestinationPort),
 			},
 			OrigBytes:  int64(f.CountersOrig.Bytes),
@@ -97,30 +95,27 @@ func (m *NetlinkConntrackManager) DeleteFlows(peerIP string, port int) error {
 	}
 	defer c.Close()
 
-	// Dump all flows and delete matching ones.
 	flows, err := c.Dump(nil)
 	if err != nil {
 		return fmt.Errorf("conntrack dump: %w", err)
 	}
 
-	normPeer := normalizeIP(peerIP)
+	normPeer := ctNormalizeIP(peerIP)
 	var lastErr error
 	for _, f := range flows {
 		if f.TupleOrig.Proto.Protocol != 6 {
 			continue
 		}
 
-		origSrc := normalizeConntrackIP(f.TupleOrig.IP.SourceAddress)
-		origDst := normalizeConntrackIP(f.TupleOrig.IP.DestinationAddress)
+		origSrc := normalizeNetipAddr(f.TupleOrig.IP.SourceAddress)
+		origDst := normalizeNetipAddr(f.TupleOrig.IP.DestinationAddress)
 		origSPort := int(f.TupleOrig.Proto.SourcePort)
 		origDPort := int(f.TupleOrig.Proto.DestinationPort)
 
 		match := false
-		// Match if peer is source and port matches either src or dst port.
 		if origSrc == normPeer && (origSPort == port || origDPort == port) {
 			match = true
 		}
-		// Match if peer is destination and port matches.
 		if origDst == normPeer && (origSPort == port || origDPort == port) {
 			match = true
 		}
@@ -134,23 +129,60 @@ func (m *NetlinkConntrackManager) DeleteFlows(peerIP string, port int) error {
 	return lastErr
 }
 
-// normalizeConntrackIP converts a net.IP from conntrack to a normalized string.
-func normalizeConntrackIP(ip net.IP) string {
-	if ip == nil {
+// normalizeNetipAddr converts a netip.Addr to a normalized IP string.
+func normalizeNetipAddr(addr netip.Addr) string {
+	if !addr.IsValid() {
 		return ""
 	}
-	if ip4 := ip.To4(); ip4 != nil {
-		return ip4.String()
+	// Unmap IPv4-in-IPv6 (::ffff:x.x.x.x → x.x.x.x)
+	if addr.Is4In6() {
+		addr = netip.AddrFrom4(addr.As4())
 	}
-	return ip.String()
+	return addr.String()
 }
 
-// protoInfoStateString returns the TCP state string from a conntrack flow.
-func protoInfoStateString(f conntrack.Flow) string {
-	if f.ProtoInfo.TCP != nil {
-		return f.ProtoInfo.TCP.State.String()
+// tcpConntrackStateString maps the kernel TCP conntrack state uint8 to a string.
+func tcpConntrackStateString(f conntrack.Flow) string {
+	if f.ProtoInfo.TCP == nil {
+		return "UNKNOWN"
 	}
-	return "UNKNOWN"
+	return tcpStateToString(f.ProtoInfo.TCP.State)
+}
+
+// tcpStateToString maps Linux kernel TCP conntrack state values to names.
+// These match the nf_conntrack_tcp.h enum values.
+func tcpStateToString(state uint8) string {
+	switch state {
+	case 0:
+		return "NONE"
+	case 1:
+		return "SYN_SENT"
+	case 2:
+		return "SYN_RECV"
+	case 3:
+		return "ESTABLISHED"
+	case 4:
+		return "FIN_WAIT"
+	case 5:
+		return "CLOSE_WAIT"
+	case 6:
+		return "LAST_ACK"
+	case 7:
+		return "TIME_WAIT"
+	case 8:
+		return "CLOSE"
+	case 9:
+		return "SYN_SENT2"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+// ctNormalizeIP strips ::ffff: prefix and normalizes for comparison.
+func ctNormalizeIP(raw string) string {
+	s := strings.TrimSpace(raw)
+	s = strings.TrimPrefix(s, "::ffff:")
+	return s
 }
 
 // Compile-time interface check.
