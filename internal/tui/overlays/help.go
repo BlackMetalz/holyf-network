@@ -28,7 +28,7 @@ func LiveMainStatusHotkeys(focusIndex int, direction tuishared.TopConnectionDire
 	case 0:
 		return "[dim]s[white]=sort [dim]Shift+I[white]=explain [dim]Tab[white]=panel [dim]Ctrl+1..3[white]=focus [dim]?[white]=help", "s=sort Shift+I=explain Tab=panel Ctrl+1..3=focus ?=help"
 	case 1:
-		return "[dim]d[white]=history [dim]Tab[white]=panel [dim]Ctrl+1..3[white]=focus [dim]?[white]=help", "d=history Tab=panel Ctrl+1..3=focus ?=help"
+		return "[dim]Tab[white]=panel [dim]Ctrl+1..3[white]=focus [dim]?[white]=help", "Tab=panel Ctrl+1..3=focus ?=help"
 	default:
 		return "[dim]Tab[white]=panel [dim]Ctrl+1..3[white]=focus [dim]r[white]=refresh [dim]?[white]=help", "Tab=panel Ctrl+1..3=focus r=refresh ?=help"
 	}
@@ -38,7 +38,7 @@ func BuildLiveHelpText(ctx LiveHelpContext) string {
 	currentTitle, currentEntries := currentPanelHelpSection(ctx)
 	globalEntries := []liveHelpEntry{
 		{label: "Tab / Shift+Tab", desc: "Move focus between panels"},
-		{label: "Ctrl+1..3", desc: "Focus 1=Top 2=System Health 3=Diagnosis"},
+		{label: "Ctrl+1..3", desc: "Focus 1=Top 2=System Health 3=Bandwidth"},
 		{label: "r", desc: "Refresh now"},
 		{label: "p", desc: "Pause / resume auto-refresh"},
 		{label: "m", desc: "Toggle sensitive IP mask"},
@@ -89,7 +89,7 @@ func currentPanelHelpSection(ctx LiveHelpContext) (string, []liveHelpEntry) {
 			{label: "Shift+I", desc: "Explain RX/TX, packet rate, app CPU/mem, errors, and drops"},
 		}
 	case 1:
-		return "Diagnosis", []liveHelpEntry{{label: "d", desc: "Show diagnosis history"}}
+		return "Bandwidth", []liveHelpEntry{{label: "d", desc: "Show diagnosis history"}}
 	default:
 		return "Dashboard", nil
 	}
@@ -104,7 +104,7 @@ func otherPanelHelpEntries(ctx LiveHelpContext) []liveHelpEntry {
 		entries = append(entries, liveHelpEntry{label: "System Health", desc: "s sort states, Shift+I explain metrics"})
 	}
 	if ctx.FocusIndex != 1 {
-		entries = append(entries, liveHelpEntry{label: "Diagnosis", desc: "d show diagnosis history"})
+		entries = append(entries, liveHelpEntry{label: "Bandwidth", desc: "Real-time RX/TX sparkline chart"})
 	}
 	entries = append(entries, liveHelpEntry{label: "Logs / Blocks", desc: "h action log, t trace history, b blocked peers"})
 	return entries

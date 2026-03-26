@@ -168,7 +168,7 @@ func TestCreatePanelsIncludesDiagnosisPanel(t *testing.T) {
 
 	titles := []string{
 		" 2. System Health ",
-		" 3. Diagnosis ",
+		" 3. Bandwidth ",
 		" 1. Top Incoming ",
 	}
 	for i, want := range titles {
@@ -310,7 +310,7 @@ func stripTviewTags(s string) string {
 	return tviewTagPattern.ReplaceAllString(s, "")
 }
 
-func TestDiagnosisPanelRemainsHostGlobalAcrossGroupToggle(t *testing.T) {
+func TestBandwidthPanelRemainsUnchangedAcrossGroupToggle(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
@@ -319,16 +319,8 @@ func TestDiagnosisPanelRemainsHostGlobalAcrossGroupToggle(t *testing.T) {
 		{LocalIP: "10.0.0.10", LocalPort: 8080, RemoteIP: "198.51.100.10", RemotePort: 52001, State: "TIME_WAIT", ProcName: "api", Activity: 100},
 		{LocalIP: "10.0.0.10", LocalPort: 8080, RemoteIP: "198.51.100.10", RemotePort: 52002, State: "TIME_WAIT", ProcName: "api", Activity: 90},
 	}
-	a.topDiagnosis = &tuishared.Diagnosis{
-		Severity: tuishared.HealthWarn,
-		Issue:    "TIME_WAIT churn",
-		Scope:    "198.51.100.10 :8080",
-		Signal:   "TW 2 | Retr LOW SAMPLE | CT 4%",
-		Likely:   "short-lived conn churn, not packet loss",
-		Check:    "keepalive, conn reuse, client retries",
-	}
 
-	a.renderDiagnosisPanel()
+	a.panels[1].SetText("  Collecting samples...")
 	before := a.panels[1].GetText(true)
 	ret := a.handleKeyEvent(tcellKeyRune('g'))
 	if ret != nil {
@@ -336,7 +328,7 @@ func TestDiagnosisPanelRemainsHostGlobalAcrossGroupToggle(t *testing.T) {
 	}
 	after := a.panels[1].GetText(true)
 	if before != after {
-		t.Fatalf("expected diagnosis panel to remain unchanged across group toggle:\nbefore=%q\nafter=%q", before, after)
+		t.Fatalf("expected bandwidth panel to remain unchanged across group toggle:\nbefore=%q\nafter=%q", before, after)
 	}
 }
 

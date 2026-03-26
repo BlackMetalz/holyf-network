@@ -1,6 +1,7 @@
 package panels
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
@@ -19,6 +20,7 @@ func RenderSystemHealthPanel(
 	spike tuishared.InterfaceSpikeAssessment,
 	sys tuishared.InterfaceSystemSnapshot,
 	connStateSortDesc bool,
+	diagnosis *tuishared.Diagnosis,
 ) string {
 	var sb strings.Builder
 
@@ -39,6 +41,20 @@ func RenderSystemHealthPanel(
 		sb.WriteString(RenderConntrackPanel(*conntrackRates, thresholds.ConntrackPercent))
 	} else {
 		sb.WriteString("  [dim]Conntrack data unavailable[white]")
+	}
+
+	// Diagnosis section (compact)
+	if diagnosis != nil {
+		sb.WriteString("\n  [dim]── Diagnosis ──[white]\n")
+		color := tuishared.ColorForHealthLevel(diagnosis.Severity)
+		sb.WriteString(fmt.Sprintf("  [%s]%s[white] %s", color, tuishared.HealthLevelLabel(diagnosis.Severity), diagnosis.Issue))
+		if diagnosis.Scope != "" {
+			sb.WriteString(fmt.Sprintf(" | %s", diagnosis.Scope))
+		}
+		sb.WriteString("\n")
+		if diagnosis.Signal != "" {
+			sb.WriteString(fmt.Sprintf("  [dim]Signal: %s[white]\n", diagnosis.Signal))
+		}
 	}
 
 	return sb.String()

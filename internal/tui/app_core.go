@@ -122,9 +122,12 @@ type App struct {
 	cachedConnData       collector.ConnectionData
 	cachedRetransRates   *collector.RetransmitRates
 	cachedConntrackRates *collector.ConntrackRates
+
+	rxHistory *tuishared.RingBuffer
+	txHistory *tuishared.RingBuffer
 }
 
-var livePanelFocusOrder = []int{2, 0, 1} // 1=Top, 2=System Health, 3=Diagnosis
+var livePanelFocusOrder = []int{2, 0, 1} // 1=Top, 2=System Health, 3=Bandwidth
 
 // NewApp creates a new TUI application.
 func NewApp(
@@ -159,6 +162,8 @@ func NewApp(
 		connStateSortDesc:   true,
 		bwTracker:           collector.NewBandwidthTracker(),
 		ssBWTracker:         collector.NewSocketBandwidthTracker(),
+		rxHistory:           tuishared.NewRingBuffer(60),
+		txHistory:           tuishared.NewRingBuffer(60),
 	}
 }
 
@@ -349,7 +354,22 @@ func (a *App) refreshInterfacePanel() {
 			RefreshSec: a.refreshSec,
 		},
 		a.connStateSortDesc,
+		a.topDiagnosis,
 	))
+
+	if !rates.FirstReading {
+		a.rxHistory.Push(time.Now(), rates.RxBytesPerSec)
+		a.txHistory.Push(time.Now(), rates.TxBytesPerSec)
+	}
+
+	if len(a.panels) > 1 {
+		_, _, bwWidth, _ := a.panels[1].GetInnerRect()
+		if bwWidth <= 0 {
+			bwWidth = 40
+		}
+		a.panels[1].SetText(tuipanels.RenderBandwidthChart(a.rxHistory, a.txHistory, bwWidth))
+	}
+
 	a.prevIfaceStats = &ifaceStats
 }
 
@@ -455,8 +475,6 @@ func (a *App) refreshData() {
 		}
 		a.renderTopConnectionsPanel()
 	}
-	a.renderDiagnosisPanel()
-
 	a.updateStatusBar()
 }
 
@@ -1004,15 +1022,6 @@ func (a *App) promptInterfaceStatsExplain() {
 	a.pages.AddPage("interface-stats-explain", modal, true, true)
 	a.updateStatusBar()
 	a.app.SetFocus(modal)
-}
-
-func (a *App) renderDiagnosisPanel() {
-	if len(a.panels) <= 1 || a.panels[1] == nil {
-		return
-	}
-
-	_, _, width, _ := a.panels[1].GetInnerRect()
-	a.panels[1].SetText(tuipanels.RenderDiagnosisPanel(a.topDiagnosis, width))
 }
 
 // --- UIContext interface implementation for blocking package ---

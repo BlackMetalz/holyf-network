@@ -44,6 +44,8 @@ func newPhase3TestApp() *App {
 		actionLogger:    actionlog.NewLogger(""),
 		diagnosisEngine: diagnosis.NewEngine(),
 		traceEngine:     livetrace.NewEngineLoaded(),
+		rxHistory:       tuishared.NewRingBuffer(60),
+		txHistory:       tuishared.NewRingBuffer(60),
 		// Keep tests hermetic: do not read user-level trace history file.
 	}
 }
