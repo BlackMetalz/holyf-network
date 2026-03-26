@@ -7,13 +7,16 @@ import (
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/config"
+	tuilayout "github.com/BlackMetalz/holyf-network/internal/tui/layout"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/gdamore/tcell/v2"
 )
 
 func TestCreatePanelsIncludesDiagnosisPanel(t *testing.T) {
 	t.Parallel()
 
-	panels := createPanels()
+	panels := tuilayout.CreatePanels()
 	if len(panels) != 5 {
 		t.Fatalf("panel count mismatch: got=%d want=%d", len(panels), 5)
 	}
@@ -35,8 +38,8 @@ func TestCreatePanelsIncludesDiagnosisPanel(t *testing.T) {
 func TestRenderDiagnosisPanelShowsV2DecisionCard(t *testing.T) {
 	t.Parallel()
 
-	text := stripTviewTags(renderDiagnosisPanel(&topDiagnosis{
-		Severity:   healthWarn,
+	text := stripTviewTags(tuipanels.RenderDiagnosisPanel(&tuishared.Diagnosis{
+		Severity:   tuishared.HealthWarn,
 		Confidence: "MEDIUM",
 		Issue:      "TCP retrans high",
 		Scope:      "host-wide",
@@ -84,8 +87,8 @@ func TestRenderDiagnosisPanelShowsV2DecisionCard(t *testing.T) {
 func TestRenderDiagnosisPanelShowsConciseStateIssue(t *testing.T) {
 	t.Parallel()
 
-	raw := renderDiagnosisPanel(&topDiagnosis{
-		Severity:   healthWarn,
+	raw := tuipanels.RenderDiagnosisPanel(&tuishared.Diagnosis{
+		Severity:   tuishared.HealthWarn,
 		Confidence: "MEDIUM",
 		Issue:      "TIME_WAIT churn",
 		Scope:      "172.25.110.137 :18080",
@@ -132,7 +135,7 @@ func TestRenderDiagnosisPanelShowsConciseStateIssue(t *testing.T) {
 func TestRenderDiagnosisPanelShowsPlaceholderWhenNil(t *testing.T) {
 	t.Parallel()
 
-	text := renderDiagnosisPanel(nil, 56)
+	text := tuipanels.RenderDiagnosisPanel(nil, 56)
 	if !strings.Contains(text, "Waiting for live diagnosis data") {
 		t.Fatalf("expected placeholder text, got: %q", text)
 	}
@@ -141,8 +144,8 @@ func TestRenderDiagnosisPanelShowsPlaceholderWhenNil(t *testing.T) {
 func TestRenderDiagnosisPanelIgnoresBogusStartupWidth(t *testing.T) {
 	t.Parallel()
 
-	text := stripTviewTags(renderDiagnosisPanel(&topDiagnosis{
-		Severity: healthOK,
+	text := stripTviewTags(tuipanels.RenderDiagnosisPanel(&tuishared.Diagnosis{
+		Severity: tuishared.HealthOK,
 		Issue:    "No dominant issue",
 		Scope:    "host-wide",
 		Signal:   "Retr LOW SAMPLE | CT 0% | States stable",
@@ -173,8 +176,8 @@ func TestDiagnosisPanelRemainsHostGlobalAcrossGroupToggle(t *testing.T) {
 		{LocalIP: "10.0.0.10", LocalPort: 8080, RemoteIP: "198.51.100.10", RemotePort: 52001, State: "TIME_WAIT", ProcName: "api", Activity: 100},
 		{LocalIP: "10.0.0.10", LocalPort: 8080, RemoteIP: "198.51.100.10", RemotePort: 52002, State: "TIME_WAIT", ProcName: "api", Activity: 90},
 	}
-	a.topDiagnosis = &topDiagnosis{
-		Severity: healthWarn,
+	a.topDiagnosis = &tuishared.Diagnosis{
+		Severity: tuishared.HealthWarn,
 		Issue:    "TIME_WAIT churn",
 		Scope:    "198.51.100.10 :8080",
 		Signal:   "TW 2 | Retr LOW SAMPLE | CT 4%",

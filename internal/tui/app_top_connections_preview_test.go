@@ -7,13 +7,18 @@ import (
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/config"
+	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
+	"github.com/BlackMetalz/holyf-network/internal/tui/diagnosis"
+	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/gdamore/tcell/v2"
 )
 
 func TestCalculateTopConnectionsDisplayLimitWithPreview(t *testing.T) {
 	t.Parallel()
 
-	limit, showPreview := calculateTopConnectionsDisplayLimit(27, 0, true)
+	limit, showPreview := tuipanels.CalculateTopConnectionsDisplayLimit(27, 0, true)
 	if !showPreview {
 		t.Fatalf("expected preview to stay enabled when height is sufficient")
 	}
@@ -25,7 +30,7 @@ func TestCalculateTopConnectionsDisplayLimitWithPreview(t *testing.T) {
 func TestCalculateTopConnectionsDisplayLimitFallsBackWithoutPreview(t *testing.T) {
 	t.Parallel()
 
-	limit, showPreview := calculateTopConnectionsDisplayLimit(14, 0, true)
+	limit, showPreview := tuipanels.CalculateTopConnectionsDisplayLimit(14, 0, true)
 	if showPreview {
 		t.Fatalf("expected preview to be disabled when height is too small")
 	}
@@ -37,7 +42,7 @@ func TestCalculateTopConnectionsDisplayLimitFallsBackWithoutPreview(t *testing.T
 func TestCalculateTopConnectionsDisplayLimitAccountsForBandwidthNote(t *testing.T) {
 	t.Parallel()
 
-	limit, showPreview := calculateTopConnectionsDisplayLimit(27, 1, true)
+	limit, showPreview := tuipanels.CalculateTopConnectionsDisplayLimit(27, 1, true)
 	if !showPreview {
 		t.Fatalf("expected preview to remain enabled with enough height for bandwidth note")
 	}
@@ -52,6 +57,9 @@ func TestBuildSelectedConnectionPreviewRespectsMasking(t *testing.T) {
 	a := &App{
 		sensitiveIP:         true,
 		selectedTalkerIndex: 0,
+		actionLogger:        actionlog.NewLogger(""),
+		diagnosisEngine:     diagnosis.NewEngine(),
+		traceEngine:         livetrace.NewEngineLoaded(),
 		latestTalkers: []collector.Connection{
 			{
 				LocalIP:       "10.0.0.10",
@@ -97,6 +105,9 @@ func TestBuildSelectedPeerGroupPreviewShowsFullStateAndPorts(t *testing.T) {
 		groupView:           true,
 		sortDesc:            true,
 		selectedTalkerIndex: 0,
+		actionLogger:        actionlog.NewLogger(""),
+diagnosisEngine:     diagnosis.NewEngine(),
+		traceEngine:         livetrace.NewEngineLoaded(),
 	}
 
 	preview := a.buildSelectedPeerGroupPreview(a.filteredPeerGroups())
@@ -126,7 +137,7 @@ func TestRenderTalkersPanelWithPreviewShowsPreviewAndFooter(t *testing.T) {
 			RxBytesPerSec: 256,
 		},
 	}
-	preview := &selectedRowPreview{
+	preview := &tuipanels.SelectedRowPreview{
 		Title: "Selected Detail",
 		Lines: []string{
 			"Local: 10.0.0.10:22 -> Peer: 198.51.100.10:52001 | State: ESTABLISHED",
@@ -135,7 +146,7 @@ func TestRenderTalkersPanelWithPreviewShowsPreviewAndFooter(t *testing.T) {
 		},
 	}
 
-	text := renderTalkersPanelWithPreview(conns, "", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), "", 120, preview)
+	text := tuipanels.RenderTalkersPanelWithPreview(conns, "", "", 20, false, 0, tuishared.SortByBandwidth, true, config.DefaultHealthThresholds(), "", 120, preview)
 	if !strings.Contains(text, "Selected Detail") {
 		t.Fatalf("expected selected detail header, got: %q", text)
 	}
@@ -154,7 +165,7 @@ func TestRenderPeerGroupPanelWithPreviewShowsPreviewAndFooter(t *testing.T) {
 		{LocalIP: "10.0.0.10", LocalPort: 80, RemoteIP: "198.51.100.10", RemotePort: 52001, State: "ESTABLISHED", ProcName: "nginx"},
 		{LocalIP: "10.0.0.10", LocalPort: 81, RemoteIP: "198.51.100.10", RemotePort: 52002, State: "TIME_WAIT", ProcName: "nginx"},
 	}
-	preview := &selectedRowPreview{
+	preview := &tuipanels.SelectedRowPreview{
 		Title: "Selected Detail",
 		Lines: []string{
 			"Peer: 198.51.100.10 | Proc: nginx | Conns: 2",
@@ -163,7 +174,7 @@ func TestRenderPeerGroupPanelWithPreviewShowsPreviewAndFooter(t *testing.T) {
 		},
 	}
 
-	text := renderPeerGroupPanelWithPreview(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "", 120, preview)
+	text := tuipanels.RenderPeerGroupPanelWithPreview(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "", 120, preview)
 	if !strings.Contains(text, "States: EST 50% (1) - TW 50% (1)") {
 		t.Fatalf("expected preview states in rendered group panel, got: %q", text)
 	}
@@ -179,14 +190,14 @@ func TestRenderTalkersPanelWithBandwidthNoteShowsBandwidthNote(t *testing.T) {
 		{LocalIP: "10.0.0.10", LocalPort: 443, RemoteIP: "198.51.100.10", RemotePort: 52001, State: "ESTABLISHED", ProcName: "api"},
 	}
 
-	text := renderTalkersPanelWithPreview(
+	text := tuipanels.RenderTalkersPanelWithPreview(
 		conns,
 		"",
 		"",
 		20,
 		false,
 		0,
-		SortByBandwidth,
+		tuishared.SortByBandwidth,
 		true,
 		config.DefaultHealthThresholds(),
 		"Bandwidth baseline is warming up.",
@@ -337,7 +348,7 @@ func TestTopConnectionsSourceRespectsIncomingOutgoingDirection(t *testing.T) {
 		t.Fatalf("expected IN mode to keep listener-backed row, got: %+v", incoming)
 	}
 
-	a.topDirection = topConnectionOutgoing
+	a.topDirection = tuishared.TopConnectionOutgoing
 	outgoing := a.topConnectionsSource()
 	if len(outgoing) != 1 || outgoing[0].RemotePort != 443 || outgoing[0].LocalPort != 52246 {
 		t.Fatalf("expected OUT mode to keep non-listener row, got: %+v", outgoing)
@@ -354,9 +365,12 @@ func TestBuildSelectedPeerGroupPreviewOutgoingShowsRemotePortsAndDisabledAction(
 	a := &App{
 		latestTalkers:       conns,
 		groupView:           true,
-		topDirection:        topConnectionOutgoing,
+		topDirection:        tuishared.TopConnectionOutgoing,
 		sortDesc:            true,
 		selectedTalkerIndex: 0,
+		actionLogger:        actionlog.NewLogger(""),
+diagnosisEngine:     diagnosis.NewEngine(),
+		traceEngine:         livetrace.NewEngineLoaded(),
 	}
 
 	preview := a.buildSelectedPeerGroupPreview(a.filteredPeerGroups())
@@ -374,7 +388,7 @@ func TestRenderPeerGroupPanelOutgoingUsesRemotePortHeader(t *testing.T) {
 	conns := []collector.Connection{
 		{LocalIP: "10.0.0.10", LocalPort: 52246, RemoteIP: "20.205.243.168", RemotePort: 443, State: "ESTABLISHED", ProcName: "client"},
 	}
-	preview := &selectedRowPreview{
+	preview := &tuipanels.SelectedRowPreview{
 		Title: "Selected Detail",
 		Lines: []string{
 			"Peer: 20.205.243.168 | Proc: client | Conns: 1",
@@ -383,7 +397,7 @@ func TestRenderPeerGroupPanelOutgoingUsesRemotePortHeader(t *testing.T) {
 		},
 	}
 
-	text := renderPeerGroupPanelWithPreviewDirection(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "", 120, preview, 0, topConnectionOutgoing)
+	text := tuipanels.RenderPeerGroupPanelWithPreviewDirection(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "", 120, preview, 0, tuishared.TopConnectionOutgoing)
 	if !strings.Contains(text, "RPORTS") {
 		t.Fatalf("expected outgoing group header to use RPORTS, got: %q", text)
 	}

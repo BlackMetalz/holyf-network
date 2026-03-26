@@ -6,11 +6,19 @@ import (
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/config"
+	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
+"github.com/BlackMetalz/holyf-network/internal/tui/diagnosis"
+	"github.com/BlackMetalz/holyf-network/internal/tui/blocking"
+	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
+	tuioverlays "github.com/BlackMetalz/holyf-network/internal/tui/overlays"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
+	"github.com/BlackMetalz/holyf-network/internal/tui/traffic"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-func newSortHotkeyTestApp(startMode SortMode, startDesc bool, selectedIndex int) *App {
+func newSortHotkeyTestApp(startMode tuishared.SortMode, startDesc bool, selectedIndex int) *App {
 	panels := []*tview.TextView{
 		tview.NewTextView(),
 		tview.NewTextView(),
@@ -31,6 +39,11 @@ func newSortHotkeyTestApp(startMode SortMode, startDesc bool, selectedIndex int)
 		sortMode:            startMode,
 		sortDesc:            startDesc,
 		selectedTalkerIndex: selectedIndex,
+		blockManager:        blocking.NewManager(),
+		trafficManager:      traffic.NewManager(config.DefaultHealthThresholds()),
+		actionLogger:        actionlog.NewLogger(""),
+diagnosisEngine:     diagnosis.NewEngine(),
+		traceEngine:         livetrace.NewEngineLoaded(),
 	}
 }
 
@@ -40,16 +53,16 @@ func TestDirectSortModeForRune(t *testing.T) {
 	tests := []struct {
 		name string
 		key  rune
-		want SortMode
+		want tuishared.SortMode
 		ok   bool
 	}{
-		{name: "bandwidth", key: 'B', want: SortByBandwidth, ok: true},
-		{name: "conns", key: 'C', want: SortByConns, ok: true},
-		{name: "port", key: 'P', want: SortByPort, ok: true},
-		{name: "state removed", key: 'S', want: SortByBandwidth, ok: false},
-		{name: "process removed", key: 'R', want: SortByBandwidth, ok: false},
-		{name: "lowercase ignored", key: 'q', want: SortByBandwidth, ok: false},
-		{name: "non sort key", key: 'x', want: SortByBandwidth, ok: false},
+		{name: "bandwidth", key: 'B', want: tuishared.SortByBandwidth, ok: true},
+		{name: "conns", key: 'C', want: tuishared.SortByConns, ok: true},
+		{name: "port", key: 'P', want: tuishared.SortByPort, ok: true},
+		{name: "state removed", key: 'S', want: tuishared.SortByBandwidth, ok: false},
+		{name: "process removed", key: 'R', want: tuishared.SortByBandwidth, ok: false},
+		{name: "lowercase ignored", key: 'q', want: tuishared.SortByBandwidth, ok: false},
+		{name: "non sort key", key: 'x', want: tuishared.SortByBandwidth, ok: false},
 	}
 
 	for _, tc := range tests {
@@ -73,17 +86,17 @@ func TestHandleKeyEventSortKeysResetSelectionAndRender(t *testing.T) {
 	tests := []struct {
 		name      string
 		key       rune
-		startMode SortMode
+		startMode tuishared.SortMode
 		startDesc bool
-		wantMode  SortMode
+		wantMode  tuishared.SortMode
 		wantDesc  bool
 		handled   bool
 	}{
-		{name: "bandwidth first press keeps desc", key: 'B', startMode: SortByConns, startDesc: false, wantMode: SortByBandwidth, wantDesc: true, handled: true},
-		{name: "same mode toggles to asc", key: 'B', startMode: SortByBandwidth, startDesc: true, wantMode: SortByBandwidth, wantDesc: false, handled: true},
-		{name: "same mode toggles back to desc", key: 'B', startMode: SortByBandwidth, startDesc: false, wantMode: SortByBandwidth, wantDesc: true, handled: true},
-		{name: "conns mode first press desc", key: 'C', startMode: SortByBandwidth, startDesc: true, wantMode: SortByConns, wantDesc: true, handled: true},
-		{name: "port mode first press desc", key: 'P', startMode: SortByBandwidth, startDesc: true, wantMode: SortByPort, wantDesc: true, handled: true},
+		{name: "bandwidth first press keeps desc", key: 'B', startMode: tuishared.SortByConns, startDesc: false, wantMode: tuishared.SortByBandwidth, wantDesc: true, handled: true},
+		{name: "same mode toggles to asc", key: 'B', startMode: tuishared.SortByBandwidth, startDesc: true, wantMode: tuishared.SortByBandwidth, wantDesc: false, handled: true},
+		{name: "same mode toggles back to desc", key: 'B', startMode: tuishared.SortByBandwidth, startDesc: false, wantMode: tuishared.SortByBandwidth, wantDesc: true, handled: true},
+		{name: "conns mode first press desc", key: 'C', startMode: tuishared.SortByBandwidth, startDesc: true, wantMode: tuishared.SortByConns, wantDesc: true, handled: true},
+		{name: "port mode first press desc", key: 'P', startMode: tuishared.SortByBandwidth, startDesc: true, wantMode: tuishared.SortByPort, wantDesc: true, handled: true},
 	}
 
 	for _, tc := range tests {
@@ -121,7 +134,7 @@ func TestHandleKeyEventSortKeysResetSelectionAndRender(t *testing.T) {
 func TestHandleKeyEventOTogglesTopConnectionsDirection(t *testing.T) {
 	t.Parallel()
 
-	a := newSortHotkeyTestApp(SortByBandwidth, true, 4)
+	a := newSortHotkeyTestApp(tuishared.SortByBandwidth, true, 4)
 	a.latestTalkers = []collector.Connection{
 		{LocalIP: "10.0.0.10", LocalPort: 18080, RemoteIP: "172.25.110.137", RemotePort: 52001, State: "ESTABLISHED"},
 		{LocalIP: "10.0.0.10", LocalPort: 52246, RemoteIP: "20.205.243.168", RemotePort: 443, State: "ESTABLISHED"},
@@ -133,7 +146,7 @@ func TestHandleKeyEventOTogglesTopConnectionsDirection(t *testing.T) {
 	if ret != nil {
 		t.Fatalf("o should be handled")
 	}
-	if a.topDirection != topConnectionOutgoing {
+	if a.topDirection != tuishared.TopConnectionOutgoing {
 		t.Fatalf("expected o to switch top direction to OUT, got=%v", a.topDirection)
 	}
 	if a.selectedTalkerIndex != 0 {
@@ -148,7 +161,7 @@ func TestHandleKeyEventOTogglesTopConnectionsDirection(t *testing.T) {
 func TestTopConnectionsSortHintsIncludeDirectOnly(t *testing.T) {
 	t.Parallel()
 
-	panel := renderTalkersPanel(nil, "", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), "")
+	panel := tuipanels.RenderTalkersPanel(nil, "", "", 20, false, 0, tuishared.SortByBandwidth, true, config.DefaultHealthThresholds(), "")
 	if strings.Contains(panel, "o=cycle sort") {
 		t.Fatalf("hint line should not mention cycle sort key")
 	}
@@ -169,17 +182,17 @@ func TestStatusHotkeysIncludeHelp(t *testing.T) {
 	tests := []struct {
 		name      string
 		focus     int
-		direction topConnectionDirection
+		direction tuishared.TopConnectionDirection
 		want      []string
 	}{
-		{name: "top incoming", focus: 2, direction: topConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "T=trace", "t=traces", "Enter/k=act", "?=help"}},
-		{name: "top outgoing", focus: 2, direction: topConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "T=trace", "t=traces", "Enter/k=disabled", "?=help"}},
-		{name: "states", focus: 0, direction: topConnectionIncoming, want: []string{"s=sort", "Ctrl+1..5=focus", "?=help"}},
-		{name: "diagnosis", focus: 4, direction: topConnectionIncoming, want: []string{"d=history", "Ctrl+1..5=focus", "?=help"}},
+		{name: "top incoming", focus: 2, direction: tuishared.TopConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "T=trace", "t=traces", "Enter/k=act", "?=help"}},
+		{name: "top outgoing", focus: 2, direction: tuishared.TopConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "T=trace", "t=traces", "Enter/k=disabled", "?=help"}},
+		{name: "states", focus: 0, direction: tuishared.TopConnectionIncoming, want: []string{"s=sort", "Ctrl+1..5=focus", "?=help"}},
+		{name: "diagnosis", focus: 4, direction: tuishared.TopConnectionIncoming, want: []string{"d=history", "Ctrl+1..5=focus", "?=help"}},
 	}
 
 	for _, tc := range tests {
-		_, plain := liveMainStatusHotkeys(tc.focus, tc.direction)
+		_, plain := tuioverlays.LiveMainStatusHotkeys(tc.focus, tc.direction)
 		for _, want := range tc.want {
 			if !strings.Contains(plain, want) {
 				t.Fatalf("%s hotkeys should contain %q, got: %q", tc.name, want, plain)

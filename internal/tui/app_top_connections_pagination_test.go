@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -58,7 +59,7 @@ func TestRenderTopConnectionsPanelPaginationIncoming(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	a.sortMode = SortByPort
+	a.sortMode = tuishared.SortByPort
 	a.sortDesc = false
 	a.panels[2].SetRect(0, 0, 120, 13) // Row limit becomes 6.
 
@@ -93,7 +94,7 @@ func TestHandleKeyEventBracketPagingMovesPages(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	a.sortMode = SortByPort
+	a.sortMode = tuishared.SortByPort
 	a.sortDesc = false
 	a.panels[2].SetRect(0, 0, 120, 13)
 	a.latestTalkers, a.listenPorts = incomingPaginationFixtures(8)
@@ -123,9 +124,9 @@ func TestRenderTopConnectionsPanelPaginationOutgoing(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	a.sortMode = SortByPort
+	a.sortMode = tuishared.SortByPort
 	a.sortDesc = false
-	a.topDirection = topConnectionOutgoing
+	a.topDirection = tuishared.TopConnectionOutgoing
 	a.listenPortsKnown = true
 	a.listenPorts = map[int]struct{}{18080: {}}
 	a.latestTalkers = outgoingPaginationFixtures(8)

@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -227,7 +229,7 @@ func (a *App) promptTracePacket() {
 		a.setStatusNote("Focus Top Connections before trace-packet", 5*time.Second)
 		return
 	}
-	if a.traceCaptureRunning {
+	if a.traceEngine.CaptureRunning {
 		a.setStatusNote("Trace packet is already running", 4*time.Second)
 		return
 	}
@@ -293,9 +295,9 @@ func (a *App) promptTracePacket() {
 		traceCaptureProfileCustom.Label(),
 	}
 	directionSelection := traceDirectionAny
-	if a.topDirection == topConnectionIncoming {
+	if a.topDirection == tuishared.TopConnectionIncoming {
 		directionSelection = traceDirectionIn
-	} else if a.topDirection == topConnectionOutgoing {
+	} else if a.topDirection == tuishared.TopConnectionOutgoing {
 		directionSelection = traceDirectionOut
 	}
 	if defaults, ok := traceCaptureProfileDefaultsFor(profileSelection, seed, a.topDirection); ok {
@@ -413,7 +415,7 @@ func (a *App) promptTracePacket() {
 			if !seed.SupportsFiveTuple() {
 				return "  [yellow]Base cmd:[white]\n  [red]Preview unavailable: 5-tuple needs concrete selected connection row.[white]"
 			}
-			if a.topDirection == topConnectionIncoming {
+			if a.topDirection == tuishared.TopConnectionIncoming {
 				if port <= 0 {
 					port = seed.LocalPort
 				}
@@ -459,7 +461,7 @@ func (a *App) promptTracePacket() {
 			PacketCap:       packetCap,
 		}
 		if req.Preset == traceFilterPresetFiveTuple {
-			if a.topDirection == topConnectionIncoming {
+			if a.topDirection == tuishared.TopConnectionIncoming {
 				req.TupleLocalPort = req.Port
 			} else {
 				req.TupleRemotePort = req.Port
@@ -722,7 +724,7 @@ func (a *App) promptTracePacket() {
 				a.setStatusNote("5-tuple strategy requires a concrete connection row (not aggregate-only)", 6*time.Second)
 				return
 			}
-			if a.topDirection == topConnectionIncoming {
+			if a.topDirection == tuishared.TopConnectionIncoming {
 				if port <= 0 {
 					port = seed.LocalPort
 				}
@@ -770,7 +772,7 @@ func (a *App) promptTracePacket() {
 			SavePCAP:        savePCAP,
 		}
 		if req.Preset == traceFilterPresetFiveTuple {
-			if a.topDirection == topConnectionIncoming {
+			if a.topDirection == tuishared.TopConnectionIncoming {
 				req.TupleLocalPort = req.Port
 			} else {
 				req.TupleRemotePort = req.Port
@@ -892,28 +894,28 @@ func (a *App) selectedTracePacketSeed() (tracePacketSeed, bool) {
 		a.clampTopConnectionSelection()
 		group := groups[a.selectedTalkerIndex]
 		seed := tracePacketSeed{
-			PeerIP:   normalizeIP(group.PeerIP),
-			RemoteIP: normalizeIP(group.PeerIP),
+			PeerIP:   tuishared.NormalizeIP(group.PeerIP),
+			RemoteIP: tuishared.NormalizeIP(group.PeerIP),
 		}
-		if a.topDirection == topConnectionIncoming {
+		if a.topDirection == tuishared.TopConnectionIncoming {
 			if target, ok := a.selectedPeerPortTarget(seed.PeerIP); ok {
 				seed.Port = target.LocalPort
 			} else {
-				ports := sortedPeerGroupPorts(group.LocalPorts)
+				ports := tuipanels.SortedPeerGroupPorts(group.LocalPorts)
 				if len(ports) > 0 {
 					seed.Port = ports[0]
 				}
 			}
 		} else {
-			ports := sortedPeerGroupPorts(group.RemotePorts)
+			ports := tuipanels.SortedPeerGroupPorts(group.RemotePorts)
 			if len(ports) > 0 {
 				seed.Port = ports[0]
 			}
 		}
 		if conn, ok := a.traceSeedRepresentative(seed.PeerIP, seed.Port); ok {
-			seed.LocalIP = normalizeIP(conn.LocalIP)
+			seed.LocalIP = tuishared.NormalizeIP(conn.LocalIP)
 			seed.LocalPort = conn.LocalPort
-			seed.RemoteIP = normalizeIP(conn.RemoteIP)
+			seed.RemoteIP = tuishared.NormalizeIP(conn.RemoteIP)
 			seed.RemotePort = conn.RemotePort
 		}
 		return seed, true
@@ -926,13 +928,13 @@ func (a *App) selectedTracePacketSeed() (tracePacketSeed, bool) {
 	a.clampTopConnectionSelection()
 	row := rows[a.selectedTalkerIndex]
 	seed := tracePacketSeed{
-		PeerIP:     normalizeIP(row.RemoteIP),
-		LocalIP:    normalizeIP(row.LocalIP),
+		PeerIP:     tuishared.NormalizeIP(row.RemoteIP),
+		LocalIP:    tuishared.NormalizeIP(row.LocalIP),
 		LocalPort:  row.LocalPort,
-		RemoteIP:   normalizeIP(row.RemoteIP),
+		RemoteIP:   tuishared.NormalizeIP(row.RemoteIP),
 		RemotePort: row.RemotePort,
 	}
-	if a.topDirection == topConnectionOutgoing {
+	if a.topDirection == tuishared.TopConnectionOutgoing {
 		seed.Port = row.RemotePort
 	} else {
 		seed.Port = row.LocalPort
@@ -948,7 +950,7 @@ func (a *App) traceSeedRepresentative(peerIP string, port int) (collector.Connec
 
 	filtered := a.applyTopConnectionFilters(source)
 	if a.groupView {
-		filtered = applyGroupConnectionFiltersByDirection(source, a.portFilter, a.textFilter, a.topDirection)
+		filtered = tuipanels.ApplyGroupConnectionFiltersByDirection(source, a.portFilter, a.textFilter, a.topDirection)
 	}
 	if len(filtered) == 0 {
 		return collector.Connection{}, false
@@ -957,14 +959,14 @@ func (a *App) traceSeedRepresentative(peerIP string, port int) (collector.Connec
 	best := collector.Connection{}
 	found := false
 	for _, conn := range filtered {
-		if normalizeIP(conn.RemoteIP) != peerIP {
+		if tuishared.NormalizeIP(conn.RemoteIP) != peerIP {
 			continue
 		}
 		if port > 0 {
-			if a.topDirection == topConnectionOutgoing && conn.RemotePort != port {
+			if a.topDirection == tuishared.TopConnectionOutgoing && conn.RemotePort != port {
 				continue
 			}
-			if a.topDirection != topConnectionOutgoing && conn.LocalPort != port {
+			if a.topDirection != tuishared.TopConnectionOutgoing && conn.LocalPort != port {
 				continue
 			}
 		}
@@ -996,13 +998,13 @@ func defaultProfilePresetForSeed(seed tracePacketSeed) tracePacketFilterPreset {
 func traceCaptureProfileDefaultsFor(
 	profile tracePacketCaptureProfile,
 	seed tracePacketSeed,
-	topDir topConnectionDirection,
+	topDir tuishared.TopConnectionDirection,
 ) (traceCaptureProfileDefaults, bool) {
 	basePreset := defaultProfilePresetForSeed(seed)
 	baseDir := traceDirectionAny
-	if topDir == topConnectionIncoming {
+	if topDir == tuishared.TopConnectionIncoming {
 		baseDir = traceDirectionIn
-	} else if topDir == topConnectionOutgoing {
+	} else if topDir == tuishared.TopConnectionOutgoing {
 		baseDir = traceDirectionOut
 	}
 
@@ -1073,14 +1075,14 @@ func parseTracePacketIntRange(raw string, minVal, maxVal int, field string) (int
 }
 
 func (a *App) startTracePacketCapture(req tracePacketRequest) {
-	if a.traceCaptureRunning {
+	if a.traceEngine.CaptureRunning {
 		a.setStatusNote("Trace packet is already running", 4*time.Second)
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(req.DurationSec)*time.Second)
-	a.traceCaptureRunning = true
-	a.traceCaptureCancel = cancel
+	a.traceEngine.CaptureRunning = true
+	a.traceEngine.CaptureCancel = cancel
 
 	progressView := a.showTracePacketProgressModal(req)
 	startedAt := time.Now()
@@ -1114,7 +1116,7 @@ func (a *App) startTracePacketCapture(req tracePacketRequest) {
 			select {
 			case <-ticker.C:
 				a.app.QueueUpdateDraw(func() {
-					if !a.traceCaptureRunning {
+					if !a.traceEngine.CaptureRunning {
 						return
 					}
 					updateProgress()
@@ -1130,11 +1132,11 @@ func (a *App) startTracePacketCapture(req tracePacketRequest) {
 	go func() {
 		result := runTracePacketCapture(ctx, req)
 		a.app.QueueUpdateDraw(func() {
-			a.traceCaptureRunning = false
-			if a.traceCaptureCancel != nil {
-				a.traceCaptureCancel()
+			a.traceEngine.CaptureRunning = false
+			if a.traceEngine.CaptureCancel != nil {
+				a.traceEngine.CaptureCancel()
 			}
-			a.traceCaptureCancel = nil
+			a.traceEngine.CaptureCancel = nil
 			a.pages.RemovePage(tracePacketPageProgress)
 			a.exitTraceFlowPause()
 			a.updateStatusBar()
@@ -1235,10 +1237,10 @@ func (a *App) showTracePacketResultModal(result tracePacketResult) {
 }
 
 func (a *App) cancelTracePacketCapture() {
-	if a.traceCaptureCancel == nil {
+	if a.traceEngine.CaptureCancel == nil {
 		return
 	}
-	a.traceCaptureCancel()
+	a.traceEngine.CaptureCancel()
 }
 
 func (a *App) enterTraceFlowPause() {
@@ -1246,15 +1248,15 @@ func (a *App) enterTraceFlowPause() {
 		return
 	}
 	a.paused.Store(true)
-	a.traceFlowAutoPaused = true
+	a.traceEngine.FlowAutoPaused = true
 	a.updateStatusBar()
 }
 
 func (a *App) exitTraceFlowPause() {
-	if !a.traceFlowAutoPaused {
+	if !a.traceEngine.FlowAutoPaused {
 		return
 	}
-	a.traceFlowAutoPaused = false
+	a.traceEngine.FlowAutoPaused = false
 	a.paused.Store(false)
 	a.updateStatusBar()
 }
@@ -1681,7 +1683,7 @@ func buildTracePacketActionSummary(result tracePacketResult, sensitiveIP bool) s
 	return fmt.Sprintf(
 		"Trace %s %s:%s | mode=%s dir=%s scope=%s | captured=%s drop=%s rst=%d | saved=%s",
 		status,
-		formatPreviewIP(result.Request.PeerIP, sensitiveIP),
+		tuishared.FormatPreviewIP(result.Request.PeerIP, sensitiveIP),
 		portPart,
 		result.Request.Profile.Label(),
 		result.Request.Direction.Label(),
@@ -1712,14 +1714,14 @@ func maskSensitiveIPsInText(raw string, sensitiveIP bool) string {
 		if ip == nil || ip.To4() == nil {
 			return token
 		}
-		return maskIP(token)
+		return tuishared.MaskIP(token)
 	})
 	out = traceIPv6Regex.ReplaceAllStringFunc(out, func(token string) string {
 		ip := net.ParseIP(token)
 		if ip == nil || ip.To4() != nil {
 			return token
 		}
-		return maskIP(token)
+		return tuishared.MaskIP(token)
 	})
 	return out
 }

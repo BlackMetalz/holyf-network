@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/rivo/tview"
 )
 
@@ -96,7 +97,7 @@ func TestTracePacketCaptureProfileDefaults(t *testing.T) {
 	t.Parallel()
 
 	seedWithPort := tracePacketSeed{PeerIP: "203.0.113.10", Port: 443}
-	general, ok := traceCaptureProfileDefaultsFor(traceCaptureProfileGeneral, seedWithPort, topConnectionIncoming)
+	general, ok := traceCaptureProfileDefaultsFor(traceCaptureProfileGeneral, seedWithPort, tuishared.TopConnectionIncoming)
 	if !ok {
 		t.Fatalf("general profile should return defaults")
 	}
@@ -104,7 +105,7 @@ func TestTracePacketCaptureProfileDefaults(t *testing.T) {
 		t.Fatalf("unexpected general defaults: %+v", general)
 	}
 
-	handshake, ok := traceCaptureProfileDefaultsFor(traceCaptureProfileHandshake, seedWithPort, topConnectionOutgoing)
+	handshake, ok := traceCaptureProfileDefaultsFor(traceCaptureProfileHandshake, seedWithPort, tuishared.TopConnectionOutgoing)
 	if !ok {
 		t.Fatalf("handshake profile should return defaults")
 	}
@@ -112,7 +113,7 @@ func TestTracePacketCaptureProfileDefaults(t *testing.T) {
 		t.Fatalf("unexpected handshake defaults: %+v", handshake)
 	}
 
-	loss, ok := traceCaptureProfileDefaultsFor(traceCaptureProfilePacketLoss, tracePacketSeed{PeerIP: "203.0.113.10"}, topConnectionIncoming)
+	loss, ok := traceCaptureProfileDefaultsFor(traceCaptureProfilePacketLoss, tracePacketSeed{PeerIP: "203.0.113.10"}, tuishared.TopConnectionIncoming)
 	if !ok {
 		t.Fatalf("packet-loss profile should return defaults")
 	}
@@ -120,7 +121,7 @@ func TestTracePacketCaptureProfileDefaults(t *testing.T) {
 		t.Fatalf("unexpected packet-loss defaults: %+v", loss)
 	}
 
-	if _, ok := traceCaptureProfileDefaultsFor(traceCaptureProfileCustom, seedWithPort, topConnectionIncoming); ok {
+	if _, ok := traceCaptureProfileDefaultsFor(traceCaptureProfileCustom, seedWithPort, tuishared.TopConnectionIncoming); ok {
 		t.Fatalf("custom profile should not force defaults")
 	}
 }

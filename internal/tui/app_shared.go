@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/BlackMetalz/holyf-network/internal/actions"
 )
 
 const (
@@ -61,118 +59,6 @@ func formatRemainingDuration(duration time.Duration) string {
 		return fmt.Sprintf("%dh%02dm", hours, minutes)
 	}
 	return fmt.Sprintf("%02d:%02d", minutes, seconds)
-}
-
-func buildBlockActionSummary(
-	spec actions.PeerBlockSpec,
-	duration time.Duration,
-	report actions.KillConvergeReport,
-) string {
-	killPart, remainingPart := buildKillPart(report)
-
-	dropPart := "drop ok"
-	if report.SocketErr != nil && report.FlowErr != nil {
-		dropPart = "drop partial"
-	}
-
-	parts := []string{
-		fmt.Sprintf("Blocked %s:%d", spec.PeerIP, spec.LocalPort),
-		killPart,
-	}
-	if remainingPart != "" {
-		parts = append(parts, remainingPart)
-	}
-	parts = append(parts, dropPart, "expires in "+formatRemainingDuration(duration))
-	return strings.Join(parts, " | ")
-}
-
-func buildKillOnlyActionSummary(
-	spec actions.PeerBlockSpec,
-	report actions.KillConvergeReport,
-) string {
-	killPart, remainingPart := buildKillPart(report)
-
-	dropPart := "drop ok"
-	if report.SocketErr != nil && report.FlowErr != nil {
-		dropPart = "drop partial"
-	}
-
-	parts := []string{
-		fmt.Sprintf("Killed connections for %s:%d", spec.PeerIP, spec.LocalPort),
-		killPart,
-	}
-	if remainingPart != "" {
-		parts = append(parts, remainingPart)
-	}
-	parts = append(parts, dropPart)
-	return strings.Join(parts, " | ")
-}
-
-func buildKillPart(report actions.KillConvergeReport) (killPart string, remainingPart string) {
-	killPart = "killed ?/? flows"
-	if report.BeforeCountErr == nil && report.AfterCountErr == nil {
-		beforeCount := report.BeforeActiveCount
-		afterCount := report.AfterActiveCount
-		if beforeCount < 0 {
-			beforeCount = 0
-		}
-		if afterCount < 0 {
-			afterCount = 0
-		}
-		if afterCount > beforeCount {
-			afterCount = beforeCount
-		}
-		killPart = fmt.Sprintf("killed %d/%d flows", beforeCount-afterCount, beforeCount)
-		if report.IsPartial() {
-			remainingPart = fmt.Sprintf("remaining %d (storm/race)", afterCount)
-		}
-	} else if report.BeforeCountErr == nil {
-		beforeCount := report.BeforeActiveCount
-		if beforeCount < 0 {
-			beforeCount = 0
-		}
-		killPart = fmt.Sprintf("killed ?/%d flows", beforeCount)
-	}
-	return killPart, remainingPart
-}
-
-func formatActiveBlockDetail(entry activeBlockEntry) string {
-	summary := strings.TrimSpace(entry.Summary)
-	if summary == "" {
-		summary = fmt.Sprintf("Blocked %s:%d", entry.Spec.PeerIP, entry.Spec.LocalPort)
-	}
-	expiresText := formatRemainingDuration(time.Until(entry.ExpiresAt))
-	if entry.ExpiresAt.IsZero() {
-		expiresText = "n/a (unmanaged)"
-	}
-	return fmt.Sprintf("[dim]Summary:[white] %s\n[dim]Expires in:[white] %s", summary, expiresText)
-}
-
-func formatBlockedSpec(spec actions.PeerBlockSpec) string {
-	return fmt.Sprintf("%s -> :%d", spec.PeerIP, spec.LocalPort)
-}
-
-func formatBlockedListSecondary(entry activeBlockEntry) string {
-	secondary := "drop unknown | expires in n/a"
-	summary := strings.TrimSpace(entry.Summary)
-	if summary != "" {
-		parts := strings.Split(summary, " | ")
-		if len(parts) > 1 {
-			secondary = strings.Join(parts[1:], " | ")
-		}
-	}
-
-	expires := "n/a"
-	if !entry.ExpiresAt.IsZero() {
-		expires = formatRemainingDuration(time.Until(entry.ExpiresAt))
-	}
-	if strings.Contains(secondary, "expires in ") {
-		idx := strings.LastIndex(secondary, "expires in ")
-		secondary = secondary[:idx] + "expires in " + expires
-	} else {
-		secondary = secondary + " | expires in " + expires
-	}
-	return secondary
 }
 
 func sanitizeActionLogMessage(message string) string {

@@ -3,6 +3,9 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	tuioverlays "github.com/BlackMetalz/holyf-network/internal/tui/overlays"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 )
 
 func TestBuildLiveHelpTextTopOutgoingGroup(t *testing.T) {
@@ -10,10 +13,10 @@ func TestBuildLiveHelpTextTopOutgoingGroup(t *testing.T) {
 
 	a := newPhase3TestApp()
 	a.focusIndex = 2
-	a.topDirection = topConnectionOutgoing
+	a.topDirection = tuishared.TopConnectionOutgoing
 	a.groupView = true
 
-	text := buildLiveHelpText(a)
+	text := tuioverlays.BuildLiveHelpText(tuioverlays.LiveHelpContext{FocusIndex: a.focusIndex, Direction: a.topDirection, GroupView: a.groupView})
 	for _, want := range []string{
 		"Current Panel",
 		"Top Connections (OUT, group view)",
@@ -42,7 +45,7 @@ func TestBuildLiveHelpTextDiagnosisFocus(t *testing.T) {
 	a := newPhase3TestApp()
 	a.focusIndex = 4
 
-	text := buildLiveHelpText(a)
+	text := tuioverlays.BuildLiveHelpText(tuioverlays.LiveHelpContext{FocusIndex: a.focusIndex, Direction: a.topDirection, GroupView: a.groupView})
 	for _, want := range []string{
 		"Current Panel",
 		"Diagnosis",

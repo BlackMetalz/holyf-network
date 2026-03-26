@@ -7,6 +7,13 @@ import (
 	"time"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
+	"github.com/BlackMetalz/holyf-network/internal/config"
+	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
+	"github.com/BlackMetalz/holyf-network/internal/tui/blocking"
+	"github.com/BlackMetalz/holyf-network/internal/tui/diagnosis"
+	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
+	"github.com/BlackMetalz/holyf-network/internal/tui/traffic"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -34,11 +41,12 @@ func newPhase3TestApp() *App {
 		appVersion:   "test",
 		stopChan:     make(chan struct{}),
 		refreshChan:  make(chan struct{}, 1),
-		activeBlocks: map[string]activeBlockEntry{},
-		actionLogs:   make([]string, 0, 32),
-		traceHistory: make([]traceHistoryEntry, 0, 8),
+		blockManager:  blocking.NewManager(),
+		trafficManager: traffic.NewManager(config.DefaultHealthThresholds()),
+		actionLogger:    actionlog.NewLogger(""),
+		diagnosisEngine: diagnosis.NewEngine(),
+		traceEngine:     livetrace.NewEngineLoaded(),
 		// Keep tests hermetic: do not read user-level trace history file.
-		traceHistoryLoaded: true,
 	}
 }
 
@@ -111,7 +119,7 @@ func TestHandleKeyEventEnterAndKAreDisabledInOutgoingMode(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	a.topDirection = topConnectionOutgoing
+	a.topDirection = tuishared.TopConnectionOutgoing
 
 	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyEnter, 0, 0))
 	if ret != nil {
@@ -176,20 +184,24 @@ func TestHandleKeyEventTRequiresSelectedRow(t *testing.T) {
 func TestRecentActionLogsDefaultLimitIsModalLimit(t *testing.T) {
 	t.Parallel()
 
-	a := &App{}
+	a := &App{
+		actionLogger:    actionlog.NewLogger(""),
+		diagnosisEngine: diagnosis.NewEngine(),
+		traceEngine:     livetrace.NewEngineLoaded(),
+	}
 	for i := 1; i <= 30; i++ {
-		a.actionLogs = append(a.actionLogs, fmt.Sprintf("line-%02d", i))
+		a.addActionLog(fmt.Sprintf("line-%02d", i))
 	}
 
 	out := a.recentActionLogs(0) // default path
 	if len(out) != actionLogModalLimit {
 		t.Fatalf("default recentActionLogs limit mismatch: got=%d want=%d", len(out), actionLogModalLimit)
 	}
-	if out[0] != "line-30" {
-		t.Fatalf("most recent entry mismatch: got=%q want=%q", out[0], "line-30")
+	if !strings.HasSuffix(out[0], "line-30") {
+		t.Fatalf("most recent entry mismatch: got=%q want suffix=line-30", out[0])
 	}
-	if out[len(out)-1] != "line-11" {
-		t.Fatalf("oldest default-limited entry mismatch: got=%q want=%q", out[len(out)-1], "line-11")
+	if !strings.HasSuffix(out[len(out)-1], "line-11") {
+		t.Fatalf("oldest default-limited entry mismatch: got=%q want suffix=line-11", out[len(out)-1])
 	}
 }
 
@@ -279,8 +291,7 @@ func TestLiveStatusBarShowsLinkSpeedUnknownWhenNotReadable(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	a.ifaceSpeedSample = true
-	a.ifaceSpeedKnown = false
+	a.trafficManager.SetSpeed(0, false)
 	a.updateStatusBar()
 
 	text := a.statusBar.GetText(true)
@@ -293,9 +304,7 @@ func TestLiveStatusBarShowsLinkSpeedWhenKnown(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	a.ifaceSpeedSample = true
-	a.ifaceSpeedKnown = true
-	a.ifaceSpeedMbps = 25000
+	a.trafficManager.SetSpeed(25000, true)
 	a.updateStatusBar()
 
 	text := a.statusBar.GetText(true)
@@ -312,6 +321,7 @@ func TestSelectedPeerKillTargetGroupViewUsesSelectedPeerContext(t *testing.T) {
 		groupView:           true,
 		sortDesc:            true,
 		selectedTalkerIndex: 0,
+		traceEngine:         livetrace.NewEngineLoaded(),
 	}
 
 	target, ok := a.selectedPeerKillTarget()
@@ -555,6 +565,7 @@ func TestSelectedPeerKillTargetGroupViewRespectsLocalPortFilter(t *testing.T) {
 		groupView:           true,
 		portFilter:          "443",
 		selectedTalkerIndex: 0,
+		traceEngine:         livetrace.NewEngineLoaded(),
 	}
 
 	target, ok := a.selectedPeerKillTarget()

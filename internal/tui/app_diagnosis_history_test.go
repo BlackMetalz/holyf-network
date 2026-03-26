@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -14,16 +15,16 @@ func TestAppendDiagnosisHistoryCoalescesSameFingerprint(t *testing.T) {
 	first := time.Date(2026, 3, 17, 14, 3, 12, 0, time.UTC)
 	second := first.Add(30 * time.Second)
 
-	a.appendDiagnosisHistory(first, &topDiagnosis{
-		Severity: healthWarn,
+	a.appendDiagnosisHistory(first, &tuishared.Diagnosis{
+		Severity: tuishared.HealthWarn,
 		Issue:    "TIME_WAIT churn",
 		Scope:    "172.25.110.137 :18080",
 		Signal:   "TW 3,741 | Retr LOW SAMPLE | CT 1%",
 		Likely:   "short-lived conn churn, not packet loss",
 		Check:    "keepalive, conn reuse, client retries",
 	})
-	a.appendDiagnosisHistory(second, &topDiagnosis{
-		Severity: healthWarn,
+	a.appendDiagnosisHistory(second, &tuishared.Diagnosis{
+		Severity: tuishared.HealthWarn,
 		Issue:    "TIME_WAIT churn",
 		Scope:    "172.25.110.137 :18080",
 		Signal:   "TW 4,102 | Retr LOW SAMPLE | CT 1%",
@@ -31,10 +32,11 @@ func TestAppendDiagnosisHistoryCoalescesSameFingerprint(t *testing.T) {
 		Check:    "keepalive, conn reuse, client retries",
 	})
 
-	if len(a.diagnosisHistory) != 1 {
-		t.Fatalf("expected same fingerprint to coalesce into one history entry, got=%d", len(a.diagnosisHistory))
+	recent := a.diagnosisEngine.Recent(0)
+	if len(recent) != 1 {
+		t.Fatalf("expected same fingerprint to coalesce into one history entry, got=%d", len(recent))
 	}
-	entry := a.diagnosisHistory[0]
+	entry := recent[0]
 	if entry.FirstSeen != first || entry.LastSeen != second {
 		t.Fatalf("expected time range to expand, got first=%s last=%s", entry.FirstSeen, entry.LastSeen)
 	}
@@ -50,8 +52,8 @@ func TestAppendDiagnosisHistoryPrependsAndCaps(t *testing.T) {
 	base := time.Date(2026, 3, 17, 14, 0, 0, 0, time.UTC)
 
 	for i := 0; i < diagnosisHistoryLimit+3; i++ {
-		a.appendDiagnosisHistory(base.Add(time.Duration(i)*time.Second), &topDiagnosis{
-			Severity: healthWarn,
+		a.appendDiagnosisHistory(base.Add(time.Duration(i)*time.Second), &tuishared.Diagnosis{
+			Severity: tuishared.HealthWarn,
 			Issue:    "Issue " + string(rune('A'+i)),
 			Scope:    "host-wide",
 			Signal:   "signal",
@@ -60,14 +62,15 @@ func TestAppendDiagnosisHistoryPrependsAndCaps(t *testing.T) {
 		})
 	}
 
-	if len(a.diagnosisHistory) != diagnosisHistoryLimit {
-		t.Fatalf("history cap mismatch: got=%d want=%d", len(a.diagnosisHistory), diagnosisHistoryLimit)
+	recent := a.recentDiagnosisHistory(0)
+	if len(recent) != diagnosisHistoryLimit {
+		t.Fatalf("history cap mismatch: got=%d want=%d", len(recent), diagnosisHistoryLimit)
 	}
-	if a.diagnosisHistory[0].Diagnosis.Issue != "Issue W" {
-		t.Fatalf("expected newest issue at front, got=%q", a.diagnosisHistory[0].Diagnosis.Issue)
+	if recent[0].Diagnosis.Issue != "Issue W" {
+		t.Fatalf("expected newest issue at front, got=%q", recent[0].Diagnosis.Issue)
 	}
-	if a.diagnosisHistory[len(a.diagnosisHistory)-1].Diagnosis.Issue != "Issue D" {
-		t.Fatalf("expected oldest retained issue at tail, got=%q", a.diagnosisHistory[len(a.diagnosisHistory)-1].Diagnosis.Issue)
+	if recent[len(recent)-1].Diagnosis.Issue != "Issue D" {
+		t.Fatalf("expected oldest retained issue at tail, got=%q", recent[len(recent)-1].Diagnosis.Issue)
 	}
 }
 
@@ -75,8 +78,8 @@ func TestHandleKeyEventDOpensDiagnosisHistoryModal(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	a.appendDiagnosisHistory(time.Date(2026, 3, 17, 14, 3, 12, 0, time.UTC), &topDiagnosis{
-		Severity: healthWarn,
+	a.appendDiagnosisHistory(time.Date(2026, 3, 17, 14, 3, 12, 0, time.UTC), &tuishared.Diagnosis{
+		Severity: tuishared.HealthWarn,
 		Issue:    "TIME_WAIT churn",
 		Scope:    "172.25.110.137 :18080",
 		Signal:   "TW 3,741 | Retr LOW SAMPLE | CT 1%",

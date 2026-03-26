@@ -6,12 +6,13 @@ import (
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/config"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
 )
 
 func TestRenderConntrackPanelHidesZeroDropsWhenStatsAvailable(t *testing.T) {
 	t.Parallel()
 
-	rendered := renderConntrackPanel(collector.ConntrackRates{
+	rendered := tuipanels.RenderConntrackPanel(collector.ConntrackRates{
 		Current:        2,
 		Max:            262144,
 		UsagePercent:   0.0007,
@@ -34,7 +35,7 @@ func TestRenderConntrackPanelHidesZeroDropsWhenStatsAvailable(t *testing.T) {
 func TestRenderConntrackPanelShowsDropCountWhenNonZero(t *testing.T) {
 	t.Parallel()
 
-	rendered := renderConntrackPanel(collector.ConntrackRates{
+	rendered := tuipanels.RenderConntrackPanel(collector.ConntrackRates{
 		Current:        128,
 		Max:            262144,
 		UsagePercent:   0.05,

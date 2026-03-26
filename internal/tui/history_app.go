@@ -8,6 +8,12 @@ import (
 
 	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/BlackMetalz/holyf-network/internal/history"
+	tuilayout "github.com/BlackMetalz/holyf-network/internal/tui/layout"
+	tuioverlays "github.com/BlackMetalz/holyf-network/internal/tui/overlays"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
+	tuireplay "github.com/BlackMetalz/holyf-network/internal/tui/replay"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
+	tuitrace "github.com/BlackMetalz/holyf-network/internal/tui/trace"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -51,22 +57,22 @@ type HistoryApp struct {
 
 	portFilter    string
 	textFilter    string
-	sortMode      SortMode
+	sortMode      tuishared.SortMode
 	sortDesc      bool
-	topDirection  topConnectionDirection
+	topDirection  tuishared.TopConnectionDirection
 	skipEmpty     bool
 	selectedIndex int
 	followLatest  bool
 
 	timelineSearchQuery    string
-	timelineSearchResults  []timelineSearchResult
+	timelineSearchResults  []tuireplay.SearchResult
 	timelineSearchSelected int
 	timelineSearchRunning  bool
 	replayViewMode         replayViewMode
 
 	traceOnlyMode           bool
-	traceReplayEntries      []traceHistoryEntry
-	traceTimelineBySnapshot map[int][]traceHistoryEntry
+	traceReplayEntries      []tuitrace.Entry
+	traceTimelineBySnapshot map[int][]tuitrace.Entry
 	traceTimelineTotal      int
 	traceTimelineAssociated int
 	traceTimelineWindow     time.Duration
@@ -94,9 +100,9 @@ func NewHistoryApp(dataDir, segmentFile string, sensitiveIP bool, appVersion str
 		rangeEnd:         cloneOptionalTime(rangeEnd),
 		sensitiveIP:      sensitiveIP,
 		appVersion:       version,
-		sortMode:         SortByBandwidth,
+		sortMode:         tuishared.SortByBandwidth,
 		sortDesc:         true,
-		topDirection:     topConnectionIncoming,
+		topDirection:     tuishared.TopConnectionIncoming,
 		skipEmpty:        true,
 		currentIndex:     -1,
 		replayViewMode:   replayViewConnections,
@@ -106,12 +112,13 @@ func NewHistoryApp(dataDir, segmentFile string, sensitiveIP bool, appVersion str
 }
 
 func (h *HistoryApp) Run() error {
-	h.panel = createHistoryPanel()
-	h.statusBar = createHistoryStatusBar()
-	h.layout = createHistoryLayout(h.panel, h.statusBar)
+	h.panel = tuilayout.CreateHistoryPanel()
+	h.statusBar = tuilayout.CreateHistoryStatusBar()
+	h.layout = tuilayout.CreateHistoryLayout(h.panel, h.statusBar)
 	h.pages = tview.NewPages()
 	h.pages.AddPage("main", h.layout, true, true)
-	h.pages.AddPage("history-help", createHistoryHelpModal(), true, false)
+	historyHelpModal, _ := tuioverlays.CreateCenteredTextViewModal(" Replay Help ", tuireplay.HelpText)
+	h.pages.AddPage("history-help", historyHelpModal, true, false)
 
 	h.panel.SetBorderColor(tcell.ColorYellow)
 	h.panel.SetTitleColor(tcell.ColorYellow)
@@ -164,11 +171,11 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 		h.setStatusNote("Load snapshots failed: "+shortStatus(err.Error(), 72), 8*time.Second)
 		return
 	}
-	refs = h.filterRefsByReplayRange(refs)
+	refs = tuireplay.FilterSnapshotRefsByRange(refs, h.rangeBegin, h.rangeEnd)
 	h.traceOnlyMode = false
 	h.traceReplayEntries = nil
 	if len(refs) == 0 {
-		if traceRefs, traceEntries := h.buildTraceOnlyRefs(); len(traceRefs) > 0 {
+		if traceRefs, traceEntries, err := tuireplay.LoadTraceOnlyRefs(h.dataDir, h.rangeBegin, h.rangeEnd); err == nil && len(traceRefs) > 0 {
 			refs = traceRefs
 			h.traceOnlyMode = true
 			h.traceReplayEntries = traceEntries
@@ -188,7 +195,7 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 	h.refs = refs
 	h.filesCount = stats.Files
 	h.corruptSkipped = stats.Corrupt
-	h.rebuildTraceTimeline()
+	tuireplay.RebuildTraceTimeline(h)
 
 	if stats.Corrupt > 0 && stats.Corrupt != h.lastCorruptNoticed {
 		h.lastCorruptNoticed = stats.Corrupt
@@ -290,12 +297,12 @@ func (h *HistoryApp) topDisplayLimit() int {
 	return limit
 }
 
-func (h *HistoryApp) rowsForDirection(record history.SnapshotRecord, direction topConnectionDirection) []history.SnapshotGroup {
+func (h *HistoryApp) rowsForDirection(record history.SnapshotRecord, direction tuishared.TopConnectionDirection) []history.SnapshotGroup {
 	history.NormalizeSnapshotRecord(&record)
 	if len(record.IncomingGroups) == 0 && len(record.OutgoingGroups) == 0 && len(record.Groups) > 0 {
 		return record.Groups
 	}
-	if direction == topConnectionOutgoing {
+	if direction == tuishared.TopConnectionOutgoing {
 		return record.OutgoingGroups
 	}
 	return record.IncomingGroups
@@ -305,14 +312,14 @@ func (h *HistoryApp) currentRows() []history.SnapshotGroup {
 	return h.rowsForDirection(h.currentRecord, h.topDirection)
 }
 
-func (h *HistoryApp) refCountForDirection(ref history.SnapshotRef, direction topConnectionDirection) int {
+func (h *HistoryApp) refCountForDirection(ref history.SnapshotRef, direction tuishared.TopConnectionDirection) int {
 	if h.traceOnlyMode {
 		return 1
 	}
 	if ref.IncomingCount == 0 && ref.OutgoingCount == 0 && ref.ConnCount > 0 {
 		return ref.ConnCount
 	}
-	if direction == topConnectionOutgoing {
+	if direction == tuishared.TopConnectionOutgoing {
 		return ref.OutgoingCount
 	}
 	return ref.IncomingCount
@@ -329,17 +336,17 @@ func (h *HistoryApp) visibleRows() []history.SnapshotGroup {
 	}
 	filtered := rows
 	if strings.TrimSpace(h.portFilter) != "" {
-		filtered = filterHistoryGroupsByPort(filtered, h.portFilter)
+		filtered = tuipanels.FilterHistoryGroupsByPort(filtered, h.portFilter)
 	}
 	if strings.TrimSpace(h.textFilter) != "" {
-		filtered = filterHistoryGroupsByText(filtered, h.textFilter)
+		filtered = tuipanels.FilterHistoryGroupsByText(filtered, h.textFilter)
 	}
 	if len(filtered) == 0 {
 		return nil
 	}
 
 	items := append([]history.SnapshotGroup(nil), filtered...)
-	sortHistoryGroups(items, h.sortMode, h.sortDesc)
+	tuipanels.SortHistoryGroups(items, h.sortMode, h.sortDesc)
 
 	limit := h.topDisplayLimit()
 	if len(items) > limit {
@@ -443,13 +450,13 @@ func (h *HistoryApp) renderPanel() {
 	if strings.TrimSpace(h.snapshotMessage) != "" {
 		header += fmt.Sprintf("  [yellow]%s[white]\n", shortStatus(h.snapshotMessage, 160))
 	}
-	traceSection := h.renderCurrentTraceTimelineSection()
+	traceSection := tuireplay.RenderCurrentTraceTimelineSection(h)
 	traceOnlyHint := ""
 	if h.traceOnlyMode {
 		traceOnlyHint = "  [yellow]Trace-only replay mode[white] (no connection snapshots in selected scope/range)\n\n"
 	}
 	if h.replayViewMode == replayViewTrace {
-		h.panel.SetText(header + "\n" + traceOnlyHint + traceSection + h.renderTraceReplayViewBody())
+		h.panel.SetText(header + "\n" + traceOnlyHint + traceSection + tuireplay.RenderTraceReplayViewBody(h))
 		return
 	}
 
@@ -481,7 +488,7 @@ func (h *HistoryApp) renderPanel() {
 		return
 	}
 
-	body := renderHistoryAggregatePanel(
+	body := tuipanels.RenderHistoryAggregatePanel(
 		h.currentRows(),
 		h.portFilter,
 		h.textFilter,
@@ -564,7 +571,7 @@ func (h *HistoryApp) updateStatusBar() {
 		return
 	}
 	page := h.frontPageName()
-	hotkeysStyled, _ := historyStatusHotkeysForPage(page)
+	hotkeysStyled, _ := tuireplay.StatusHotkeysForPage(page)
 
 	snapshotPart := "Snapshot: 0/0"
 	if len(h.refs) > 0 && h.currentIndex >= 0 {
@@ -599,7 +606,7 @@ func (h *HistoryApp) updateStatusBar() {
 	}
 	stateText += fmt.Sprintf(" [aqua]VIEW-%s[white] |", h.replayViewMode.Label())
 	if h.traceTimelineAssociated > 0 {
-		stateText += fmt.Sprintf(" [aqua]TRACE %d/%d[white] |", h.currentTraceTimelineCount(), h.traceTimelineAssociated)
+		stateText += fmt.Sprintf(" [aqua]TRACE %d/%d[white] |", tuireplay.CurrentTraceTimelineCount(h), h.traceTimelineAssociated)
 	}
 	if time.Now().Before(h.statusNoteUntil) && h.statusNote != "" {
 		stateText += fmt.Sprintf(" [yellow]%s[white] |", h.statusNote)
@@ -723,12 +730,12 @@ func (h *HistoryApp) adjustStartIndexForSkipEmpty(target int) int {
 		return target
 	}
 
-	if idx, skipped, ok := h.findNextNonEmptyIndex(target); ok {
+	if idx, skipped, ok := tuireplay.FindNextNonEmptyIndex(h.refs, target, h.currentRefCount); ok {
 		if skipped > 0 {
 			h.setStatusNote(
 				fmt.Sprintf(
 					"Jumped to oldest active snapshot (%s). Hidden empty before: %d.",
-					h.rawPositionLabel(idx),
+					tuireplay.RawPositionLabel(h.refs, idx),
 					skipped,
 				),
 				6*time.Second,
@@ -749,7 +756,7 @@ func (h *HistoryApp) adjustLatestIndexForSkipEmpty(target int) int {
 	if h.currentRefCount(h.refs[target]) > 0 {
 		return target
 	}
-	if idx, _, ok := h.findPrevNonEmptyIndex(target); ok {
+	if idx, _, ok := tuireplay.FindPrevNonEmptyIndex(h.refs, target, h.currentRefCount); ok {
 		return idx
 	}
 	return target
@@ -765,69 +772,10 @@ func (h *HistoryApp) adjustGenericIndexForSkipEmpty(target int) int {
 	if h.currentRefCount(h.refs[target]) > 0 {
 		return target
 	}
-	if idx, ok := h.findNearestNonEmptyIndex(target); ok {
+	if idx, ok := tuireplay.FindNearestNonEmptyIndex(h.refs, target, h.currentRefCount); ok {
 		return idx
 	}
 	return target
-}
-
-func (h *HistoryApp) findPrevNonEmptyIndex(from int) (int, int, bool) {
-	if len(h.refs) == 0 {
-		return -1, 0, false
-	}
-	if from >= len(h.refs) {
-		from = len(h.refs) - 1
-	}
-	skipped := 0
-	for i := from; i >= 0; i-- {
-		if h.currentRefCount(h.refs[i]) > 0 {
-			return i, skipped, true
-		}
-		skipped++
-	}
-	return -1, skipped, false
-}
-
-func (h *HistoryApp) findNextNonEmptyIndex(from int) (int, int, bool) {
-	if len(h.refs) == 0 {
-		return -1, 0, false
-	}
-	if from < 0 {
-		from = 0
-	}
-	skipped := 0
-	for i := from; i < len(h.refs); i++ {
-		if h.currentRefCount(h.refs[i]) > 0 {
-			return i, skipped, true
-		}
-		skipped++
-	}
-	return -1, skipped, false
-}
-
-func (h *HistoryApp) findNearestNonEmptyIndex(target int) (int, bool) {
-	if len(h.refs) == 0 {
-		return -1, false
-	}
-	if target < 0 || target >= len(h.refs) {
-		return -1, false
-	}
-	if h.currentRefCount(h.refs[target]) > 0 {
-		return target, true
-	}
-
-	left, right := target-1, target+1
-	for left >= 0 || right < len(h.refs) {
-		if left >= 0 && h.currentRefCount(h.refs[left]) > 0 {
-			return left, true
-		}
-		if right < len(h.refs) && h.currentRefCount(h.refs[right]) > 0 {
-			return right, true
-		}
-		left--
-		right++
-	}
-	return -1, false
 }
 
 func (h *HistoryApp) idleStreak() (start, end, count int, approx time.Duration) {

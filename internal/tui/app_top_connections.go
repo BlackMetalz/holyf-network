@@ -1,111 +1,41 @@
 package tui
 
 import (
-	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
+	"github.com/BlackMetalz/holyf-network/internal/tui/blocking"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-const (
-	defaultTopConnectionsPanelWidth  = 120
-	defaultTopConnectionsPanelHeight = 27
-	topConnectionsBaseReservedLines  = 7
-	topConnectionsNoteReservedLines  = 1
-	topConnectionsPreviewLines       = 5
-	topConnectionsMinRows            = 5
-	topConnectionsMinRowsWithPreview = 3
-	topConnectionsGroupCap           = 20
-)
-
-type topConnectionsPanelLayout struct {
-	PanelWidth  int
-	PanelHeight int
-	RowLimit    int
-	ShowPreview bool
-}
-
-func topConnectionsPageBounds(totalRows, rowsPerPage, pageIndex int) (page, start, end, totalPages int) {
-	if totalRows <= 0 {
-		return 0, 0, 0, 0
-	}
-	if rowsPerPage <= 0 {
-		rowsPerPage = 1
-	}
-
-	totalPages = (totalRows + rowsPerPage - 1) / rowsPerPage
-	page = pageIndex
-	if page < 0 {
-		page = 0
-	}
-	if page >= totalPages {
-		page = totalPages - 1
-	}
-
-	start = page * rowsPerPage
-	end = start + rowsPerPage
-	if end > totalRows {
-		end = totalRows
-	}
-	return page, start, end, totalPages
-}
-
-func calculateTopConnectionsDisplayLimit(panelHeight int, noteCount int, wantsPreview bool) (int, bool) {
-	reservedLines := topConnectionsBaseReservedLines
-	if noteCount > 0 {
-		reservedLines += noteCount * topConnectionsNoteReservedLines
-	}
-	if wantsPreview {
-		previewLimit := panelHeight - reservedLines - topConnectionsPreviewLines
-		if previewLimit >= topConnectionsMinRowsWithPreview {
-			return min(previewLimit, 100), true
-		}
-	}
-
-	limit := panelHeight - reservedLines
-	if limit < topConnectionsMinRows {
-		limit = topConnectionsMinRows
-	}
-	if limit > 100 {
-		limit = 100
-	}
-	return limit, false
-}
-
-func topConnectionsNoteCount(bandwidthNote string) int {
-	if strings.TrimSpace(bandwidthNote) == "" {
-		return 0
-	}
-	return 1
-}
-
 func (a *App) topConnectionsPanelSize() (int, int) {
 	if len(a.panels) <= 2 || a.panels[2] == nil {
-		return defaultTopConnectionsPanelWidth, defaultTopConnectionsPanelHeight
+		return tuishared.DefaultTopConnectionsPanelWidth, 27 // fallback
 	}
 
 	_, _, width, height := a.panels[2].GetInnerRect()
 	if width <= 0 {
-		width = defaultTopConnectionsPanelWidth
+		width = tuishared.DefaultTopConnectionsPanelWidth
 	}
 	if height <= 0 {
-		height = defaultTopConnectionsPanelHeight
+		height = 27
 	}
 	return width, height
 }
 
-func (a *App) topConnectionsPanelLayout(hasRows bool) topConnectionsPanelLayout {
+func (a *App) topConnectionsPanelLayout(hasRows bool) tuipanels.TopConnectionsPanelLayout {
 	width, height := a.topConnectionsPanelSize()
-	rowLimit, showPreview := calculateTopConnectionsDisplayLimit(
+	rowLimit, showPreview := tuipanels.CalculateTopConnectionsDisplayLimit(
 		height,
-		topConnectionsNoteCount(a.topBandwidthNote),
+		tuipanels.TopConnectionsNoteCount(a.topBandwidthNote),
 		hasRows,
 	)
-	return topConnectionsPanelLayout{
+	return tuipanels.TopConnectionsPanelLayout{
 		PanelWidth:  width,
 		PanelHeight: height,
 		RowLimit:    rowLimit,
@@ -125,23 +55,23 @@ func (a *App) filteredTopConnections() []collector.Connection {
 	}
 
 	items := append([]collector.Connection(nil), filtered...)
-	sortConnectionsWithDirection(items, a.sortMode, a.sortDesc, a.topDirection)
+	tuipanels.SortConnectionsWithDirection(items, a.sortMode, a.sortDesc, a.topDirection)
 	return items
 }
 
-func (a *App) filteredPeerGroups() []PeerGroup {
+func (a *App) filteredPeerGroups() []tuipanels.PeerGroup {
 	source := a.topConnectionsSource()
 	if len(source) == 0 {
 		return nil
 	}
 
-	filtered := applyGroupConnectionFiltersByDirection(source, a.portFilter, a.textFilter, a.topDirection)
+	filtered := tuipanels.ApplyGroupConnectionFiltersByDirection(source, a.portFilter, a.textFilter, a.topDirection)
 	if len(filtered) == 0 {
 		return nil
 	}
 
-	groups := buildPeerGroupsWithDirection(filtered, a.sortDesc, a.topDirection)
-	return limitPeerGroups(groups, topConnectionsGroupCap, a.sortDesc)
+	groups := tuipanels.BuildPeerGroupsWithDirection(filtered, a.sortDesc, a.topDirection)
+	return tuipanels.LimitPeerGroups(groups, tuipanels.TopConnectionsGroupCap, a.sortDesc)
 }
 
 func (a *App) visibleTopConnections() []collector.Connection {
@@ -152,12 +82,12 @@ func (a *App) visibleTopConnections() []collector.Connection {
 	}
 
 	limit := a.topConnectionsPanelLayout(true).RowLimit
-	page, start, end, _ := topConnectionsPageBounds(len(items), limit, a.topPageIndex)
+	page, start, end, _ := tuipanels.TopConnectionsPageBounds(len(items), limit, a.topPageIndex)
 	a.topPageIndex = page
 	return items[start:end]
 }
 
-func (a *App) visiblePeerGroups() []PeerGroup {
+func (a *App) visiblePeerGroups() []tuipanels.PeerGroup {
 	groups := a.filteredPeerGroups()
 	if len(groups) == 0 {
 		a.topPageIndex = 0
@@ -165,7 +95,7 @@ func (a *App) visiblePeerGroups() []PeerGroup {
 	}
 
 	limit := a.topConnectionsPanelLayout(true).RowLimit
-	page, start, end, _ := topConnectionsPageBounds(len(groups), limit, a.topPageIndex)
+	page, start, end, _ := tuipanels.TopConnectionsPageBounds(len(groups), limit, a.topPageIndex)
 	a.topPageIndex = page
 	return groups[start:end]
 }
@@ -214,7 +144,7 @@ func (a *App) moveTopConnectionPage(delta int) bool {
 	}
 
 	layout := a.topConnectionsPanelLayout(true)
-	currentPage, _, _, totalPages := topConnectionsPageBounds(total, layout.RowLimit, a.topPageIndex)
+	currentPage, _, _, totalPages := tuipanels.TopConnectionsPageBounds(total, layout.RowLimit, a.topPageIndex)
 	if totalPages <= 1 {
 		a.topPageIndex = currentPage
 		return false
@@ -244,7 +174,7 @@ func (a *App) renderTopConnectionsPanel() {
 	if a.groupView {
 		groups := a.filteredPeerGroups()
 		layout := a.topConnectionsPanelLayout(len(groups) > 0)
-		page, start, end, _ := topConnectionsPageBounds(len(groups), layout.RowLimit, a.topPageIndex)
+		page, start, end, _ := tuipanels.TopConnectionsPageBounds(len(groups), layout.RowLimit, a.topPageIndex)
 		a.topPageIndex = page
 		visibleGroups := groups[start:end]
 		if count := len(visibleGroups); count == 0 {
@@ -255,12 +185,12 @@ func (a *App) renderTopConnectionsPanel() {
 			a.selectedTalkerIndex = 0
 		}
 
-		var preview *selectedRowPreview
+		var preview *tuipanels.SelectedRowPreview
 		if layout.ShowPreview {
 			preview = a.buildSelectedPeerGroupPreview(visibleGroups)
 		}
 
-		a.panels[2].SetText(renderPeerGroupPanelWithPreviewDirection(
+		a.panels[2].SetText(tuipanels.RenderPeerGroupPanelWithPreviewDirection(
 			source,
 			a.portFilter,
 			a.textFilter,
@@ -280,7 +210,7 @@ func (a *App) renderTopConnectionsPanel() {
 
 	items := a.filteredTopConnections()
 	layout := a.topConnectionsPanelLayout(len(items) > 0)
-	page, start, end, _ := topConnectionsPageBounds(len(items), layout.RowLimit, a.topPageIndex)
+	page, start, end, _ := tuipanels.TopConnectionsPageBounds(len(items), layout.RowLimit, a.topPageIndex)
 	a.topPageIndex = page
 	visibleItems := items[start:end]
 	if count := len(visibleItems); count == 0 {
@@ -291,12 +221,12 @@ func (a *App) renderTopConnectionsPanel() {
 		a.selectedTalkerIndex = 0
 	}
 
-	var preview *selectedRowPreview
+	var preview *tuipanels.SelectedRowPreview
 	if layout.ShowPreview {
 		preview = a.buildSelectedConnectionPreview(visibleItems)
 	}
 
-	a.panels[2].SetText(renderTalkersPanelWithPreviewDirection(
+	a.panels[2].SetText(tuipanels.RenderTalkersPanelWithPreviewDirection(
 		source,
 		a.portFilter,
 		a.textFilter,
@@ -327,10 +257,10 @@ func (a *App) topConnectionsSource() []collector.Connection {
 		}
 		if a.listenPortsKnown {
 			_, isListenerPort := a.listenPorts[conn.LocalPort]
-			if a.topDirection == topConnectionOutgoing && isListenerPort {
+			if a.topDirection == tuishared.TopConnectionOutgoing && isListenerPort {
 				continue
 			}
-			if a.topDirection == topConnectionIncoming && !isListenerPort {
+			if a.topDirection == tuishared.TopConnectionIncoming && !isListenerPort {
 				continue
 			}
 		}
@@ -378,60 +308,27 @@ func (a *App) moveTopConnectionSelection(delta int) bool {
 func (a *App) applyTopConnectionFilters(conns []collector.Connection) []collector.Connection {
 	filtered := conns
 	if a.portFilter != "" {
-		filtered = filterByPortDirection(filtered, a.portFilter, a.topDirection)
+		filtered = tuipanels.FilterByPortDirection(filtered, a.portFilter, a.topDirection)
 	}
 	if a.textFilter != "" {
-		filtered = filterByText(filtered, a.textFilter)
+		filtered = tuipanels.FilterByText(filtered, a.textFilter)
 	}
 	return filtered
 }
 
-func (a *App) buildSelectedConnectionPreview(conns []collector.Connection) *selectedRowPreview {
+func (a *App) buildSelectedConnectionPreview(conns []collector.Connection) *tuipanels.SelectedRowPreview {
 	if len(conns) == 0 || a.selectedTalkerIndex < 0 || a.selectedTalkerIndex >= len(conns) {
 		return nil
 	}
 
 	conn := conns[a.selectedTalkerIndex]
-	peerIP := normalizeIP(conn.RemoteIP)
-	target := peerKillTarget{
-		PeerIP:    peerIP,
-		LocalPort: conn.LocalPort,
-		Count:     a.countPeerMatches(peerIP, conn.LocalPort),
-	}
+	peerIP := tuishared.NormalizeIP(conn.RemoteIP)
+	count := a.countPeerMatches(peerIP, conn.LocalPort)
 
-	actionLine := fmt.Sprintf(
-		"Action: Enter/k => peer %s -> local %d (%d matches; peer+port scope)",
-		formatPreviewIP(target.PeerIP, a.sensitiveIP),
-		target.LocalPort,
-		target.Count,
-	)
-	if a.topDirection == topConnectionOutgoing {
-		actionLine = "Action: Enter/k disabled in OUT mode (incoming-only mitigation)"
-	}
-
-	return &selectedRowPreview{
-		Title: "Selected Detail",
-		Lines: []string{
-			fmt.Sprintf(
-				"Local: %s -> Peer: %s | State: %s",
-				formatPreviewEndpoint(conn.LocalIP, conn.LocalPort, a.sensitiveIP),
-				formatPreviewEndpoint(conn.RemoteIP, conn.RemotePort, a.sensitiveIP),
-				conn.State,
-			),
-			fmt.Sprintf(
-				"Proc: %s | Queue: send %s recv %s | BW: tx %s rx %s",
-				formatProcessInfo(conn),
-				formatBytes(conn.TxQueue),
-				formatBytes(conn.RxQueue),
-				formatBytesRateCompact(conn.TxBytesPerSec),
-				formatBytesRateCompact(conn.RxBytesPerSec),
-			),
-			actionLine,
-		},
-	}
+	return tuipanels.BuildSelectedConnectionPreview(conn, count, a.sensitiveIP, a.topDirection)
 }
 
-func (a *App) buildSelectedPeerGroupPreview(groups []PeerGroup) *selectedRowPreview {
+func (a *App) buildSelectedPeerGroupPreview(groups []tuipanels.PeerGroup) *tuipanels.SelectedRowPreview {
 	if len(groups) == 0 || a.selectedTalkerIndex < 0 || a.selectedTalkerIndex >= len(groups) {
 		return nil
 	}
@@ -439,44 +336,10 @@ func (a *App) buildSelectedPeerGroupPreview(groups []PeerGroup) *selectedRowPrev
 	group := groups[a.selectedTalkerIndex]
 	target, ok := a.selectedPeerPortTarget(group.PeerIP)
 	if !ok {
-		target = peerKillTarget{PeerIP: group.PeerIP}
+		target = blocking.PeerKillTarget{PeerIP: group.PeerIP}
 	}
 
-	portSet := group.LocalPorts
-	portLabel := "Ports"
-	actionLine := fmt.Sprintf(
-		"%s: %s | Action: Enter/k => local %d (%d matches)",
-		portLabel,
-		formatAllPeerGroupPorts(portSet),
-		target.LocalPort,
-		target.Count,
-	)
-	if a.topDirection == topConnectionOutgoing {
-		portSet = group.RemotePorts
-		portLabel = "RPorts"
-		actionLine = fmt.Sprintf(
-			"%s: %s | Action: Enter/k disabled in OUT mode",
-			portLabel,
-			formatAllPeerGroupPorts(portSet),
-		)
-	}
-
-	return &selectedRowPreview{
-		Title: "Selected Detail",
-		Lines: []string{
-			fmt.Sprintf(
-				"Peer: %s | Proc: %s | Conns: %d",
-				formatPreviewIP(group.PeerIP, a.sensitiveIP),
-				group.ProcName,
-				group.Count,
-			),
-			fmt.Sprintf(
-				"States: %s",
-				formatPeerGroupStatePreview(group.States, group.Count),
-			),
-			actionLine,
-		},
-	}
+	return tuipanels.BuildSelectedPeerGroupPreview(group, target.Count, target.LocalPort, a.sensitiveIP, a.topDirection)
 }
 
 func (a *App) updateTopConnectionsPanelTitle() {
@@ -487,11 +350,11 @@ func (a *App) updateTopConnectionsPanelTitle() {
 }
 
 func (a *App) toggleTopConnectionsDirection() {
-	if a.topDirection == topConnectionOutgoing {
-		a.topDirection = topConnectionIncoming
+	if a.topDirection == tuishared.TopConnectionOutgoing {
+		a.topDirection = tuishared.TopConnectionIncoming
 		a.setStatusNote("Top Connections: IN mode (local listener ports, Enter/k enabled)", 4*time.Second)
 	} else {
-		a.topDirection = topConnectionOutgoing
+		a.topDirection = tuishared.TopConnectionOutgoing
 		a.setStatusNote("Top Connections: OUT mode (remote service ports, Enter/k disabled)", 4*time.Second)
 	}
 	a.resetTopConnectionsCursor()
@@ -512,7 +375,7 @@ func (a *App) promptPortFilter() {
 
 	// Create input field
 	input := tview.NewInputField()
-	if a.topDirection == topConnectionOutgoing {
+	if a.topDirection == tuishared.TopConnectionOutgoing {
 		input.SetLabel("Filter by remote port: ")
 		input.SetTitle(" Remote Port Filter ")
 	} else {

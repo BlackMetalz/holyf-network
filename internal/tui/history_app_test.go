@@ -10,6 +10,10 @@ import (
 
 	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/BlackMetalz/holyf-network/internal/history"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
+	tuireplay "github.com/BlackMetalz/holyf-network/internal/tui/replay"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
+	tuitrace "github.com/BlackMetalz/holyf-network/internal/tui/trace"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -64,7 +68,7 @@ func appendDirectionalSnapshotFixture(t *testing.T, writer *history.SnapshotWrit
 	}
 }
 
-func appendTraceHistoryFixture(t *testing.T, dataDir string, entry traceHistoryEntry) {
+func appendTraceHistoryFixture(t *testing.T, dataDir string, entry tuitrace.Entry) {
 	t.Helper()
 	if entry.CapturedAt.IsZero() {
 		t.Fatalf("trace history fixture requires captured_at")
@@ -73,7 +77,7 @@ func appendTraceHistoryFixture(t *testing.T, dataDir string, entry traceHistoryE
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatalf("mkdir trace data dir: %v", err)
 	}
-	path := filepath.Join(dataDir, traceHistorySegmentFileName(entry.CapturedAt))
+	path := filepath.Join(dataDir, tuitrace.SegmentFileName(entry.CapturedAt))
 	raw, err := json.Marshal(entry)
 	if err != nil {
 		t.Fatalf("marshal trace history fixture: %v", err)
@@ -135,7 +139,7 @@ func TestHistoryReplayRendersTraceTimelineEvents(t *testing.T) {
 	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "203.0.113.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
 	appendSnapshotFixture(t, writer, base.Add(30*time.Second), []history.SnapshotGroup{{PeerIP: "203.0.113.20", LocalPort: 443, ProcName: "nginx", ConnCount: 1}})
 
-	appendTraceHistoryFixture(t, dir, traceHistoryEntry{
+	appendTraceHistoryFixture(t, dir, tuitrace.Entry{
 		CapturedAt: base.Add(3 * time.Second),
 		PeerIP:     "203.0.113.10",
 		Port:       22,
@@ -144,7 +148,7 @@ func TestHistoryReplayRendersTraceTimelineEvents(t *testing.T) {
 		Severity:   "WARN",
 		Issue:      "RST pressure observed",
 	})
-	appendTraceHistoryFixture(t, dir, traceHistoryEntry{
+	appendTraceHistoryFixture(t, dir, tuitrace.Entry{
 		CapturedAt: base.Add(28 * time.Second),
 		PeerIP:     "203.0.113.20",
 		Port:       443,
@@ -186,7 +190,7 @@ func TestHistoryReplayFallsBackToTraceOnlyMode(t *testing.T) {
 
 	dir := t.TempDir()
 	capturedAt := time.Date(2026, 3, 22, 10, 30, 0, 0, time.UTC)
-	appendTraceHistoryFixture(t, dir, traceHistoryEntry{
+	appendTraceHistoryFixture(t, dir, tuitrace.Entry{
 		CapturedAt: capturedAt,
 		PeerIP:     "203.0.113.40",
 		Port:       443,
@@ -229,7 +233,7 @@ func TestHistoryTraceOnlyModeDisablesTimelineSearch(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	appendTraceHistoryFixture(t, dir, traceHistoryEntry{
+	appendTraceHistoryFixture(t, dir, tuitrace.Entry{
 		CapturedAt: time.Date(2026, 3, 22, 10, 45, 0, 0, time.UTC),
 		PeerIP:     "203.0.113.41",
 		Port:       22,
@@ -365,7 +369,7 @@ func TestHistoryHandleKeyEventHShowsReplayTraceHistoryModal(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	appendTraceHistoryFixture(t, dir, traceHistoryEntry{
+	appendTraceHistoryFixture(t, dir, tuitrace.Entry{
 		CapturedAt: time.Date(2026, 3, 22, 11, 0, 0, 0, time.UTC),
 		PeerIP:     "203.0.113.60",
 		Port:       443,
@@ -385,7 +389,7 @@ func TestHistoryHandleKeyEventHShowsReplayTraceHistoryModal(t *testing.T) {
 	}
 
 	name, _ := h.pages.GetFrontPage()
-	if name != historyTracePage {
+	if name != tuireplay.HistoryTracePage {
 		t.Fatalf("expected replay trace-history modal, got front page=%q", name)
 	}
 }
@@ -394,7 +398,7 @@ func TestShowReplayTraceHistoryCompareOpensComparePage(t *testing.T) {
 	t.Parallel()
 
 	h := newHistoryTestApp(t.TempDir())
-	baseline := traceHistoryEntry{
+	baseline := tuitrace.Entry{
 		CapturedAt:       time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC),
 		PeerIP:           "203.0.113.10",
 		Port:             443,
@@ -405,7 +409,7 @@ func TestShowReplayTraceHistoryCompareOpensComparePage(t *testing.T) {
 		SynAckCount:      18,
 		RstCount:         2,
 	}
-	incident := traceHistoryEntry{
+	incident := tuitrace.Entry{
 		CapturedAt:       time.Date(2026, 3, 22, 10, 5, 0, 0, time.UTC),
 		PeerIP:           "203.0.113.10",
 		Port:             443,
@@ -417,10 +421,10 @@ func TestShowReplayTraceHistoryCompareOpensComparePage(t *testing.T) {
 		RstCount:         24,
 	}
 
-	h.showReplayTraceHistoryCompare(baseline, incident, nil)
+	tuireplay.ShowReplayTraceHistoryCompare(h, baseline, incident, nil)
 	name, _ := h.pages.GetFrontPage()
-	if name != historyTraceComparePage {
-		t.Fatalf("expected replay trace compare page %q, got %q", historyTraceComparePage, name)
+	if name != tuireplay.HistoryTraceComparePage {
+		t.Fatalf("expected replay trace compare page %q, got %q", tuireplay.HistoryTraceComparePage, name)
 	}
 }
 
@@ -469,7 +473,7 @@ func TestHistoryHandleKeyEventOTogglesDirectionAndUsesOutgoingRows(t *testing.T)
 	if ret != nil {
 		t.Fatalf("o should be handled in replay mode")
 	}
-	if h.topDirection != topConnectionOutgoing {
+	if h.topDirection != tuishared.TopConnectionOutgoing {
 		t.Fatalf("expected replay direction to switch to OUT, got=%v", h.topDirection)
 	}
 	rows := h.visibleRows()
@@ -747,7 +751,7 @@ func TestHistoryTimelineSearchRespectsCurrentDirection(t *testing.T) {
 
 	h := newHistoryTestApp(dir)
 	h.reloadIndex(true)
-	h.topDirection = topConnectionOutgoing
+	h.topDirection = tuishared.TopConnectionOutgoing
 
 	results := h.scanTimelineMatches("curl", h.refs)
 	if len(results) != 1 || results[0].SnapshotIndex != 1 {
@@ -781,7 +785,7 @@ func TestHistoryTimelineSearchJumpKeepsCurrentTextFilter(t *testing.T) {
 
 	h.textFilter = "198.51.100.20"
 	h.timelineSearchQuery = "curl"
-	h.timelineSearchResults = []timelineSearchResult{
+	h.timelineSearchResults = []tuireplay.SearchResult{
 		{
 			SnapshotIndex: 0,
 			CapturedAt:    base,
@@ -1003,12 +1007,12 @@ func TestHistoryAggregateHintLineChangesWithSkipEmpty(t *testing.T) {
 	}
 	thresholds := config.DefaultHealthThresholds()
 
-	withSkip := renderHistoryAggregatePanel(rows, "", "", 20, false, 0, SortByBandwidth, true, topConnectionIncoming, true, thresholds, true)
+	withSkip := tuipanels.RenderHistoryAggregatePanel(rows, "", "", 20, false, 0, tuishared.SortByBandwidth, true, tuishared.TopConnectionIncoming, true, thresholds, true)
 	if !strings.Contains(withSkip, "]=next active snapshot") || !strings.Contains(withSkip, "x=show all snapshots") {
 		t.Fatalf("expected active hint line when skip-empty on, got=%q", withSkip)
 	}
 
-	withoutSkip := renderHistoryAggregatePanel(rows, "", "", 20, false, 0, SortByBandwidth, true, topConnectionIncoming, false, thresholds, true)
+	withoutSkip := tuipanels.RenderHistoryAggregatePanel(rows, "", "", 20, false, 0, tuishared.SortByBandwidth, true, tuishared.TopConnectionIncoming, false, thresholds, true)
 	if !strings.Contains(withoutSkip, "]=next snapshot") || !strings.Contains(withoutSkip, "x=skip empty snapshots") {
 		t.Fatalf("expected raw hint line when skip-empty off, got=%q", withoutSkip)
 	}
@@ -1058,19 +1062,19 @@ func TestHistoryAggregateSortModes(t *testing.T) {
 		{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "nginx", ConnCount: 2, TotalQueue: 50, TotalBytesDelta: 500, States: map[string]int{"CLOSE_WAIT": 2}},
 	}}
 
-	h.sortMode = SortByBandwidth
+	h.sortMode = tuishared.SortByBandwidth
 	rows := h.visibleRows()
 	if len(rows) != 2 || rows[0].PeerIP != "198.51.100.10" {
 		t.Fatalf("bandwidth sort should prioritize higher delta bytes, got=%+v", rows)
 	}
 
-	h.sortMode = SortByConns
+	h.sortMode = tuishared.SortByConns
 	rows = h.visibleRows()
 	if len(rows) != 2 || rows[0].PeerIP != "198.51.100.20" {
 		t.Fatalf("conns sort should prioritize higher connection count, got=%+v", rows)
 	}
 
-	h.sortMode = SortByPort
+	h.sortMode = tuishared.SortByPort
 	rows = h.visibleRows()
 	if len(rows) != 2 || rows[0].LocalPort != 443 {
 		t.Fatalf("port sort (desc default) should prioritize higher local port, got=%+v", rows)
@@ -1088,7 +1092,7 @@ func TestHistoryAggregateSortDirectionToggle(t *testing.T) {
 		{PeerIP: "198.51.100.10", LocalPort: 22, ProcName: "nginx", ConnCount: 2, TotalQueue: 50},
 	}}
 
-	h.sortMode = SortByConns
+	h.sortMode = tuishared.SortByConns
 	h.sortDesc = true
 	rows := h.visibleRows()
 	if len(rows) != 2 || rows[0].ConnCount != 5 {
@@ -1183,7 +1187,7 @@ func TestHistoryClosestSnapshotIndex(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := h.closestSnapshotIndex(tc.target)
+			got := tuireplay.ClosestSnapshotIndex(h.refs, tc.target)
 			if got != tc.want {
 				t.Fatalf("closest index mismatch: got=%d want=%d", got, tc.want)
 			}

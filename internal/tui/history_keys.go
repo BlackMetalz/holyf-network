@@ -2,12 +2,13 @@ package tui
 
 import (
 	"fmt"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/BlackMetalz/holyf-network/internal/history"
+	tuioverlays "github.com/BlackMetalz/holyf-network/internal/tui/overlays"
+	tuireplay "github.com/BlackMetalz/holyf-network/internal/tui/replay"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -70,10 +71,10 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			h.promptTextFilter()
 			return nil
 		case 'o':
-			if h.topDirection == topConnectionIncoming {
-				h.topDirection = topConnectionOutgoing
+			if h.topDirection == tuishared.TopConnectionIncoming {
+				h.topDirection = tuishared.TopConnectionOutgoing
 			} else {
-				h.topDirection = topConnectionIncoming
+				h.topDirection = tuishared.TopConnectionIncoming
 			}
 			if h.skipEmpty {
 				h.currentIndex = h.adjustGenericIndexForSkipEmpty(h.currentIndex)
@@ -103,7 +104,7 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			h.updateStatusBar()
 			return nil
 		case 'h', 'H':
-			h.promptReplayTraceHistory()
+			tuireplay.PromptReplayTraceHistory(h)
 			return nil
 		case 't', 'T':
 			h.promptJumpToTime()
@@ -169,7 +170,7 @@ func (h *HistoryApp) navigatePrev() {
 	h.followLatest = false
 	target := h.currentIndex - 1
 	if h.skipEmpty {
-		if idx, skipped, ok := h.findPrevNonEmptyIndex(target); ok {
+		if idx, skipped, ok := tuireplay.FindPrevNonEmptyIndex(h.refs, target, h.currentRefCount); ok {
 			target = idx
 			if skipped > 0 {
 				h.setStatusNote(fmt.Sprintf("Skipped %d empty snapshots", skipped), 4*time.Second)
@@ -193,7 +194,7 @@ func (h *HistoryApp) navigateNext() {
 	h.followLatest = false
 	target := h.currentIndex + 1
 	if h.skipEmpty {
-		if idx, skipped, ok := h.findNextNonEmptyIndex(target); ok {
+		if idx, skipped, ok := tuireplay.FindNextNonEmptyIndex(h.refs, target, h.currentRefCount); ok {
 			target = idx
 			if skipped > 0 {
 				h.setStatusNote(fmt.Sprintf("Skipped %d empty snapshots", skipped), 4*time.Second)
@@ -217,13 +218,13 @@ func (h *HistoryApp) navigateOldest() {
 	h.followLatest = false
 	target := 0
 	if h.skipEmpty {
-		if idx, skipped, ok := h.findNextNonEmptyIndex(target); ok {
+		if idx, skipped, ok := tuireplay.FindNextNonEmptyIndex(h.refs, target, h.currentRefCount); ok {
 			target = idx
 			if skipped > 0 {
 				h.setStatusNote(
 					fmt.Sprintf(
 						"Jumped to oldest active snapshot (%s). Hidden empty before: %d.",
-						h.rawPositionLabel(target),
+						tuireplay.RawPositionLabel(h.refs, target),
 						skipped,
 					),
 					6*time.Second,
@@ -242,13 +243,13 @@ func (h *HistoryApp) navigateLatest() {
 	}
 	target := len(h.refs) - 1
 	if h.skipEmpty {
-		if idx, skipped, ok := h.findPrevNonEmptyIndex(target); ok {
+		if idx, skipped, ok := tuireplay.FindPrevNonEmptyIndex(h.refs, target, h.currentRefCount); ok {
 			target = idx
 			if skipped > 0 {
 				h.setStatusNote(
 					fmt.Sprintf(
 						"Jumped to latest active snapshot (%s). Hidden empty after: %d.",
-						h.rawPositionLabel(target),
+						tuireplay.RawPositionLabel(h.refs, target),
 						skipped,
 					),
 					6*time.Second,
@@ -272,7 +273,7 @@ func (h *HistoryApp) promptPortFilter() {
 	}
 
 	input := tview.NewInputField()
-	if h.topDirection == topConnectionOutgoing {
+	if h.topDirection == tuishared.TopConnectionOutgoing {
 		input.SetLabel("Filter by remote port: ")
 		input.SetTitle(" Remote Port Filter ")
 	} else {
@@ -285,7 +286,7 @@ func (h *HistoryApp) promptPortFilter() {
 
 	input.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
-			parsed, err := parseHistoryPortFilter(input.GetText())
+			parsed, err := tuireplay.ParsePortFilter(input.GetText())
 			if err != nil {
 				h.setStatusNote("Invalid port filter", 4*time.Second)
 				return
@@ -375,10 +376,10 @@ func (h *HistoryApp) promptJumpToTime() {
 				return
 			}
 
-			index := h.closestSnapshotIndex(target)
+			index := tuireplay.ClosestSnapshotIndex(h.refs, target)
 			if index >= 0 {
 				if h.skipEmpty {
-					if idx, ok := h.findNearestNonEmptyIndex(index); ok {
+					if idx, ok := tuireplay.FindNearestNonEmptyIndex(h.refs, index, h.currentRefCount); ok {
 						index = idx
 					}
 				}
@@ -409,31 +410,6 @@ func (h *HistoryApp) promptJumpToTime() {
 	h.app.SetFocus(input)
 }
 
-func (h *HistoryApp) closestSnapshotIndex(target time.Time) int {
-	if len(h.refs) == 0 {
-		return -1
-	}
-
-	targetUTC := target.UTC()
-	idx := sort.Search(len(h.refs), func(i int) bool {
-		return !h.refs[i].CapturedAt.Before(targetUTC)
-	})
-
-	if idx <= 0 {
-		return 0
-	}
-	if idx >= len(h.refs) {
-		return len(h.refs) - 1
-	}
-
-	before := h.refs[idx-1].CapturedAt
-	after := h.refs[idx].CapturedAt
-	if targetUTC.Sub(before) <= after.Sub(targetUTC) {
-		return idx - 1
-	}
-	return idx
-}
-
 func (h *HistoryApp) showHelp() {
 	h.pages.SendToFront("history-help")
 	h.pages.ShowPage("history-help")
@@ -455,30 +431,7 @@ func (h *HistoryApp) isOverlayVisible() bool {
 	return name != "main" && name != "history-help"
 }
 
-func historyStatusHotkeysForPage(page string) (styled string, plain string) {
-	switch page {
-	case "history-help":
-		return "[dim]any key[white]=close", "any key=close"
-	case "history-filter", "history-search", "history-jump-time":
-		return "[dim]Enter[white]=apply [dim]Esc[white]=cancel", "Enter=apply Esc=cancel"
-	case "history-timeline-search":
-		return "[dim]Enter[white]=search [dim]Esc[white]=cancel", "Enter=search Esc=cancel"
-	case "history-timeline-results":
-		return "[dim]Up/Down[white]=select [dim]Enter[white]=jump [dim]Esc[white]=close", "Up/Down=select Enter=jump Esc=close"
-	case historyTracePage:
-		return "[dim]Up/Down[white]=select [dim]Enter[white]=detail [dim]c[white]=compare [dim]Esc[white]=close", "Up/Down=select Enter=detail c=compare Esc=close"
-	case historyTraceDetailPage:
-		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
-	case historyTraceComparePage:
-		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
-	case "history-socket-queue-explain":
-		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
-	default:
-		return "[dim][=prev ]=next a e t f / Shift+S Shift+B/C/P o g h m i Shift+I x z L ? q[white]", "[=prev ]=next a e t f / Shift+S Shift+B/C/P o g h m i Shift+I x z L ? q"
-	}
-}
-
-func (h *HistoryApp) applySortInput(mode SortMode) {
+func (h *HistoryApp) applySortInput(mode tuishared.SortMode) {
 	if h.sortMode == mode {
 		h.sortDesc = !h.sortDesc
 	} else {
@@ -505,8 +458,8 @@ func (h *HistoryApp) nextActiveBoundaryMessage() string {
 	}
 	return fmt.Sprintf(
 		"Reached last active snapshot (%s). Hidden empty after: %d. Press x to include empty snapshots.",
-		h.rawPositionLabel(h.currentIndex),
-		h.emptyCountAfter(h.currentIndex),
+		tuireplay.RawPositionLabel(h.refs, h.currentIndex),
+		tuireplay.EmptyCountAfter(h.refs, h.currentIndex, h.currentRefCount),
 	)
 }
 
@@ -516,65 +469,45 @@ func (h *HistoryApp) prevActiveBoundaryMessage() string {
 	}
 	return fmt.Sprintf(
 		"Reached first active snapshot (%s). Hidden empty before: %d. Press x to include empty snapshots.",
-		h.rawPositionLabel(h.currentIndex),
-		h.emptyCountBefore(h.currentIndex),
+		tuireplay.RawPositionLabel(h.refs, h.currentIndex),
+		tuireplay.EmptyCountBefore(h.refs, h.currentIndex, h.currentRefCount),
 	)
-}
-
-func (h *HistoryApp) rawPositionLabel(index int) string {
-	if len(h.refs) == 0 || index < 0 || index >= len(h.refs) {
-		return "raw 0/0"
-	}
-	return fmt.Sprintf("raw %d/%d", index+1, len(h.refs))
-}
-
-func (h *HistoryApp) emptyCountAfter(index int) int {
-	if len(h.refs) == 0 {
-		return 0
-	}
-	if index < -1 {
-		index = -1
-	}
-	if index >= len(h.refs)-1 {
-		return 0
-	}
-	count := 0
-	for i := index + 1; i < len(h.refs); i++ {
-		if h.currentRefCount(h.refs[i]) <= 0 {
-			count++
-		}
-	}
-	return count
-}
-
-func (h *HistoryApp) emptyCountBefore(index int) int {
-	if len(h.refs) == 0 || index <= 0 {
-		return 0
-	}
-	if index >= len(h.refs) {
-		index = len(h.refs) - 1
-	}
-	count := 0
-	for i := 0; i < index; i++ {
-		if h.currentRefCount(h.refs[i]) <= 0 {
-			count++
-		}
-	}
-	return count
-}
-
-func parseHistoryPortFilter(raw string) (string, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return "", nil
-	}
-	port, err := strconv.Atoi(trimmed)
-	if err != nil || port < 1 || port > 65535 {
-		return "", fmt.Errorf("invalid port filter")
-	}
-	return strconv.Itoa(port), nil
 }
 
 func parseHistoryJumpTime(raw string, now time.Time) (time.Time, error) {
 	return history.ParseReplayTime(raw, now)
+}
+
+func (h *HistoryApp) promptSocketQueueExplain() {
+	closeModal := func() {
+		h.pages.RemovePage("history-socket-queue-explain")
+		h.app.SetFocus(h.panel)
+		h.updateStatusBar()
+	}
+
+	modal := tview.NewModal().
+		SetText(tuioverlays.BuildSocketQueueExplainText(true)).
+		AddButtons([]string{"Close"}).
+		SetDoneFunc(func(_ int, _ string) {
+			closeModal()
+		})
+	modal.SetTitle(" Send-Q / Recv-Q Explain ")
+	modal.SetBorder(true)
+	modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			closeModal()
+			return nil
+		}
+		if event.Key() == tcell.KeyRune && event.Rune() == 'q' {
+			closeModal()
+			return nil
+		}
+		return event
+	})
+
+	h.pages.RemovePage("history-socket-queue-explain")
+	h.pages.AddPage("history-socket-queue-explain", modal, true, true)
+	h.updateStatusBar()
+	h.app.SetFocus(modal)
 }

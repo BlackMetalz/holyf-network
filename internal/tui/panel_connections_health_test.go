@@ -6,6 +6,7 @@ import (
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/config"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
 )
 
 func TestRenderHealthStripSkipsRetransSeverityWhenLowSample(t *testing.T) {
@@ -23,7 +24,7 @@ func TestRenderHealthStripSkipsRetransSeverityWhenLowSample(t *testing.T) {
 		RetransPercent: 9.2,
 	}
 
-	rendered := renderHealthStrip(data, retrans, nil, config.DefaultHealthThresholds())
+	rendered := tuipanels.RenderHealthStrip(data, retrans, nil, config.DefaultHealthThresholds())
 
 	if !strings.Contains(rendered, "LOW SAMPLE") {
 		t.Fatalf("expected LOW SAMPLE in health strip, got: %q", rendered)
@@ -48,7 +49,7 @@ func TestRenderHealthStripUsesRetransSeverityWhenSampleReady(t *testing.T) {
 		RetransPercent: 6.1,
 	}
 
-	rendered := renderHealthStrip(data, retrans, nil, config.DefaultHealthThresholds())
+	rendered := tuipanels.RenderHealthStrip(data, retrans, nil, config.DefaultHealthThresholds())
 
 	if !strings.Contains(rendered, "HEALTH CRIT") {
 		t.Fatalf("expected HEALTH CRIT for high retrans with enough sample, got: %q", rendered)
@@ -74,7 +75,7 @@ func TestRenderConnectionsPanelShowsLowSampleDetails(t *testing.T) {
 		RetransPercent: 7.0,
 	}
 
-	rendered := renderConnectionsPanel(data, retrans, nil, config.DefaultHealthThresholds())
+	rendered := tuipanels.RenderConnectionsPanel(data, retrans, nil, config.DefaultHealthThresholds())
 
 	if !strings.Contains(rendered, "LOW SAMPLE") {
 		t.Fatalf("expected low-sample message in retrans panel, got: %q", rendered)
@@ -96,8 +97,8 @@ func TestRenderConnectionsPanelWithStateSortToggleDirection(t *testing.T) {
 		Total: 13,
 	}
 
-	desc := renderConnectionsPanelWithStateSort(data, nil, nil, config.DefaultHealthThresholds(), true)
-	asc := renderConnectionsPanelWithStateSort(data, nil, nil, config.DefaultHealthThresholds(), false)
+	desc := tuipanels.RenderConnectionsPanelWithStateSort(data, nil, nil, config.DefaultHealthThresholds(), true)
+	asc := tuipanels.RenderConnectionsPanelWithStateSort(data, nil, nil, config.DefaultHealthThresholds(), false)
 
 	if !(strings.Index(desc, "ESTABLISHED") < strings.Index(desc, "TIME_WAIT")) {
 		t.Fatalf("desc sort should place ESTABLISHED before TIME_WAIT, got: %q", desc)

@@ -5,84 +5,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BlackMetalz/holyf-network/internal/tui/diagnosis"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-type diagnosisHistoryEntry struct {
-	FirstSeen time.Time
-	LastSeen  time.Time
-	Diagnosis topDiagnosis
+func (a *App) appendDiagnosisHistory(now time.Time, diag *tuishared.Diagnosis) {
+	a.diagnosisEngine.Append(now, diag)
 }
 
-func (a *App) appendDiagnosisHistory(now time.Time, diagnosis *topDiagnosis) {
-	if diagnosis == nil {
-		return
-	}
-
-	entry := diagnosisHistoryEntry{
-		FirstSeen: now,
-		LastSeen:  now,
-		Diagnosis: cloneTopDiagnosis(diagnosis),
-	}
-
-	if len(a.diagnosisHistory) > 0 {
-		last := &a.diagnosisHistory[0]
-		if diagnosisFingerprint(&last.Diagnosis) == diagnosisFingerprint(diagnosis) {
-			last.LastSeen = now
-			last.Diagnosis = entry.Diagnosis
-			return
-		}
-	}
-
-	a.diagnosisHistory = append([]diagnosisHistoryEntry{entry}, a.diagnosisHistory...)
-	if len(a.diagnosisHistory) > diagnosisHistoryLimit {
-		a.diagnosisHistory = append([]diagnosisHistoryEntry(nil), a.diagnosisHistory[:diagnosisHistoryLimit]...)
-	}
-}
-
-func (a *App) recentDiagnosisHistory(limit int) []diagnosisHistoryEntry {
-	if limit <= 0 || limit > diagnosisHistoryLimit {
-		limit = diagnosisHistoryLimit
-	}
-	if len(a.diagnosisHistory) == 0 {
-		return nil
-	}
-	if limit > len(a.diagnosisHistory) {
-		limit = len(a.diagnosisHistory)
-	}
-	out := make([]diagnosisHistoryEntry, limit)
-	copy(out, a.diagnosisHistory[:limit])
-	return out
-}
-
-func diagnosisFingerprint(diagnosis *topDiagnosis) string {
-	if diagnosis == nil {
-		return ""
-	}
-	parts := []string{
-		fmt.Sprintf("%d", diagnosis.Severity),
-		strings.TrimSpace(diagnosisConfidenceValue(diagnosis)),
-		strings.TrimSpace(diagnosisIssueValue(diagnosis)),
-		strings.TrimSpace(diagnosisScopeValue(diagnosis)),
-		strings.TrimSpace(diagnosisLikelyValue(diagnosis)),
-		strings.TrimSpace(diagnosisCheckValue(diagnosis)),
-	}
-	return strings.Join(parts, "|")
-}
-
-func cloneTopDiagnosis(diagnosis *topDiagnosis) topDiagnosis {
-	if diagnosis == nil {
-		return topDiagnosis{}
-	}
-	clone := *diagnosis
-	if len(diagnosis.Evidence) > 0 {
-		clone.Evidence = append([]string(nil), diagnosis.Evidence...)
-	}
-	if len(diagnosis.NextChecks) > 0 {
-		clone.NextChecks = append([]string(nil), diagnosis.NextChecks...)
-	}
-	return clone
+func (a *App) recentDiagnosisHistory(limit int) []diagnosis.HistoryEntry {
+	return a.diagnosisEngine.Recent(limit)
 }
 
 func (a *App) promptDiagnosisHistory() {
@@ -144,12 +79,12 @@ func (a *App) promptDiagnosisHistory() {
 	a.app.SetFocus(view)
 }
 
-func formatDiagnosisHistoryEntry(entry diagnosisHistoryEntry) string {
-	color := colorForHealthLevel(entry.Diagnosis.Severity)
-	conf := shortStatus(diagnosisConfidenceValue(&entry.Diagnosis), 8)
-	issue := shortStatus(diagnosisIssueValue(&entry.Diagnosis), 36)
-	scope := shortStatus(diagnosisScopeValue(&entry.Diagnosis), 36)
-	signal := shortStatus(diagnosisSignalValue(&entry.Diagnosis), 96)
+func formatDiagnosisHistoryEntry(entry diagnosis.HistoryEntry) string {
+	color := tuishared.ColorForHealthLevel(entry.Diagnosis.Severity)
+	conf := shortStatus(tuipanels.DiagnosisConfidenceValue(&entry.Diagnosis), 8)
+	issue := shortStatus(tuipanels.DiagnosisIssueValue(&entry.Diagnosis), 36)
+	scope := shortStatus(tuipanels.DiagnosisScopeValue(&entry.Diagnosis), 36)
+	signal := shortStatus(tuipanels.DiagnosisSignalValue(&entry.Diagnosis), 96)
 
 	return fmt.Sprintf(
 		"[%s]%s[white] | [%s]%s[white] | %s | %s | %s",
@@ -163,7 +98,7 @@ func formatDiagnosisHistoryEntry(entry diagnosisHistoryEntry) string {
 	)
 }
 
-func formatDiagnosisHistoryRange(entry diagnosisHistoryEntry) string {
+func formatDiagnosisHistoryRange(entry diagnosis.HistoryEntry) string {
 	first := entry.FirstSeen.Format("15:04:05")
 	last := entry.LastSeen.Format("15:04:05")
 	if first == last {

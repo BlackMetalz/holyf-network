@@ -7,6 +7,10 @@ import (
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/config"
+	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
+	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 )
 
 func topConnectionFixtures() []collector.Connection {
@@ -59,12 +63,12 @@ func TestRenderTalkersPanelPortFilterChipText(t *testing.T) {
 
 	conns := topConnectionFixtures()
 
-	allText := renderTalkersPanel(conns, "", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), "")
+	allText := tuipanels.RenderTalkersPanel(conns, "", "", 20, false, 0, tuishared.SortByBandwidth, true, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(allText, "Port Filter = ALL") {
 		t.Fatalf("default chip should render Port Filter = ALL, got: %q", allText)
 	}
 
-	selectedText := renderTalkersPanel(conns, "443", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), "")
+	selectedText := tuipanels.RenderTalkersPanel(conns, "443", "", 20, false, 0, tuishared.SortByBandwidth, true, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(selectedText, "Port Filter = 443") {
 		t.Fatalf("selected chip should render Port Filter = 443, got: %q", selectedText)
 	}
@@ -75,12 +79,12 @@ func TestRenderPeerGroupPanelPortFilterChipText(t *testing.T) {
 
 	conns := topConnectionFixtures()
 
-	allText := renderPeerGroupPanel(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "")
+	allText := tuipanels.RenderPeerGroupPanel(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(allText, "Port Filter = ALL") {
 		t.Fatalf("group chip should render Port Filter = ALL, got: %q", allText)
 	}
 
-	selectedText := renderPeerGroupPanel(conns, "443", "", 20, false, 0, true, config.DefaultHealthThresholds(), "")
+	selectedText := tuipanels.RenderPeerGroupPanel(conns, "443", "", 20, false, 0, true, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(selectedText, "Port Filter = 443") {
 		t.Fatalf("group chip should render Port Filter = 443, got: %q", selectedText)
 	}
@@ -92,6 +96,8 @@ func TestVisiblePeerGroupsPortFilterAffectsGroupedResultsAndClearingRestoresAll(
 	a := &App{
 		latestTalkers: topConnectionFixtures(),
 		portFilter:    "443",
+		actionLogger:  actionlog.NewLogger(""),
+		traceEngine:   livetrace.NewEngineLoaded(),
 	}
 
 	filtered := a.visiblePeerGroups()
@@ -130,7 +136,7 @@ func TestFormatProcessInfoSupportsConntrackSyntheticRow(t *testing.T) {
 		PID:      0,
 		ProcName: "ct/nat",
 	}
-	if got := formatProcessInfo(conn); got != "ct/nat" {
+	if got := tuipanels.FormatProcessInfo(conn); got != "ct/nat" {
 		t.Fatalf("expected synthetic process label ct/nat, got=%q", got)
 	}
 }
@@ -148,7 +154,7 @@ func TestRenderTalkersPanelShowsSyntheticProcessWhenNoPID(t *testing.T) {
 			ProcName:   "ct/nat",
 		},
 	}
-	text := renderTalkersPanel(conns, "", "", 20, false, 0, SortByBandwidth, true, config.DefaultHealthThresholds(), "")
+	text := tuipanels.RenderTalkersPanel(conns, "", "", 20, false, 0, tuishared.SortByBandwidth, true, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(text, "ct/nat") {
 		t.Fatalf("expected synthetic process label to render, got: %q", text)
 	}
@@ -184,7 +190,7 @@ func TestRenderPeerGroupPanelSplitsSamePeerByProcess(t *testing.T) {
 		},
 	}
 
-	text := renderPeerGroupPanel(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "")
+	text := tuipanels.RenderPeerGroupPanel(conns, "", "", 20, false, 0, true, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(text, "sshd") || !strings.Contains(text, "ct/nat") {
 		t.Fatalf("expected both sshd and ct/nat groups, got: %q", text)
 	}
@@ -196,10 +202,10 @@ func TestRenderPeerGroupPanelSplitsSamePeerByProcess(t *testing.T) {
 func TestFormatStatePercentDoesNotRoundPartialShareUpToHundred(t *testing.T) {
 	t.Parallel()
 
-	if got := formatStatePercent(10584, 10585); got != "99%" {
+	if got := tuipanels.FormatStatePercent(10584, 10585); got != "99%" {
 		t.Fatalf("expected near-total share to clamp below 100%%, got: %q", got)
 	}
-	if got := formatStatePercent(109, 109); got != "100%" {
+	if got := tuipanels.FormatStatePercent(109, 109); got != "100%" {
 		t.Fatalf("expected exact total share to remain 100%%, got: %q", got)
 	}
 }
@@ -222,10 +228,10 @@ func TestLimitPeerGroupsKeepsTopTwentyByCountEvenWhenDisplayIsAscending(t *testi
 		}
 	}
 
-	groups := buildPeerGroups(conns, true)
-	limited := limitPeerGroups(groups, topConnectionsGroupCap, false)
-	if len(limited) != topConnectionsGroupCap {
-		t.Fatalf("expected capped group count=%d, got=%d", topConnectionsGroupCap, len(limited))
+	groups := tuipanels.BuildPeerGroups(conns, true)
+	limited := tuipanels.LimitPeerGroups(groups, tuipanels.TopConnectionsGroupCap, false)
+	if len(limited) != tuipanels.TopConnectionsGroupCap {
+		t.Fatalf("expected capped group count=%d, got=%d", tuipanels.TopConnectionsGroupCap, len(limited))
 	}
 	if limited[0].Count != 6 {
 		t.Fatalf("expected ascending view to start at lowest count inside top-20 set, got=%d", limited[0].Count)
@@ -253,7 +259,7 @@ func TestRenderPeerGroupPanelShowsShownOverTotalWhenCapped(t *testing.T) {
 		}
 	}
 
-	text := renderPeerGroupPanel(conns, "", "", 30, false, 0, true, config.DefaultHealthThresholds(), "")
+	text := tuipanels.RenderPeerGroupPanel(conns, "", "", 30, false, 0, true, config.DefaultHealthThresholds(), "")
 	if !strings.Contains(text, "20 shown / 25 groups") {
 		t.Fatalf("expected capped footer to mention shown/total groups, got: %q", text)
 	}

@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
+	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
+	tuitrace "github.com/BlackMetalz/holyf-network/internal/tui/trace"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -14,10 +17,11 @@ func TestAppendTraceHistoryPersistsDailySegments(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
+	engine := livetrace.NewEngine(dataDir)
+	engine.MarkHistoryLoaded() // don't load from disk
 	a := &App{
-		traceHistory:        make([]traceHistoryEntry, 0, 32),
-		traceHistoryDataDir: dataDir,
-		traceHistoryLoaded:  true,
+		actionLogger: actionlog.NewLogger(""),
+		traceEngine:  engine,
 	}
 
 	base := time.Date(2026, 3, 22, 10, 0, 0, 0, time.Local)
@@ -45,9 +49,9 @@ func TestAppendTraceHistoryPersistsDailySegments(t *testing.T) {
 	}
 
 	wantFiles := []string{
-		traceHistorySegmentFileName(base),
-		traceHistorySegmentFileName(base.AddDate(0, 0, 1)),
-		traceHistorySegmentFileName(base.AddDate(0, 0, 2)),
+		tuitrace.SegmentFileName(base),
+		tuitrace.SegmentFileName(base.AddDate(0, 0, 1)),
+		tuitrace.SegmentFileName(base.AddDate(0, 0, 2)),
 	}
 	for _, name := range wantFiles {
 		if _, err := os.Stat(filepath.Join(dataDir, name)); err != nil {
@@ -55,7 +59,7 @@ func TestAppendTraceHistoryPersistsDailySegments(t *testing.T) {
 		}
 	}
 
-	loaded, err := readTraceHistoryEntriesFromDir(dataDir)
+	loaded, err := tuitrace.ReadEntriesFromDir(dataDir)
 	if err != nil {
 		t.Fatalf("read trace history dir: %v", err)
 	}
@@ -76,8 +80,8 @@ func TestPruneTraceHistoryDataDirByAge(t *testing.T) {
 
 	dir := t.TempDir()
 	now := time.Date(2026, 3, 30, 10, 0, 0, 0, time.Local)
-	old := traceHistorySegmentFileName(now.AddDate(0, 0, -10))
-	cur := traceHistorySegmentFileName(now)
+	old := tuitrace.SegmentFileName(now.AddDate(0, 0, -10))
+	cur := tuitrace.SegmentFileName(now)
 	if err := os.WriteFile(filepath.Join(dir, old), []byte("{\"captured_at\":\"2026-03-20T10:00:00Z\"}\n"), 0o600); err != nil {
 		t.Fatalf("write old segment: %v", err)
 	}
@@ -85,7 +89,7 @@ func TestPruneTraceHistoryDataDirByAge(t *testing.T) {
 		t.Fatalf("write current segment: %v", err)
 	}
 
-	if err := pruneTraceHistoryDataDirByAge(dir, 24*7, now); err != nil {
+	if err := tuitrace.PruneDataDirByAge(dir, 24*7, now); err != nil {
 		t.Fatalf("prune trace history: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, old)); err == nil {
@@ -113,7 +117,7 @@ func TestHandleKeyEventTOpensTraceHistoryModal(t *testing.T) {
 func TestBuildTraceHistoryDetailTextMasksSensitiveIP(t *testing.T) {
 	t.Parallel()
 
-	entry := traceHistoryEntry{
+	entry := tuitrace.Entry{
 		CapturedAt:       time.Date(2026, 3, 22, 10, 1, 2, 0, time.UTC),
 		Interface:        "eth0",
 		PeerIP:           "203.0.113.10",
@@ -164,19 +168,19 @@ func TestBuildTraceHistoryDetailTextMasksSensitiveIP(t *testing.T) {
 func TestTraceHistoryCategoryFallbackFromScope(t *testing.T) {
 	t.Parallel()
 
-	if got := traceHistoryCategory(traceHistoryEntry{Preset: "SYN/RST only"}); got != "SYN/RST only" {
+	if got := traceHistoryCategory(tuitrace.Entry{Preset: "SYN/RST only"}); got != "SYN/RST only" {
 		t.Fatalf("expected explicit preset category, got=%q", got)
 	}
-	if got := traceHistoryCategory(traceHistoryEntry{Scope: "5-tuple"}); got != "5-tuple" {
+	if got := traceHistoryCategory(tuitrace.Entry{Scope: "5-tuple"}); got != "5-tuple" {
 		t.Fatalf("expected 5-tuple fallback, got=%q", got)
 	}
-	if got := traceHistoryCategory(traceHistoryEntry{Scope: "Custom (Peer+Port)"}); got != "Custom" {
+	if got := traceHistoryCategory(tuitrace.Entry{Scope: "Custom (Peer+Port)"}); got != "Custom" {
 		t.Fatalf("expected custom fallback, got=%q", got)
 	}
-	if got := traceHistoryCategory(traceHistoryEntry{Scope: "Peer only"}); got != "Peer only" {
+	if got := traceHistoryCategory(tuitrace.Entry{Scope: "Peer only"}); got != "Peer only" {
 		t.Fatalf("expected peer-only fallback, got=%q", got)
 	}
-	if got := traceHistoryCategory(traceHistoryEntry{}); got != "Peer + Port" {
+	if got := traceHistoryCategory(tuitrace.Entry{}); got != "Peer + Port" {
 		t.Fatalf("expected default category, got=%q", got)
 	}
 }
@@ -184,7 +188,7 @@ func TestTraceHistoryCategoryFallbackFromScope(t *testing.T) {
 func TestBuildTraceHistoryCompareTextShowsRequestedDiffs(t *testing.T) {
 	t.Parallel()
 
-	baseline := traceHistoryEntry{
+	baseline := tuitrace.Entry{
 		CapturedAt:        time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC),
 		PeerIP:            "203.0.113.10",
 		Port:              443,
@@ -200,7 +204,7 @@ func TestBuildTraceHistoryCompareTextShowsRequestedDiffs(t *testing.T) {
 		Captured:          100,
 		CapturedEstimated: false,
 	}
-	incident := traceHistoryEntry{
+	incident := tuitrace.Entry{
 		CapturedAt:        time.Date(2026, 3, 22, 10, 5, 0, 0, time.UTC),
 		PeerIP:            "203.0.113.10",
 		Port:              443,
@@ -237,7 +241,7 @@ func TestShowTraceHistoryCompareModalOpensComparePage(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	baseline := traceHistoryEntry{
+	baseline := tuitrace.Entry{
 		CapturedAt:       time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC),
 		PeerIP:           "203.0.113.10",
 		Port:             443,
@@ -248,7 +252,7 @@ func TestShowTraceHistoryCompareModalOpensComparePage(t *testing.T) {
 		SynAckCount:      18,
 		RstCount:         2,
 	}
-	incident := traceHistoryEntry{
+	incident := tuitrace.Entry{
 		CapturedAt:       time.Date(2026, 3, 22, 10, 5, 0, 0, time.UTC),
 		PeerIP:           "203.0.113.10",
 		Port:             443,

@@ -6,6 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
+	"github.com/BlackMetalz/holyf-network/internal/tui/diagnosis"
+	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
 )
 
 func TestAddActionLogPersistsAndRotatesHistory(t *testing.T) {
@@ -13,8 +17,9 @@ func TestAddActionLogPersistsAndRotatesHistory(t *testing.T) {
 
 	historyPath := filepath.Join(t.TempDir(), actionHistoryDirName, actionHistoryFileName)
 	a := &App{
-		actionLogs:        make([]string, 0, 32),
-		actionHistoryPath: historyPath,
+		actionLogger:    actionlog.NewLogger(historyPath),
+		diagnosisEngine: diagnosis.NewEngine(),
+		traceEngine:     livetrace.NewEngineLoaded(),
 	}
 
 	total := actionLogRotateLimit + 5
@@ -37,7 +42,7 @@ func TestAddActionLogPersistsAndRotatesHistory(t *testing.T) {
 		t.Fatalf("latest retained line should be evt-504, got: %q", lines[len(lines)-1])
 	}
 
-	recent := a.recentActionLogs(actionLogModalLimit)
+	recent := a.actionLogger.Recent(actionLogModalLimit)
 	if len(recent) != actionLogModalLimit {
 		t.Fatalf("recent log count mismatch: got=%d want=%d", len(recent), actionLogModalLimit)
 	}
@@ -54,13 +59,14 @@ func TestAddActionLogSkipsEmptyMessage(t *testing.T) {
 
 	historyPath := filepath.Join(t.TempDir(), actionHistoryDirName, actionHistoryFileName)
 	a := &App{
-		actionLogs:        make([]string, 0, 32),
-		actionHistoryPath: historyPath,
+		actionLogger:    actionlog.NewLogger(historyPath),
+		diagnosisEngine: diagnosis.NewEngine(),
+		traceEngine:     livetrace.NewEngineLoaded(),
 	}
 
 	a.addActionLog("   ")
 
-	if got := len(a.actionLogs); got != 0 {
+	if got := len(a.actionLogger.Recent(0)); got != 0 {
 		t.Fatalf("empty message should not be added to in-memory logs, got=%d", got)
 	}
 	if _, err := os.Stat(historyPath); err == nil {

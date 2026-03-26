@@ -5,14 +5,21 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
-	"github.com/BlackMetalz/holyf-network/internal/actions"
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/config"
+	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
+	"github.com/BlackMetalz/holyf-network/internal/tui/blocking"
+	"github.com/BlackMetalz/holyf-network/internal/tui/diagnosis"
+	tuilayout "github.com/BlackMetalz/holyf-network/internal/tui/layout"
+	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
+	tuioverlays "github.com/BlackMetalz/holyf-network/internal/tui/overlays"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
+	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
+	"github.com/BlackMetalz/holyf-network/internal/tui/traffic"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -58,18 +65,19 @@ type App struct {
 	// Local listener ports used to classify incoming vs outgoing flows.
 	listenPorts      map[int]struct{}
 	listenPortsKnown bool
-	topDirection     topConnectionDirection
+	topDirection     tuishared.TopConnectionDirection
 	// Current top-connection bandwidth sample metadata.
 	topSampleSeconds float64
 	topBandwidthNote string
-	topDiagnosis     *topDiagnosis
-	diagnosisHistory []diagnosisHistoryEntry
+	topDiagnosis     *tuishared.Diagnosis
+	diagnosisEngine  *diagnosis.Engine
+
 	// Selected row in Top Connections (within currently visible rows).
 	selectedTalkerIndex int
 	// Zero-based page index for Top Connections/Groups.
 	topPageIndex int
-	// Sort mode for Top Connections. Default: SortByBandwidth.
-	sortMode SortMode
+	// Sort mode for Top Connections. Default: tuishared.SortByBandwidth.
+	sortMode tuishared.SortMode
 	// Sort direction for Top Connections. true=DESC, false=ASC.
 	sortDesc bool
 	// Connection States panel sort direction by count. true=DESC, false=ASC.
@@ -82,58 +90,30 @@ type App struct {
 	statusNoteUntil time.Time
 	lastStatusNote  string
 
-	// Recent action history (for modal "h").
-	actionLogMu sync.Mutex
-	actionLogs  []string
-	// Persistent action history location (~/.holyf-network/history.log).
-	actionHistoryPath string
+	// Action log manager (session history and persistence)
+	actionLogger *actionlog.Logger
 
-	// Recent trace-packet history (for modal "t"), persisted as NDJSON.
-	traceHistoryMu      sync.Mutex
-	traceHistory        []traceHistoryEntry
-	traceHistoryLoaded  bool
-	traceHistoryDataDir string
 
-	// Active peer blocks for cleanup on shutdown.
-	blockMu      sync.Mutex
-	activeBlocks map[string]activeBlockEntry
+	// Live trace engine (captures, history, and pause state)
+	traceEngine *livetrace.Engine
+
+	// Blocking and firewall state
+	blockManager *blocking.Manager
 
 	// Auto-refresh state
 	stopChan    chan struct{}
 	refreshChan chan struct{}
 	paused      atomic.Bool
 	lastRefresh time.Time
-	// Tracks temporary auto-pause while the kill-peer flow is open.
-	killFlowAutoPaused bool
-	// Tracks temporary auto-pause while the trace-packet flow is open.
-	traceFlowAutoPaused bool
-	// Whether a trace-packet capture is currently running.
-	traceCaptureRunning bool
-	// Active cancel function for running trace-packet capture (if any).
-	traceCaptureCancel context.CancelFunc
 
 	// Zoom state
 	zoomed bool // Whether a panel is zoomed to fullscreen
 
-	healthThresholds         config.HealthThresholds
-	ifaceSpikeEMA            float64
-	ifaceSpikeCount          int
-	ifaceSpeedMbps           float64
-	ifaceSpeedKnown          bool
-	ifaceSpeedSample         bool
-	ifaceTrafficDisplayLevel healthLevel
-	ifaceTrafficWarnStreak   int
-	ifaceTrafficClearStreak  int
+	healthThresholds config.HealthThresholds
+	trafficManager   *traffic.Manager
 }
 
 var livePanelFocusOrder = []int{2, 0, 1, 3, 4} // 1=Top, 2=States, 3=Interface, 4=Conntrack, 5=Diagnosis
-
-type activeBlockEntry struct {
-	Spec      actions.PeerBlockSpec
-	StartedAt time.Time
-	ExpiresAt time.Time
-	Summary   string
-}
 
 // NewApp creates a new TUI application.
 func NewApp(
@@ -156,14 +136,14 @@ func NewApp(
 		appVersion:          version,
 		focusIndex:          2, // Top Connections panel is default active focus.
 		sensitiveIP:         sensitiveIP,
-		activeBlocks:        make(map[string]activeBlockEntry),
+		blockManager:        blocking.NewManager(),
+		trafficManager:      traffic.NewManager(healthThresholds),
+		diagnosisEngine:     diagnosis.NewEngine(),
+		traceEngine:         livetrace.NewEngine(defaultTraceHistoryDataDir()),
 		stopChan:            make(chan struct{}),
 		refreshChan:         make(chan struct{}, 1), // Buffered: so send never blocks
 		healthThresholds:    healthThresholds,
-		actionLogs:          make([]string, 0, 32),
-		actionHistoryPath:   defaultActionHistoryPath(),
-		traceHistory:        make([]traceHistoryEntry, 0, 32),
-		traceHistoryDataDir: defaultTraceHistoryDataDir(),
+		actionLogger:        actionlog.NewLogger(defaultActionHistoryPath()),
 		sortDesc:            true,
 		connStateSortDesc:   true,
 		bwTracker:           collector.NewBandwidthTracker(),
@@ -174,13 +154,13 @@ func NewApp(
 // Run starts the TUI event loop. This blocks until the user quits.
 func (a *App) Run() error {
 	// Build UI components
-	a.panels = createPanels()
-	a.statusBar = createStatusBar(a.ifaceName)
-	a.grid = createGrid(a.panels, a.statusBar)
-	helpModal, helpView := createHelpModal()
+	a.panels = tuilayout.CreatePanels()
+	a.statusBar = tuilayout.CreateStatusBar(a.ifaceName)
+	a.grid = tuilayout.CreateGrid(a.panels, a.statusBar)
+	helpModal, helpView := tuioverlays.CreateCenteredTextViewModal(" Help ", "")
 	a.helpView = helpView
 	if a.helpView != nil {
-		a.helpView.SetText(buildLiveHelpText(a))
+		a.helpView.SetText(tuioverlays.BuildLiveHelpText(tuioverlays.LiveHelpContext{FocusIndex: a.focusIndex, Direction: a.topDirection, GroupView: a.groupView}))
 	}
 
 	// tview.Pages lets us stack "pages" (layers) on top of each other.
@@ -190,7 +170,7 @@ func (a *App) Run() error {
 	a.pages.AddPage("help", helpModal, true, false) // resize=true, visible=false
 
 	// Set initial focus highlight
-	highlightPanel(a.panels, a.focusIndex)
+	tuilayout.HighlightPanel(a.panels, a.focusIndex)
 
 	// Load initial data into panels
 	a.refreshData()
@@ -219,7 +199,7 @@ func (a *App) startUpdateCheck() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		latestTag, ok := checkForUpdate(ctx, client, currentVersion)
+		latestTag, ok := tuishared.CheckForUpdate(ctx, client, currentVersion)
 		if !ok {
 			return
 		}
@@ -340,15 +320,9 @@ func (a *App) refreshInterfacePanel() {
 	if linkSpeedKnown && linkSpeedMbps > 0 {
 		linkSpeedBps = linkSpeedMbps * 1_000_000 / 8.0
 	}
-	a.ifaceSpeedSample = true
-	a.ifaceSpeedKnown = linkSpeedKnown
-	if linkSpeedKnown {
-		a.ifaceSpeedMbps = linkSpeedMbps
-	} else {
-		a.ifaceSpeedMbps = 0
-	}
-	spike := a.evaluateInterfaceSpike(rates, linkSpeedBps, linkSpeedKnown)
-	a.panels[1].SetText(renderInterfacePanel(rates, spike, interfaceSystemSnapshot{
+	a.trafficManager.SetSpeed(linkSpeedMbps, linkSpeedKnown)
+	spike := a.trafficManager.EvaluateInterfaceSpike(rates, linkSpeedBps, linkSpeedKnown)
+	a.panels[1].SetText(tuipanels.RenderInterfacePanel(rates, spike, tuishared.InterfaceSystemSnapshot{
 		Usage:      a.latestSystemUsage,
 		Ready:      a.systemUsageReady,
 		Err:        a.systemUsageErr,
@@ -360,7 +334,7 @@ func (a *App) refreshInterfacePanel() {
 // refreshData collects data from system and updates all panels.
 func (a *App) refreshData() {
 	a.lastRefresh = time.Now()
-	activeThresholds := a.activeHealthThresholds()
+	activeThresholds := a.trafficManager.ActiveHealthThresholds()
 
 	if usage, cpuStats, usageErr := collector.CollectSystemUsage(a.prevCPUStats); usageErr != nil {
 		a.systemUsageErr = shortStatus(usageErr.Error(), 96)
@@ -379,7 +353,7 @@ func (a *App) refreshData() {
 	} else {
 		rates := collector.CalculateConntrackRates(ctData, a.prevConntrack)
 		conntrackRates = &rates
-		a.panels[3].SetText(renderConntrackPanel(rates, activeThresholds.ConntrackPercent))
+		a.panels[3].SetText(tuipanels.RenderConntrackPanel(rates, activeThresholds.ConntrackPercent))
 		a.prevConntrack = &ctData
 	}
 
@@ -399,7 +373,7 @@ func (a *App) refreshData() {
 		a.panels[0].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
 		connDataAvailable = true
-		a.panels[0].SetText(renderConnectionsPanelWithStateSort(connData, retransRates, conntrackRates, activeThresholds, a.connStateSortDesc))
+		a.panels[0].SetText(tuipanels.RenderConnectionsPanelWithStateSort(connData, retransRates, conntrackRates, activeThresholds, a.connStateSortDesc))
 	}
 
 	a.ensureListenPortsKnown()
@@ -453,7 +427,7 @@ func (a *App) refreshData() {
 
 		a.latestTalkers = talkers
 		if connDataAvailable {
-			a.topDiagnosis = a.buildTopDiagnosis(connData, retransRates, conntrackRates)
+			a.topDiagnosis = diagnosis.BuildTopDiagnosis(connData, retransRates, conntrackRates, activeThresholds, talkers, a.sensitiveIP)
 			a.appendDiagnosisHistory(a.lastRefresh, a.topDiagnosis)
 		} else {
 			a.topDiagnosis = nil
@@ -499,11 +473,11 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 
 	case tcell.KeyEnter:
 		if a.focusIndex == 2 {
-			if a.topDirection == topConnectionOutgoing {
+			if a.topDirection == tuishared.TopConnectionOutgoing {
 				a.setStatusNote("Enter/k is disabled in OUT mode", 4*time.Second)
 				return nil
 			}
-			a.promptKillPeer()
+			blocking.PromptKillPeer(a, a.blockManager, nil)
 			return nil
 		}
 		return event
@@ -536,7 +510,7 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Rune() {
 		case 'q':
 			a.cancelTracePacketCapture()
-			a.cleanupActiveBlocks()
+			a.blockManager.CleanupActiveBlocks()
 			close(a.stopChan) // Signal goroutines to stop
 			a.app.Stop()
 			return nil
@@ -578,14 +552,14 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			a.promptTextFilter()
 			return nil
 		case 'k':
-			if a.focusIndex == 2 && a.topDirection == topConnectionOutgoing {
+			if a.focusIndex == 2 && a.topDirection == tuishared.TopConnectionOutgoing {
 				a.setStatusNote("Enter/k is disabled in OUT mode", 4*time.Second)
 				return nil
 			}
-			a.promptKillPeer()
+			blocking.PromptKillPeer(a, a.blockManager, nil)
 			return nil
 		case 'b':
-			a.promptBlockedPeers()
+			blocking.PromptBlockedPeers(a, a.blockManager)
 			return nil
 		case 'h':
 			a.promptActionLog()
@@ -661,12 +635,12 @@ func (a *App) focusNext() {
 	orderPos := indexInOrder(livePanelFocusOrder, a.focusIndex)
 	if orderPos < 0 {
 		a.focusIndex = livePanelFocusOrder[0]
-		highlightPanel(a.panels, a.focusIndex)
+		tuilayout.HighlightPanel(a.panels, a.focusIndex)
 		return
 	}
 	nextPos := (orderPos + 1) % len(livePanelFocusOrder)
 	a.focusIndex = livePanelFocusOrder[nextPos]
-	highlightPanel(a.panels, a.focusIndex)
+	tuilayout.HighlightPanel(a.panels, a.focusIndex)
 }
 
 // focusPrev moves focus to the previous panel (wraps around).
@@ -674,12 +648,12 @@ func (a *App) focusPrev() {
 	orderPos := indexInOrder(livePanelFocusOrder, a.focusIndex)
 	if orderPos < 0 {
 		a.focusIndex = livePanelFocusOrder[0]
-		highlightPanel(a.panels, a.focusIndex)
+		tuilayout.HighlightPanel(a.panels, a.focusIndex)
 		return
 	}
 	prevPos := (orderPos - 1 + len(livePanelFocusOrder)) % len(livePanelFocusOrder)
 	a.focusIndex = livePanelFocusOrder[prevPos]
-	highlightPanel(a.panels, a.focusIndex)
+	tuilayout.HighlightPanel(a.panels, a.focusIndex)
 }
 
 func (a *App) handleCtrlPanelShortcut(r rune) bool {
@@ -709,7 +683,7 @@ func (a *App) focusPanel(index int) {
 		return
 	}
 	a.focusIndex = index
-	highlightPanel(a.panels, a.focusIndex)
+	tuilayout.HighlightPanel(a.panels, a.focusIndex)
 }
 
 func indexInOrder(order []int, target int) int {
@@ -721,20 +695,20 @@ func indexInOrder(order []int, target int) int {
 	return -1
 }
 
-func directSortModeForRune(r rune) (SortMode, bool) {
+func directSortModeForRune(r rune) (tuishared.SortMode, bool) {
 	switch r {
 	case 'B':
-		return SortByBandwidth, true
+		return tuishared.SortByBandwidth, true
 	case 'C':
-		return SortByConns, true
+		return tuishared.SortByConns, true
 	case 'P':
-		return SortByPort, true
+		return tuishared.SortByPort, true
 	default:
-		return SortByBandwidth, false
+		return tuishared.SortByBandwidth, false
 	}
 }
 
-func (a *App) applyTopConnectionSortInput(mode SortMode) {
+func (a *App) applyTopConnectionSortInput(mode tuishared.SortMode) {
 	if a.sortMode == mode {
 		a.sortDesc = !a.sortDesc
 	} else {
@@ -747,7 +721,7 @@ func (a *App) applyTopConnectionSortInput(mode SortMode) {
 
 func (a *App) showHelp() {
 	if a.helpView != nil {
-		a.helpView.SetText(buildLiveHelpText(a))
+		a.helpView.SetText(tuioverlays.BuildLiveHelpText(tuioverlays.LiveHelpContext{FocusIndex: a.focusIndex, Direction: a.topDirection, GroupView: a.groupView}))
 	}
 	a.pages.SendToFront("help") // Ensure help renders above main after zoom reorder
 	a.pages.ShowPage("help")
@@ -788,13 +762,13 @@ func (a *App) toggleZoom() {
 // exitZoom returns to the normal 4-panel grid view.
 func (a *App) exitZoom() {
 	// Rebuild grid (panels were removed from old grid)
-	a.grid = createGrid(a.panels, a.statusBar)
+	a.grid = tuilayout.CreateGrid(a.panels, a.statusBar)
 
 	a.pages.RemovePage("main")
 	a.pages.AddPage("main", a.grid, true, true)
 
 	a.zoomed = false
-	highlightPanel(a.panels, a.focusIndex)
+	tuilayout.HighlightPanel(a.panels, a.focusIndex)
 	a.updateStatusBar()
 }
 
@@ -882,11 +856,11 @@ func (a *App) frontPageName() string {
 }
 
 func (a *App) linkSpeedStatusIndicator() string {
-	if !a.ifaceSpeedSample {
+	if !a.trafficManager.IfaceSpeedSample() {
 		return " [dim]LINK(sysfs):warming[white] |"
 	}
-	if a.ifaceSpeedKnown && a.ifaceSpeedMbps > 0 {
-		return fmt.Sprintf(" [aqua]LINK(sysfs):%.0fMb/s[white] |", a.ifaceSpeedMbps)
+	if a.trafficManager.IfaceSpeedKnown() && a.trafficManager.IfaceSpeedMbps() > 0 {
+		return fmt.Sprintf(" [aqua]LINK(sysfs):%.0fMb/s[white] |", a.trafficManager.IfaceSpeedMbps())
 	}
 	return " [yellow]LINK(sysfs):UNKNOWN[white] |"
 }
@@ -929,7 +903,7 @@ func (a *App) statusHotkeysForPage(page string) (styled string, plain string) {
 	case "blocked-peers-remove-result", "block-summary":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return liveMainStatusHotkeys(a.focusIndex, a.topDirection)
+		return tuioverlays.LiveMainStatusHotkeys(a.focusIndex, a.topDirection)
 	}
 }
 
@@ -952,4 +926,81 @@ func (a *App) setStatusNote(note string, ttl time.Duration) {
 	}
 	a.statusNoteUntil = time.Now().Add(ttl)
 	a.updateStatusBar()
+}
+
+func (a *App) promptSocketQueueExplain() {
+	closeModal := func() {
+		a.pages.RemovePage("socket-queue-explain")
+		a.app.SetFocus(a.panels[a.focusIndex])
+		a.updateStatusBar()
+	}
+
+	modal := tview.NewModal().
+		SetText(tuioverlays.BuildSocketQueueExplainText(false)).
+		AddButtons([]string{"Close"}).
+		SetDoneFunc(func(_ int, _ string) {
+			closeModal()
+		})
+	modal.SetTitle(" Send-Q / Recv-Q Explain ")
+	modal.SetBorder(true)
+	modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			closeModal()
+			return nil
+		}
+		if event.Key() == tcell.KeyRune && event.Rune() == 'q' {
+			closeModal()
+			return nil
+		}
+		return event
+	})
+
+	a.pages.RemovePage("socket-queue-explain")
+	a.pages.AddPage("socket-queue-explain", modal, true, true)
+	a.updateStatusBar()
+	a.app.SetFocus(modal)
+}
+
+func (a *App) promptInterfaceStatsExplain() {
+	closeModal := func() {
+		a.pages.RemovePage("interface-stats-explain")
+		a.app.SetFocus(a.panels[a.focusIndex])
+		a.updateStatusBar()
+	}
+
+	modal := tview.NewModal().
+		SetText(tuioverlays.BuildInterfaceStatsExplainText()).
+		AddButtons([]string{"Close"}).
+		SetDoneFunc(func(_ int, _ string) {
+			closeModal()
+		})
+	modal.SetTitle(" Interface Stats Explain ")
+	modal.SetBorder(true)
+	modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			closeModal()
+			return nil
+		}
+		if event.Key() == tcell.KeyRune && event.Rune() == 'q' {
+			closeModal()
+			return nil
+		}
+		return event
+	})
+
+	a.pages.RemovePage("interface-stats-explain")
+	a.pages.AddPage("interface-stats-explain", modal, true, true)
+	a.updateStatusBar()
+	a.app.SetFocus(modal)
+}
+
+func (a *App) renderDiagnosisPanel() {
+	if len(a.panels) <= 4 || a.panels[4] == nil {
+		return
+	}
+
+	_, _, width, _ := a.panels[4].GetInnerRect()
+	a.panels[4].SetText(tuipanels.RenderDiagnosisPanel(a.topDiagnosis, width))
 }

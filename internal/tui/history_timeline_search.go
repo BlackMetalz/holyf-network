@@ -6,15 +6,11 @@ import (
 	"time"
 
 	"github.com/BlackMetalz/holyf-network/internal/history"
+	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
+	tuireplay "github.com/BlackMetalz/holyf-network/internal/tui/replay"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
-
-type timelineSearchResult struct {
-	SnapshotIndex int
-	CapturedAt    time.Time
-	MatchCount    int
-}
 
 func (h *HistoryApp) promptTimelineSearch() {
 	if len(h.refs) == 0 {
@@ -111,29 +107,19 @@ func (h *HistoryApp) startTimelineSearch(query string) {
 	}(query, refs)
 }
 
-func (h *HistoryApp) scanTimelineMatches(query string, refs []history.SnapshotRef) []timelineSearchResult {
+func (h *HistoryApp) scanTimelineMatches(query string, refs []history.SnapshotRef) []tuireplay.SearchResult {
 	query = strings.TrimSpace(query)
 	if query == "" || len(refs) == 0 {
 		return nil
 	}
 
-	results := make([]timelineSearchResult, 0, 16)
-	for i, ref := range refs {
+	return tuireplay.ScanTimelineMatches(refs, func(ref history.SnapshotRef) (int, error) {
 		record, err := history.ReadSnapshot(ref)
 		if err != nil {
-			continue
+			return 0, err
 		}
-		matchCount := len(filterHistoryGroupsByText(h.rowsForDirection(record, h.topDirection), query))
-		if matchCount == 0 {
-			continue
-		}
-		results = append(results, timelineSearchResult{
-			SnapshotIndex: i,
-			CapturedAt:    record.CapturedAt,
-			MatchCount:    matchCount,
-		})
-	}
-	return results
+		return len(tuipanels.FilterHistoryGroupsByText(h.rowsForDirection(record, h.topDirection), query)), nil
+	})
 }
 
 func (h *HistoryApp) showTimelineSearchResults() {
