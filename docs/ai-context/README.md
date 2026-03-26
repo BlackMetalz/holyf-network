@@ -17,8 +17,8 @@ This folder is the fastest way for a new AI agent (or new teammate, probably not
 4. `internal/tui/app_core.go`
 5. `internal/tui/history_app.go`
 6. `internal/history/*.go`
-7. `internal/tui/app_top_connections.go`
-8. `internal/tui/app_blocking_kill_flow.go`
+7. `internal/tui/app_connections.go`
+8. `internal/tui/blocking/runtime.go`
 9. `internal/actions/peer_blocker.go`
 10. `internal/collector/*.go`
 

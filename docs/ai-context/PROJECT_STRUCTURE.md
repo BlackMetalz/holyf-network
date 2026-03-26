@@ -37,25 +37,20 @@ This is the current high-signal layout (non-essential folders omitted):
 │   │   └── interface.go
 │   └── tui/
 │       ├── app_core.go
-│       ├── app_top_connections.go
-│       ├── top_diagnosis.go
-│       ├── app_diagnosis_history.go
-│       ├── app_history.go
-│       ├── app_shared.go
-│       ├── app_blocking_state.go
-│       ├── app_blocking_targets.go
-│       ├── app_blocking_kill_flow.go
-│       ├── app_blocking_runtime.go
-│       ├── app_blocking_blocked_modal.go
-│       ├── layout.go
+│       ├── app_connections.go
+│       ├── app_trace_packet.go
+│       ├── app_trace_history.go
 │       ├── history_app.go
-│       ├── history_keys.go
-│       ├── history_layout.go
-│       ├── help.go
-│       ├── panel_connections.go
-│       ├── panel_interface.go
-│       ├── panel_conntrack.go
-│       └── panel_top_connections.go
+│       ├── blocking/
+│       ├── diagnosis/
+│       ├── layout/
+│       ├── livetrace/
+│       ├── overlays/
+│       ├── panels/
+│       ├── replay/
+│       ├── shared/
+│       ├── trace/
+│       └── traffic/
 ├── .github/
 │   └── workflows/
 │       └── release.yml
@@ -104,18 +99,24 @@ This is the current high-signal layout (non-essential folders omitted):
 
 - `internal/tui`
   - App state machine, keyboard handling, modal flows, rendering panels.
-  - Grouped by concern:
-    - `app_core.go`: lifecycle, refresh loop, global key handling, status bar.
-    - `app_top_connections.go`: top-connection selection/filter/sort/search orchestration + panel layout for note/preview.
-    - `top_diagnosis.go`: rule-based live diagnosis synthesis for the dedicated Diagnosis panel.
-    - `app_diagnosis_history.go`: in-memory diagnosis change history + modal (`d`).
-    - `app_blocking_*.go`: block/kill flows and blocked peers modal.
-    - `app_history.go`: action log modal + persistence (`~/.holyf-network/history.log`).
-    - `history_*.go`: read-only replay mode UI and key handling.
-    - `panel_*.go`: pure rendering text for each panel.
-      - `panel_top_connections.go` renders live `View=GROUP` by `(peer, process)`, applies the top-20 group cap, bandwidth note, and selected-row preview (including grouped state breakdown in the footer preview).
-      - `panel_diagnosis.go` renders the live Diagnosis panel as a fixed decision card (`Issue`, `Scope`, `Signal`, `Likely`, `Check`).
-    - `layout.go`: grid composition.
+  - Root files (5 source):
+    - `app_core.go`: lifecycle, refresh loop, global key handling, status bar, shared constants/utils, UIContext adapter, diagnosis history modal, action log modal.
+    - `app_connections.go`: top-connection selection/filter/sort/search orchestration + panel layout for note/preview + kill target selection.
+    - `app_trace_packet.go`: packet trace capture UI (form, progress, result display).
+    - `app_trace_history.go`: trace history persistence/modals + trace packet analyzer logic.
+    - `history_app.go`: read-only replay mode UI, key handling, UIContext, navigation, timeline search.
+  - Sub-packages by concern:
+    - `blocking/`: block/kill flow manager, runtime control, target definitions, UI context.
+    - `diagnosis/`: rule-based live diagnosis synthesis engine.
+    - `layout/`: grid composition for live and replay modes.
+    - `overlays/`: help text, modal, text overlay components.
+    - `panels/`: pure rendering for each panel (connections, conntrack, diagnosis, top connections, history aggregate).
+    - `replay/`: historical data replay/timeline UI (search, navigation, trace visualization).
+    - `shared/`: shared utilities (formatting, health checks, conntrack stats, trace formatting, states, update checks).
+    - `trace/`: trace data storage and rendering.
+    - `traffic/`: traffic manager and monitoring.
+    - `livetrace/`: live packet trace engine.
+    - `actionlog/`: action/event logging.
 
 ## Test Map
 

@@ -64,7 +64,7 @@ Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).
 
 ### 2.1) Active mitigation path (block vs kill flow)
 
-Mitigation is implemented in `internal/tui/app_blocking_runtime.go` and `internal/actions/peer_blocker.go`.
+Mitigation is implemented in `internal/tui/blocking/runtime.go` and `internal/actions/peer_blocker.go`.
 
 Execution paths:
 
@@ -315,7 +315,7 @@ Single format policy:
 
 ## 5) Replay TUI (Read-only)
 
-Package: `internal/tui/history_*.go` + `cmd/replay.go`
+Package: `internal/tui/history_app.go` + `internal/tui/replay/` + `cmd/replay.go`
 
 State includes:
 
@@ -360,7 +360,7 @@ Behavior constraints:
 
 ## 6) UI Composition
 
-### Live mode (`layout.go`)
+### Live mode (`layout/live.go`)
 
 - Left: `Top Connections`
 - Right stack: `Connection States`, `Interface Stats`, `Conntrack`, `Diagnosis`
@@ -370,7 +370,7 @@ Behavior constraints:
 - Top Connections can also render a footer preview for the selected row when panel height allows.
 - `Diagnosis` is a separate live panel with an operator card: `Issue`, `Scope`, `Signal`, `Likely Cause`, `Confidence`, `Why`, and `Next Actions`.
 
-### Replay mode (`history_layout.go`)
+### Replay mode (`layout/replay.go`)
 
 - Single panel: `Connection History`
 - Bottom: replay status bar
@@ -410,6 +410,6 @@ Behavior constraints:
 
 1. Put read-only scraping into `internal/collector`.
 2. Put side effects into `internal/actions` or `internal/history` (for snapshot persistence).
-3. Keep renderer files (`panel_*.go`) side-effect free.
-4. Keep interaction flow split by mode (`app_*` for live, `history_*` for replay).
+3. Keep renderer files (`panels/`) side-effect free.
+4. Keep interaction flow split by mode (`app_*` for live, `history_app.go` + `replay/` for replay).
 5. Add tests for parsing/indexing/retention and key handling regressions.
