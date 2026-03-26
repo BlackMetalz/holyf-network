@@ -430,23 +430,23 @@ func (h *HistoryApp) renderPanel() {
 		iface = "unknown"
 	}
 
-	header := fmt.Sprintf(
-		"  [dim]%s | %s | %s | rows=in:%d out:%d | dir=%s | view=%s | scope=%s | range=%s[white]\n",
-		h.headerSnapshotLabel(),
-		captured,
-		iface,
-		len(rec.IncomingGroups),
-		len(rec.OutgoingGroups),
-		h.topDirection.Label(),
-		h.replayViewMode.Label(),
-		h.replayScopeLabel(),
-		h.replayRangeLabel(),
-	)
+	var headerParts []string
+	headerParts = append(headerParts, h.headerSnapshotLabel())
+	headerParts = append(headerParts, captured)
+	headerParts = append(headerParts, iface)
+	headerParts = append(headerParts, fmt.Sprintf("IN:%d OUT:%d", len(rec.IncomingGroups), len(rec.OutgoingGroups)))
 	if rec.BandwidthAvailable && rec.SampleSeconds > 0 {
-		header += fmt.Sprintf("  [dim]BW sample: %.1fs (conntrack delta)[white]\n", rec.SampleSeconds)
-	} else {
-		header += "  [dim]BW sample: unavailable[white]\n"
+		headerParts = append(headerParts, fmt.Sprintf("BW:%.0fs", rec.SampleSeconds))
 	}
+	scopeLabel := h.replayScopeLabel()
+	if scopeLabel != "ALL" {
+		headerParts = append(headerParts, fmt.Sprintf("scope=%s", scopeLabel))
+	}
+	rangeLabel := h.replayRangeLabel()
+	if rangeLabel != "ALL" {
+		headerParts = append(headerParts, fmt.Sprintf("range=%s", rangeLabel))
+	}
+	header := fmt.Sprintf("  [dim]%s[white]\n", strings.Join(headerParts, " | "))
 	if strings.TrimSpace(h.snapshotMessage) != "" {
 		header += fmt.Sprintf("  [yellow]%s[white]\n", shortStatus(h.snapshotMessage, 160))
 	}
@@ -603,41 +603,36 @@ func (h *HistoryApp) updateStatusBar() {
 		followColor = "green"
 	}
 
-	stateText := ""
-	if h.sensitiveIP {
-		stateText += " [yellow]IP MASK[white] |"
-	}
-	if h.traceOnlyMode {
-		stateText += " [aqua]TRACE-ONLY[white] |"
-	} else {
-		stateText += fmt.Sprintf(" [aqua]DIR-%s[white] |", h.topDirection.Label())
-		if h.skipEmpty {
-			stateText += " [aqua]SKIP-EMPTY[white] |"
-		}
-	}
-	stateText += fmt.Sprintf(" [aqua]VIEW-%s[white] |", h.replayViewMode.Label())
-	if h.traceTimelineAssociated > 0 {
-		stateText += fmt.Sprintf(" [aqua]TRACE %d/%d[white] |", tuireplay.CurrentTraceTimelineCount(h), h.traceTimelineAssociated)
-	}
+	notePart := ""
 	if time.Now().Before(h.statusNoteUntil) && h.statusNote != "" {
-		stateText += fmt.Sprintf(" [yellow]%s[white] |", h.statusNote)
+		notePart = fmt.Sprintf(" | [yellow]%s[white]", h.statusNote)
 	} else if strings.TrimSpace(h.lastStatusNote) != "" {
-		stateText += fmt.Sprintf(" [dim]Last:%s[white] |", shortStatus(h.lastStatusNote, 72))
+		notePart = fmt.Sprintf(" | [dim]%s[white]", shortStatus(h.lastStatusNote, 72))
 	}
 
-	line1 := fmt.Sprintf(
-		" [yellow]history[white] |%s %s%s | Files:%d | Corrupt:%d | [%s]%s[white] | [dim]holyf-network %s[white]",
-		stateText,
+	corruptPart := ""
+	if h.corruptSkipped > 0 {
+		corruptPart = fmt.Sprintf(" | [red]Corrupt:%d[white]", h.corruptSkipped)
+	}
+
+	tracePart := ""
+	if h.traceTimelineAssociated > 0 {
+		tracePart = fmt.Sprintf(" | [aqua]TRACE %d/%d[white]", tuireplay.CurrentTraceTimelineCount(h), h.traceTimelineAssociated)
+	}
+
+	h.statusBar.SetText(fmt.Sprintf(
+		" [yellow]replay[white] | %s%s%s%s%s | Files:%d | [%s]%s[white] | %s | [dim]%s[white]",
 		snapshotPart,
+		notePart,
 		usagePart,
+		tracePart,
+		corruptPart,
 		h.filesCount,
-		h.corruptSkipped,
 		followColor,
 		followState,
+		hotkeysStyled,
 		h.appVersion,
-	)
-	line2 := fmt.Sprintf(" [dim]keys:[white] %s", hotkeysStyled)
-	h.statusBar.SetText(line1 + "\n" + line2)
+	))
 }
 
 func (h *HistoryApp) frontPageName() string {

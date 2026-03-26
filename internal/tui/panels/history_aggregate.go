@@ -14,33 +14,24 @@ import (
 func RenderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textFilter string, maxRows int, sensitiveIP bool, selectedIndex int, sortMode SortMode, sortDesc bool, direction topConnectionDirection, skipEmpty bool, thresholds config.HealthThresholds, bandwidthAvailable bool) string {
 	var sb strings.Builder
 
-	portChip := "Port Filter = ALL"
+	var chips []string
+	chips = append(chips, fmt.Sprintf("[aqua]Dir=%s[white]", direction.Label()))
+	chips = append(chips, fmt.Sprintf("[yellow]Sort=%s[white]", tuishared.SortLabelWithDirection(sortMode, sortDesc)))
 	if strings.TrimSpace(portFilter) != "" {
-		portChip = "Port Filter = " + strings.TrimSpace(portFilter)
+		chips = append(chips, fmt.Sprintf("[yellow]Port=%s[white]", strings.TrimSpace(portFilter)))
 	}
-	maskChip := "OFF"
-	if sensitiveIP {
-		maskChip = "ON"
-	}
-	searchChip := "ALL"
 	if strings.TrimSpace(textFilter) != "" {
-		searchChip = tuishared.TruncateRight(strings.TrimSpace(textFilter), 20)
+		chips = append(chips, fmt.Sprintf("[yellow]Search=%s[white]", tuishared.TruncateRight(strings.TrimSpace(textFilter), 20)))
 	}
-	skipChip := "OFF"
+	if sensitiveIP {
+		chips = append(chips, "[yellow]MaskIP[white]")
+	}
 	if skipEmpty {
-		skipChip = "ON"
+		chips = append(chips, "[yellow]SkipEmpty[white]")
 	}
+	chips = append(chips, "[aqua]View=AGG[white]")
 
-	sb.WriteString(fmt.Sprintf(
-		"  [dim]Chips:[white] [yellow]%s[white] | [yellow]MaskIP=%s[white] | [yellow]Search=%s[white] | [yellow]Sort=%s[white] | [yellow]SkipEmpty=%s[white] | [aqua]Dir=%s[white] | [aqua]View=AGG[white]\n",
-		portChip,
-		maskChip,
-		searchChip,
-		tuishared.SortLabelWithDirection(sortMode, sortDesc),
-		skipChip,
-		direction.Label(),
-	))
-	sb.WriteString(historyAggregateHintLine(skipEmpty))
+	sb.WriteString(fmt.Sprintf("  %s\n", strings.Join(chips, " | ")))
 	if !bandwidthAvailable {
 		sb.WriteString("\n  [yellow]Bandwidth counters unavailable in this snapshot[white]")
 	}
@@ -74,11 +65,11 @@ func RenderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 	}
 
 	const (
-		peerColWidth  = 24
+		peerColWidth  = 20
 		portColWidth  = 6
-		procColWidth  = 14
-		connsColWidth = 6
-		queueColWidth = 7
+		procColWidth  = 10
+		connsColWidth = 5
+		queueColWidth = 6
 		bwColWidth    = 9
 	)
 	portHeader := "LPORT"
@@ -149,14 +140,6 @@ func RenderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 
 	sb.WriteString(fmt.Sprintf("\n  [dim]Showing %d of %d aggregate rows[white]", min(len(items), maxRows), len(items)))
 	return sb.String()
-}
-
-func historyAggregateHintLine(skipEmpty bool) string {
-	base := "  [dim]Use ↑/↓ select, o=toggle IN/OUT, g=trace view, h=trace history, t=jump-time, /=snapshot search, Shift+S=timeline search, f=port/clear, Shift+B/C/P sort (toggle DESC/ASC), i/Shift+I=explain qcols, L=follow, "
-	if skipEmpty {
-		return base + "]=next active snapshot, [=previous active snapshot, x=show all snapshots[white]"
-	}
-	return base + "]=next snapshot, [=previous snapshot, x=skip empty snapshots[white]"
 }
 
 func SortHistoryGroups(rows []history.SnapshotGroup, mode SortMode, desc bool) {

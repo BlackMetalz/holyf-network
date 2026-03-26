@@ -9,15 +9,12 @@ import (
 )
 
 // Braille dot patterns for plotting. Each Braille character is a 2x4 dot matrix.
-// Dot positions:
 //
 //	col 0   col 1     bits:
 //	row 0   row 0     0x01  0x08
 //	row 1   row 1     0x02  0x10
 //	row 2   row 2     0x04  0x20
 //	row 3   row 3     0x40  0x80
-//
-// Unicode Braille: U+2800 + dot_pattern
 const brailleBase = 0x2800
 
 var brailleDots = [4][2]rune{
@@ -27,8 +24,9 @@ var brailleDots = [4][2]rune{
 	{0x40, 0x80}, // row 3 (bottom)
 }
 
-// RenderTimeSeriesChart renders a time-series chart with Y-axis, X-axis,
-// and continuous Braille line plotting.
+// RenderTimeSeriesChart renders a filled area chart using Braille characters.
+// Each column is filled from the bottom (0) up to the data value, creating
+// a solid filled shape that reads as a continuous line.
 func RenderTimeSeriesChart(
 	buffer *tuishared.RingBuffer,
 	title string,
@@ -47,7 +45,6 @@ func RenderTimeSeriesChart(
 
 	var sb strings.Builder
 
-	// Title line with current value
 	currentLabel := "warming..."
 	if hasValue {
 		currentLabel = formatBandwidthRate(current)
@@ -62,7 +59,7 @@ func RenderTimeSeriesChart(
 	// Chart area dimensions
 	yLabelWidth := 8
 	chartWidth := width - yLabelWidth - 2
-	chartHeight := height - 5 // title(2) + x-axis(2) + margin(1)
+	chartHeight := height - 5
 	if chartWidth < 10 {
 		chartWidth = 10
 	}
@@ -70,11 +67,10 @@ func RenderTimeSeriesChart(
 		chartHeight = 3
 	}
 
-	// Braille resolution
 	dotsWide := chartWidth * 2
 	dotsTall := chartHeight * 4
 
-	// Find max for Y-axis scaling
+	// Find max for Y-axis
 	maxVal := 0.0
 	for _, v := range values {
 		if v > maxVal {
@@ -86,7 +82,7 @@ func RenderTimeSeriesChart(
 	}
 	maxVal = niceMax(maxVal)
 
-	// Build Braille canvas
+	// Build canvas
 	canvas := make([][]rune, chartHeight)
 	for r := range canvas {
 		canvas[r] = make([]rune, chartWidth)
@@ -106,47 +102,46 @@ func RenderTimeSeriesChart(
 		}
 	}
 
-	// Map each real data point to a dot-X position, then draw lines between them.
-	// This ensures the line is continuous regardless of how many samples we have.
+	// For each dot column, interpolate the Y value from the data points
+	// and fill from bottom (0) up to that Y value.
 	n := len(values)
-	for i := 0; i < n; i++ {
-		// Map sample index to dot X position (right-aligned: last sample = rightmost)
-		dotX := 0
-		if n > 1 {
-			dotX = i * (dotsWide - 1) / (n - 1)
+	for dotX := 0; dotX < dotsWide; dotX++ {
+		// Map dot column back to fractional data index
+		var val float64
+		if n == 1 {
+			val = values[0]
 		} else {
-			dotX = dotsWide - 1
+			fIdx := float64(dotX) / float64(dotsWide-1) * float64(n-1)
+			idx0 := int(fIdx)
+			idx1 := idx0 + 1
+			if idx1 >= n {
+				idx1 = n - 1
+			}
+			frac := fIdx - float64(idx0)
+			val = values[idx0]*(1-frac) + values[idx1]*frac
 		}
 
-		// Map value to dot Y position (0=bottom, dotsTall-1=top)
-		dotY := int(values[i] / maxVal * float64(dotsTall-1))
-		if dotY < 0 {
-			dotY = 0
+		// Map value to dot Y (0=bottom, dotsTall-1=top)
+		topDotY := int(val / maxVal * float64(dotsTall-1))
+		if topDotY < 0 {
+			topDotY = 0
 		}
-		if dotY >= dotsTall {
-			dotY = dotsTall - 1
+		if topDotY >= dotsTall {
+			topDotY = dotsTall - 1
 		}
 
-		setDot(dotX, dotY)
-
-		// Draw line from previous point to this point
-		if i > 0 {
-			prevDotX := 0
-			if n > 1 {
-				prevDotX = (i - 1) * (dotsWide - 1) / (n - 1)
-			}
-			prevDotY := int(values[i-1] / maxVal * float64(dotsTall-1))
-			if prevDotY < 0 {
-				prevDotY = 0
-			}
-			if prevDotY >= dotsTall {
-				prevDotY = dotsTall - 1
-			}
-			bresenhamLine(prevDotX, prevDotY, dotX, dotY, setDot)
+		// Fill column from bottom up to topDotY — creates solid area
+		// Only fill the top 2 dots to make it look like a line, not a filled bar
+		startY := topDotY - 1
+		if startY < 0 {
+			startY = 0
+		}
+		for dotY := startY; dotY <= topDotY; dotY++ {
+			setDot(dotX, dotY)
 		}
 	}
 
-	// Render chart rows with Y-axis labels
+	// Render chart with Y-axis labels
 	for row := 0; row < chartHeight; row++ {
 		if row == 0 {
 			sb.WriteString(fmt.Sprintf("  %6s│", formatAxisValue(maxVal)))
@@ -169,7 +164,7 @@ func RenderTimeSeriesChart(
 		sb.WriteString("\n")
 	}
 
-	// X-axis line
+	// X-axis
 	sb.WriteString("        └")
 	sb.WriteString(strings.Repeat("─", chartWidth))
 	sb.WriteString("\n")
@@ -212,44 +207,6 @@ func RenderTimeSeriesChart(
 	return sb.String()
 }
 
-// bresenhamLine draws a line between two points, calling setDot for each pixel.
-func bresenhamLine(x0, y0, x1, y1 int, setDot func(x, y int)) {
-	dx := x1 - x0
-	dy := y1 - y0
-	if dx < 0 {
-		dx = -dx
-	}
-	if dy < 0 {
-		dy = -dy
-	}
-
-	sx := 1
-	if x0 > x1 {
-		sx = -1
-	}
-	sy := 1
-	if y0 > y1 {
-		sy = -1
-	}
-
-	err := dx - dy
-	for {
-		setDot(x0, y0)
-		if x0 == x1 && y0 == y1 {
-			break
-		}
-		e2 := 2 * err
-		if e2 > -dy {
-			err -= dy
-			x0 += sx
-		}
-		if e2 < dx {
-			err += dx
-			y0 += sy
-		}
-	}
-}
-
 // niceMax rounds up to a "nice" number for Y-axis labels.
 func niceMax(v float64) float64 {
 	if v <= 0 {
@@ -282,7 +239,7 @@ func formatAxisValue(v float64) string {
 }
 
 // resampleValues resamples input values to target count using nearest-neighbor.
-// Kept for sparkline use (panels/sparkline.go).
+// Used by sparkline renderer.
 func resampleValues(values []float64, targetCount int) []float64 {
 	if len(values) == 0 || targetCount <= 0 {
 		return nil

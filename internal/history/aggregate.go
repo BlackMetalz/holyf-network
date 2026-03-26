@@ -38,7 +38,7 @@ func AggregateConnectionsByDirection(conns []collector.Connection, direction Agg
 		peerIP := normalizePeerIP(conn.RemoteIP)
 		procName := strings.TrimSpace(conn.ProcName)
 		if procName == "" {
-			procName = "unknown"
+			procName = "-"
 		}
 		servicePort := aggregateServicePort(conn, direction)
 		key := aggregateKey{

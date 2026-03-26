@@ -224,8 +224,8 @@ func TestHistoryReplayFallsBackToTraceOnlyMode(t *testing.T) {
 	}
 
 	status := h.statusBar.GetText(true)
-	if !strings.Contains(status, "TRACE-ONLY") || !strings.Contains(status, "Trace: 1/1") {
-		t.Fatalf("expected trace-only status bar markers, got=%q", status)
+	if !strings.Contains(status, "Trace: 1/1") {
+		t.Fatalf("expected trace snapshot marker in status bar, got=%q", status)
 	}
 }
 
@@ -1008,13 +1008,13 @@ func TestHistoryAggregateHintLineChangesWithSkipEmpty(t *testing.T) {
 	thresholds := config.DefaultHealthThresholds()
 
 	withSkip := tuipanels.RenderHistoryAggregatePanel(rows, "", "", 20, false, 0, tuishared.SortByBandwidth, true, tuishared.TopConnectionIncoming, true, thresholds, true)
-	if !strings.Contains(withSkip, "]=next active snapshot") || !strings.Contains(withSkip, "x=show all snapshots") {
-		t.Fatalf("expected active hint line when skip-empty on, got=%q", withSkip)
+	if !strings.Contains(withSkip, "SkipEmpty") {
+		t.Fatalf("expected SkipEmpty chip when skip-empty on, got=%q", withSkip)
 	}
 
 	withoutSkip := tuipanels.RenderHistoryAggregatePanel(rows, "", "", 20, false, 0, tuishared.SortByBandwidth, true, tuishared.TopConnectionIncoming, false, thresholds, true)
-	if !strings.Contains(withoutSkip, "]=next snapshot") || !strings.Contains(withoutSkip, "x=skip empty snapshots") {
-		t.Fatalf("expected raw hint line when skip-empty off, got=%q", withoutSkip)
+	if strings.Contains(withoutSkip, "SkipEmpty") {
+		t.Fatalf("expected no SkipEmpty chip when skip-empty off, got=%q", withoutSkip)
 	}
 }
 
@@ -1046,7 +1046,7 @@ func TestHistoryStatusBarKeepsLastMessageAfterTTL(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 	h.updateStatusBar()
 	text := h.statusBar.GetText(true)
-	if !strings.Contains(text, "Last:test message") {
+	if !strings.Contains(text, "test message") {
 		t.Fatalf("status bar should keep last message after ttl, got=%q", text)
 	}
 }
