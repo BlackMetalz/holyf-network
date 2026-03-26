@@ -2,6 +2,7 @@ package panels
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/BlackMetalz/holyf-network/internal/collector"
@@ -99,7 +100,12 @@ func renderSystemUsageLine(sys interfaceSystemSnapshot) string {
 		memText = formatMemoryBytes(sys.Usage.Memory.RSSBytes) + " RSS"
 	}
 
-	line := fmt.Sprintf("  [bold]App Usage:[white] CPU %s | Mem %s", cpuText, memText)
+	loadAvg := readLoadAvg()
+	loadPart := ""
+	if loadAvg != "" {
+		loadPart = fmt.Sprintf(" | Load %s", loadAvg)
+	}
+	line := fmt.Sprintf("  [bold]App Usage:[white] CPU %s | Mem %s%s", cpuText, memText, loadPart)
 	if errText != "" {
 		line += fmt.Sprintf(" [yellow]stale (%s)[white]", errText)
 	}
@@ -153,9 +159,18 @@ func formatMemoryBytes(bytes uint64) string {
 }
 
 func formatCPUCores(cores float64) string {
-	unit := "cores"
-	if cores >= 0.995 && cores <= 1.005 {
-		unit = "core"
+	return fmt.Sprintf("%.2f", cores)
+}
+
+// readLoadAvg reads /proc/loadavg and returns "1m, 5m, 15m" format.
+func readLoadAvg() string {
+	data, err := os.ReadFile("/proc/loadavg")
+	if err != nil {
+		return ""
 	}
-	return fmt.Sprintf("%.2f %s", cores, unit)
+	fields := strings.Fields(strings.TrimSpace(string(data)))
+	if len(fields) < 3 {
+		return ""
+	}
+	return fmt.Sprintf("%s, %s, %s", fields[0], fields[1], fields[2])
 }

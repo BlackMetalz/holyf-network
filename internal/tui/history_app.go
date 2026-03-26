@@ -590,7 +590,7 @@ func (h *HistoryApp) updateStatusBar() {
 	if h.currentRecord.RSSBytes > 0 {
 		rss := float64(h.currentRecord.RSSBytes) / (1024 * 1024)
 		if h.currentRecord.CPUCores > 0 {
-			usagePart = fmt.Sprintf(" | [aqua]CPU:%.2fc RSS:%.1fMB[white]", h.currentRecord.CPUCores, rss)
+			usagePart = fmt.Sprintf(" | [aqua]CPU:%.2f RSS:%.1fMB[white]", h.currentRecord.CPUCores, rss)
 		} else {
 			usagePart = fmt.Sprintf(" | [aqua]RSS:%.1fMB[white]", rss)
 		}
