@@ -518,6 +518,7 @@ func newDaemonRunCmd() *cobra.Command {
 
 			bwTracker := collector.NewBandwidthTracker()
 			ssBWTracker := collector.NewSocketBandwidthTracker()
+			var previousCPU *collector.CPUStats
 
 			version := resolveBuildVersion(Version)
 			fmt.Printf("holyf-network daemon started | iface=%s interval=%ds top-limit=%d data-dir=%s retention=%dh\n",
@@ -547,6 +548,12 @@ func newDaemonRunCmd() *cobra.Command {
 			}
 
 			capture := func(ts time.Time) {
+				// Collect process CPU/memory usage
+				sysUsage, cpuSnap, _ := collector.CollectSystemUsage(previousCPU)
+				if cpuSnap != nil {
+					previousCPU = cpuSnap
+				}
+
 				conns, err := collector.CollectTopTalkers(0)
 				if err != nil {
 					fmt.Printf("[%s] capture failed: %v\n", ts.Format(time.RFC3339), err)
@@ -598,13 +605,19 @@ func newDaemonRunCmd() *cobra.Command {
 					IncomingGroups:     incomingGroups,
 					OutgoingGroups:     outgoingGroups,
 					Version:            version,
+					CPUCores:           sysUsage.CPUCores,
+					RSSBytes:           sysUsage.Memory.RSSBytes,
 				})
 				if err != nil {
 					fmt.Printf("[%s] write failed: %v\n", ts.Format(time.RFC3339), err)
 					return
 				}
 
-				fmt.Printf("[%s] captured %d connections -> in=%d rows out=%d rows (cap=%d/side) | bw_available=%t | total_delta=%s -> %s\n",
+				cpuLabel := "warming"
+				if sysUsage.CPUReady {
+					cpuLabel = fmt.Sprintf("%.2f cores", sysUsage.CPUCores)
+				}
+				fmt.Printf("[%s] captured %d connections -> in=%d rows out=%d rows (cap=%d/side) | bw_available=%t | total_delta=%s | cpu=%s rss=%s -> %s\n",
 					ts.Format(time.RFC3339),
 					len(conns),
 					len(incomingGroups),
@@ -612,6 +625,8 @@ func newDaemonRunCmd() *cobra.Command {
 					opts.topLimit,
 					bwSample.Available,
 					humanBytes(totalDelta),
+					cpuLabel,
+					humanBytes(int64(sysUsage.Memory.RSSBytes)),
 					filepath.Base(result.SegmentPath),
 				)
 				if flowErr != nil {

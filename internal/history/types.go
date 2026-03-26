@@ -48,6 +48,8 @@ type SnapshotRecord struct {
 	OutgoingGroups     []SnapshotGroup `json:"outgoing_groups"`
 	Groups             []SnapshotGroup `json:"-"`
 	Version            string          `json:"version"`
+	CPUCores           float64         `json:"cpu_cores,omitempty"`
+	RSSBytes           uint64          `json:"rss_bytes,omitempty"`
 }
 
 // SnapshotRef points to one snapshot line in a segment file.

@@ -585,6 +585,17 @@ func (h *HistoryApp) updateStatusBar() {
 		}
 	}
 
+	// Show daemon process CPU/memory from snapshot if available
+	usagePart := ""
+	if h.currentRecord.RSSBytes > 0 {
+		rss := float64(h.currentRecord.RSSBytes) / (1024 * 1024)
+		if h.currentRecord.CPUCores > 0 {
+			usagePart = fmt.Sprintf(" | [aqua]CPU:%.2fc RSS:%.1fMB[white]", h.currentRecord.CPUCores, rss)
+		} else {
+			usagePart = fmt.Sprintf(" | [aqua]RSS:%.1fMB[white]", rss)
+		}
+	}
+
 	followState := "FOLLOW-OFF"
 	followColor := "dim"
 	if h.followLatest {
@@ -615,9 +626,10 @@ func (h *HistoryApp) updateStatusBar() {
 	}
 
 	line1 := fmt.Sprintf(
-		" [yellow]history[white] |%s %s | Files:%d | Corrupt:%d | [%s]%s[white] | [dim]holyf-network %s[white]",
+		" [yellow]history[white] |%s %s%s | Files:%d | Corrupt:%d | [%s]%s[white] | [dim]holyf-network %s[white]",
 		stateText,
 		snapshotPart,
+		usagePart,
 		h.filesCount,
 		h.corruptSkipped,
 		followColor,
