@@ -64,12 +64,12 @@ Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).
 
 ### 2.1) Active mitigation path (block vs kill flow)
 
-Mitigation is implemented in `internal/tui/blocking/runtime.go` and `internal/actions/peer_blocker.go`.
+Mitigation is implemented in `internal/tui/blocking/runtime.go` and `internal/actions/peer_blocker.go`, using `internal/kernelapi` interfaces.
 
 Execution paths:
 
 1. Timed block (`minutes > 0`, from `k/Enter` flow):
-   - Step 1: insert firewall DROP rules (`BlockPeer`) with `iptables`/`ip6tables` for `INPUT` + `OUTPUT`.
+   - Step 1: insert firewall DROP rules (`BlockPeer`) via `kernelapi.Firewall` (nftables netlink on Linux 4.9+, `iptables`/`ip6tables` fallback).
    - Step 2: clear active connections with bounded converge sweep:
      - `KillPeerFlows` loop (default: max `4s`, max `12` iterations, sleep `120ms`)
      - each iteration:
@@ -88,8 +88,8 @@ Execution paths:
 
 Important clarification:
 
-- `iptables/ip6tables` is for block/unblock policy only.
-- Actual active flow termination uses `ss -K` and `conntrack -D`.
+- Firewall rules are managed via `kernelapi.Firewall` (nftables netlink or iptables fallback).
+- Active flow termination uses `kernelapi.SocketManager` (SOCK_DESTROY netlink or `ss -K` fallback) and `kernelapi.ConntrackManager` (netlink delete or `conntrack -D` fallback).
 - Under conn storm/race windows, converge can return partial (`remaining N (storm/race)`) by design when bounded limits are hit.
 - `minutes = 0` is pure kill-only semantics.
 
@@ -105,7 +105,7 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
    - Source:
      - `/proc/sys/net/netfilter/nf_conntrack_count`
      - `/proc/sys/net/netfilter/nf_conntrack_max`
-     - `conntrack -S` (fields `insert`, `drop`)
+     - `kernelapi.ConntrackManager.ReadStats()` (netlink on Linux 4.9+, `conntrack -S` fallback)
    - Formulas:
      - `usage_percent = current / max * 100`
      - `inserts_per_sec = (curr_insert - prev_insert) / elapsed`
@@ -176,12 +176,11 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
 
 6. Per-connection bandwidth (`internal/collector/conntrack_flows.go`, `bandwidth_tracker.go`, `socket_counters.go`, `socket_bandwidth_tracker.go`)
    - Primary source:
-     - union of:
-       - `conntrack -L -p tcp -o extended -n`
-       - `conntrack -L -p tcp`
+     - `kernelapi.ConntrackManager.CollectFlowsTCP()` (netlink on Linux 4.9+)
+     - Fallback: `conntrack -L -p tcp -o extended -n` + `conntrack -L -p tcp`
      - flows are de-duplicated by canonical tuple key
      - duplicate preference favors richer `bytes=` counters (then larger byte totals)
-     - parse both directional `bytes=` counters per flow (orig/reply)
+     - returns both directional byte counters per flow (orig/reply)
    - Primary formulas:
      - `tx_delta = clamp(curr_orig_bytes - prev_orig_bytes)`
      - `rx_delta = clamp(curr_reply_bytes - prev_reply_bytes)`
@@ -192,12 +191,10 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
      - first sample is baseline (no rates)
      - first-seen flow after baseline counts current bytes as delta (to capture short-lived flows)
    - Fallback source (only overlay rows still 0):
-     - `ss -tinHn` metrics `bytes_acked` / `bytes_received`
-   - Commands:
-     - `conntrack -L -p tcp -o extended -n`
-     - `conntrack -L -p tcp`
-     - `cat /proc/sys/net/netfilter/nf_conntrack_acct` (should be `1` for byte accounting)
-     - `ss -tinHn`
+     - `kernelapi.SocketManager.CollectTCPCounters()` (INET_DIAG on Linux 4.9+, `ss -tinHn` fallback)
+   - Kernel API note:
+     - When using netlink, no `conntrack`/`ss` CLI tools are needed
+     - `cat /proc/sys/net/netfilter/nf_conntrack_acct` should be `1` for byte accounting
 
 ## 3) Daemon Snapshot Pipeline
 
@@ -232,7 +229,8 @@ Package: `internal/history` + `cmd/daemon.go`
      - `conn_count DESC`
      - `total_queue DESC`
      - then deterministic tie-break: `peer_ip`, `port`, `proc_name`
-   - write one aggregate `SnapshotRecord` as JSON Lines record (one JSON object per line)
+   - collect daemon process CPU/memory via `collector.CollectSystemUsage()` (getrusage + /proc/self/statm)
+   - write one aggregate `SnapshotRecord` as JSON Lines record (includes `cpu_cores` and `rss_bytes`)
 5. Segment file naming by server local day: `connections-YYYYMMDD.jsonl`.
 6. Retention:
    - remove segments older than `--retention-hours`
@@ -369,12 +367,18 @@ Behavior constraints:
 - Top Connections can render a live bandwidth note above the table when needed.
 - Top Connections can also render a footer preview for the selected row when panel height allows.
 - `Diagnosis` is a separate live panel with an operator card: `Issue`, `Scope`, `Signal`, `Likely Cause`, `Confidence`, `Why`, and `Next Actions`.
+- Status bar indicators:
+  - `API:kernel` (green) or `API:<backend details>` (yellow) — shows kernel API vs CLI fallback status
+  - `LINK:<speed>Mb/s` — only shown when NIC speed is known (hidden otherwise)
 
 ### Replay mode (`layout/replay.go`)
 
 - Single panel: `Connection History`
 - Bottom: replay status bar
 - Overlay help/filter/search pages only
+- Status bar shows daemon process metrics when available in snapshot:
+  - `CPU:<cores>c RSS:<size>MB` — daemon CPU and memory at capture time
+  - Omitted for old snapshots that don't include these fields
 
 ## 7) Persistence
 
@@ -399,12 +403,14 @@ Behavior constraints:
 
 - Linux runtime (`/proc`, `/sys`, netfilter tooling).
 - Collector path relies on kernel network procfs/sysfs files.
-- Bandwidth/NAT enrichment relies on conntrack TCP dumps (`-o extended` + plain fallback) and tuple normalization.
+- Bandwidth/NAT enrichment uses `kernelapi.ConntrackManager` (netlink on Linux 4.9+, conntrack CLI fallback).
 - `ct/nat` indicates conntrack-derived NAT visibility, not direct host process PID ownership.
-- Mitigation path uses:
-  - `iptables`/`ip6tables` for block/unblock rules
-  - `ss -K` + `conntrack -D` for killing active flows
-- `sudo` recommended for full live-mode visibility/mitigation.
+- Kernel API layer (`internal/kernelapi/`):
+  - On Linux 4.9+ with `CAP_NET_ADMIN`: uses direct netlink sockets (no CLI tools needed)
+  - Fallback: `iptables`/`ip6tables`, `ss`, `conntrack` CLI tools
+  - `tcpdump` is the only remaining external tool dependency (for packet capture feature)
+  - See `docs/ai-context/KERNEL_API.md` for full architecture details
+- `sudo` recommended for full live-mode visibility/mitigation (required for netlink access).
 
 ## 10) Extension Guidelines
 

@@ -6,8 +6,9 @@ This folder is the fastest way for a new AI agent (or new teammate, probably not
 
 1. Read `PROJECT_STRUCTURE.md` for package-level ownership.
 2. Read `HIGH_LEVEL_DESIGN.md` for runtime behavior and data flow.
-3. Read `../SNAPSHOT_FORMAT.md` for daemon/replay on-disk snapshot contract.
-4. Read root `README.MD` for runtime requirements and user-facing shortcuts.
+3. Read `KERNEL_API.md` for netlink kernel API layer (replaces ss/conntrack/iptables).
+4. Read `../SNAPSHOT_FORMAT.md` for daemon/replay on-disk snapshot contract.
+5. Read root `README.MD` for runtime requirements and user-facing shortcuts.
 
 ## Suggested Read Order In Code
 

@@ -40,6 +40,8 @@ This document defines the on-disk snapshot format used by daemon/replay.
 - `incoming_groups` (array of aggregate rows for listener-backed traffic)
 - `outgoing_groups` (array of aggregate rows for dial-out traffic)
 - `version` (application version string at write time)
+- `cpu_cores` (daemon process CPU usage in logical cores, omitted if zero/first sample)
+- `rss_bytes` (daemon process resident set size in bytes, omitted if zero)
 
 `incoming_groups[]` and `outgoing_groups[]` row fields:
 
@@ -63,8 +65,10 @@ This document defines the on-disk snapshot format used by daemon/replay.
 ## Example (one line)
 
 ```json
-{"captured_at":"2026-03-08T12:56:30.196962352+07:00","interface":"eth0","top_limit_per_side":500,"sample_seconds":29.999999695,"bandwidth_available":true,"incoming_groups":[{"peer_ip":"172.25.110.116","port":22,"proc_name":"sshd","conn_count":2,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":377892,"rx_bytes_delta":41164,"total_bytes_delta":419056,"tx_bytes_per_sec":12596.400128063402,"rx_bytes_per_sec":1372.1333472833558,"total_bytes_per_sec":13968.533475346758,"states":{"ESTABLISHED":2}}],"outgoing_groups":[{"peer_ip":"20.205.243.168","port":443,"proc_name":"curl","conn_count":1,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":0,"rx_bytes_delta":0,"total_bytes_delta":0,"tx_bytes_per_sec":0,"rx_bytes_per_sec":0,"total_bytes_per_sec":0,"states":{"ESTABLISHED":1}}],"version":"v0.3.46"}
+{"captured_at":"2026-03-08T12:56:30.196962352+07:00","interface":"eth0","top_limit_per_side":500,"sample_seconds":29.999999695,"bandwidth_available":true,"incoming_groups":[{"peer_ip":"172.25.110.116","port":22,"proc_name":"sshd","conn_count":2,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":377892,"rx_bytes_delta":41164,"total_bytes_delta":419056,"tx_bytes_per_sec":12596.400128063402,"rx_bytes_per_sec":1372.1333472833558,"total_bytes_per_sec":13968.533475346758,"states":{"ESTABLISHED":2}}],"outgoing_groups":[{"peer_ip":"20.205.243.168","port":443,"proc_name":"curl","conn_count":1,"tx_queue":0,"rx_queue":0,"total_queue":0,"tx_bytes_delta":0,"rx_bytes_delta":0,"total_bytes_delta":0,"tx_bytes_per_sec":0,"rx_bytes_per_sec":0,"total_bytes_per_sec":0,"states":{"ESTABLISHED":1}}],"version":"v0.3.46","cpu_cores":0.03,"rss_bytes":14876672}
 ```
+
+Note: `cpu_cores` and `rss_bytes` are omitted (`omitempty`) when zero. Old snapshots without these fields load fine — the replay TUI simply does not display the CPU/RSS indicator.
 
 ## Compatibility Policy
 

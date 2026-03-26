@@ -33,6 +33,20 @@ This is the current high-signal layout (non-essential folders omitted):
 │   │   ├── files.go
 │   │   ├── writer.go
 │   │   └── reader.go
+│   ├── kernelapi/
+│   │   ├── interfaces.go
+│   │   ├── types.go
+│   │   ├── backend_info.go
+│   │   ├── socket_netlink.go
+│   │   ├── socket_exec.go
+│   │   ├── conntrack_netlink.go
+│   │   ├── conntrack_exec.go
+│   │   ├── firewall_nft.go
+│   │   ├── firewall_exec.go
+│   │   ├── detect_linux.go
+│   │   ├── detect_stub.go
+│   │   ├── new_linux.go
+│   │   └── new_stub.go
 │   ├── network/
 │   │   └── interface.go
 │   └── tui/
@@ -75,18 +89,24 @@ This is the current high-signal layout (non-essential folders omitted):
     - `/proc/net/snmp`
     - `/sys/class/net/<iface>/statistics/*`
     - `/proc/sys/net/netfilter/nf_conntrack_*`
-    - `conntrack -S` command
-    - `conntrack -L -p tcp -o extended` + `conntrack -L -p tcp` (hybrid flow visibility)
+    - Conntrack stats and flows via `kernelapi.ConntrackManager` (netlink or exec fallback)
+    - Socket TCP counters via `kernelapi.SocketManager` (netlink or exec fallback)
   - Docker/NAT visibility:
     - `conntrack_merge.go` injects host-facing NAT tuples missing in `/proc/net/tcp*`
     - synthetic process label `ct/nat` marks conntrack-derived ownership
+
+- `internal/kernelapi`
+  - Direct Linux kernel API access for socket, conntrack, and firewall operations.
+  - Replaces CLI tools (`ss`, `conntrack`, `iptables`) with netlink sockets.
+  - Auto-detects kernel capabilities at startup; falls back to exec if unavailable.
+  - See `docs/ai-context/KERNEL_API.md` for full details.
 
 - `internal/actions`
   - Side-effecting runtime actions:
     - block/unblock peer by IP + local port
     - kill/drop active flows
     - list active firewall blocks
-  - Shells out to `iptables`/`ip6tables`, `ss`, `conntrack`.
+  - Uses `kernelapi` interfaces (netlink on Linux 4.9+, exec fallback otherwise).
 
 - `internal/config`
   - Health threshold model + parser for TOML-like file.
