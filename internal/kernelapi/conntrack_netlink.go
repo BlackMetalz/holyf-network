@@ -5,6 +5,7 @@ package kernelapi
 import (
 	"fmt"
 	"net/netip"
+	"os"
 	"strings"
 
 	"github.com/ti-mo/conntrack"
@@ -59,10 +60,27 @@ func (m *NetlinkConntrackManager) CollectFlowsTCP() ([]ConntrackFlow, error) {
 		return nil, fmt.Errorf("conntrack dump: %w", err)
 	}
 
+	// Check if conntrack byte accounting is enabled.
+	acctEnabled := conntrackAccountingEnabled()
+
 	var result []ConntrackFlow
 	for _, f := range flows {
 		if f.TupleOrig.Proto.Protocol != 6 {
 			continue
+		}
+
+		origBytes := int64(0)
+		replyBytes := int64(0)
+		if acctEnabled {
+			origBytes = int64(f.CountersOrig.Bytes)
+			replyBytes = int64(f.CountersReply.Bytes)
+			// Clamp negative (overflow from uint64→int64 for very large counters)
+			if origBytes < 0 {
+				origBytes = 0
+			}
+			if replyBytes < 0 {
+				replyBytes = 0
+			}
 		}
 
 		cf := ConntrackFlow{
@@ -79,8 +97,8 @@ func (m *NetlinkConntrackManager) CollectFlowsTCP() ([]ConntrackFlow, error) {
 				DstIP:   normalizeNetipAddr(f.TupleReply.IP.DestinationAddress),
 				DstPort: int(f.TupleReply.Proto.DestinationPort),
 			},
-			OrigBytes:  int64(f.CountersOrig.Bytes),
-			ReplyBytes: int64(f.CountersReply.Bytes),
+			OrigBytes:  origBytes,
+			ReplyBytes: replyBytes,
 		}
 		result = append(result, cf)
 	}
@@ -127,6 +145,15 @@ func (m *NetlinkConntrackManager) DeleteFlows(peerIP string, port int) error {
 		}
 	}
 	return lastErr
+}
+
+// conntrackAccountingEnabled checks if nf_conntrack_acct is enabled.
+func conntrackAccountingEnabled() bool {
+	data, err := os.ReadFile("/proc/sys/net/netfilter/nf_conntrack_acct")
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(data)) == "1"
 }
 
 // normalizeNetipAddr converts a netip.Addr to a normalized IP string.
