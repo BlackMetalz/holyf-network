@@ -60,6 +60,10 @@ func (m *ExecConntrackManager) ReadStats() (inserts, drops int64, ok bool) {
 
 // CollectFlowsTCP returns all current TCP conntrack flows with byte counters.
 func (m *ExecConntrackManager) CollectFlowsTCP() ([]ConntrackFlow, error) {
+	if _, err := exec.LookPath("conntrack"); err != nil {
+		return nil, nil // conntrack tool not installed — graceful empty
+	}
+
 	var (
 		candidateLines int
 		successfulDump bool

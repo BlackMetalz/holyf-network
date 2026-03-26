@@ -173,6 +173,10 @@ func (m *ExecSocketManager) QueryPeerSnapshot(peerIP string, localPort int) (Pee
 
 // CollectTCPCounters returns per-socket byte counters for all TCP connections.
 func (m *ExecSocketManager) CollectTCPCounters() ([]SocketCounter, error) {
+	if _, err := exec.LookPath("ss"); err != nil {
+		return nil, nil // ss not installed — graceful empty
+	}
+
 	out, err := exec.Command("ss", "-tinHn").CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))

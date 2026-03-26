@@ -20,6 +20,11 @@ func (b BackendInfo) IsAllKernel() bool {
 	return b.Socket == "netlink" && b.Conntrack == "netlink" && b.Firewall == "nftables"
 }
 
+// IsStub returns true if all backends are stubs (non-Linux).
+func (b BackendInfo) IsStub() bool {
+	return b.Socket == "stub" && b.Conntrack == "stub" && b.Firewall == "stub"
+}
+
 // backendDescriber is implemented by managers that can report their backend name.
 type backendDescriber interface {
 	BackendName() string
