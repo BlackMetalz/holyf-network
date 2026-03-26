@@ -117,34 +117,17 @@ func (m *NetlinkSocketManager) QueryPeerSnapshot(peerIP string, localPort int) (
 }
 
 // CollectTCPCounters returns per-socket byte counters for all established TCP connections.
+// NOTE: The tcp_info struct offsets for bytes_acked/bytes_received can vary
+// across kernel versions and compile-time config. To avoid reading garbage from
+// wrong offsets, we delegate to the exec-based implementation (ss -tinHn) which
+// parses the human-readable output reliably. The netlink path is used for
+// socket query/kill operations where the struct layout is stable.
 func (m *NetlinkSocketManager) CollectTCPCounters() ([]SocketCounter, error) {
-	msgs, err := m.dumpSockets(1<<_TCP_ESTABLISHED, 1<<(_INET_DIAG_INFO-1))
-	if err != nil {
-		return nil, fmt.Errorf("netlink sock_diag dump: %w", err)
-	}
-
-	var result []SocketCounter
-	for _, msg := range msgs {
-		dm, ok := parseDiagMsg(msg)
-		if !ok {
-			continue
-		}
-		var acked, received int64
-		if ti := extractTCPInfo(msg); ti != nil {
-			acked, received = parseTCPInfoCounters(ti)
-		}
-		result = append(result, SocketCounter{
-			Tuple: FlowTuple{
-				SrcIP:   dm.localIP,
-				SrcPort: dm.localPort,
-				DstIP:   dm.remoteIP,
-				DstPort: dm.remotePort,
-			},
-			BytesAcked:    acked,
-			BytesReceived: received,
-		})
-	}
-	return result, nil
+	// Delegate to exec fallback — tcp_info byte counter offsets are unreliable
+	// across kernel versions. ss parses them correctly from the kernel's own
+	// formatting code.
+	exec := NewExecSocketManager()
+	return exec.CollectTCPCounters()
 }
 
 // KillSocket destroys a specific socket by exact 4-tuple using SOCK_DESTROY.

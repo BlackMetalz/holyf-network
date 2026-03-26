@@ -258,8 +258,15 @@ func addTupleBandwidth(rows map[FlowTuple]TupleBandwidth, tuple FlowTuple, txDel
 	rows[tuple] = current
 }
 
+// maxDeltaPerFlow is a sanity cap: 100 Gbps = ~12.5 GB/s per direction.
+// Any delta beyond this per sample interval is treated as a counter anomaly.
+const maxDeltaPerFlow = 12_500_000_000
+
 func clampDelta(v int64) int64 {
 	if v < 0 {
+		return 0
+	}
+	if v > maxDeltaPerFlow {
 		return 0
 	}
 	return v

@@ -51,11 +51,9 @@ func (t *SocketBandwidthTracker) BuildSnapshot(counters []SocketCounter, capture
 			if prev, ok := t.prev[tuple]; ok {
 				txDelta = clampDelta(c.BytesAcked - prev.acked)
 				rxDelta = clampDelta(c.BytesReceived - prev.recv)
-			} else {
-				// First-seen tuple after baseline.
-				txDelta = clampDelta(c.BytesAcked)
-				rxDelta = clampDelta(c.BytesReceived)
 			}
+			// First-seen after baseline: skip accumulated bytes (could be
+			// gigabytes for long-running connections). Real delta on next sample.
 		}
 		nextPrev[tuple] = socketCounterPair{
 			acked: c.BytesAcked,
