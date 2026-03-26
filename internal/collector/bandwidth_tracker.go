@@ -75,10 +75,12 @@ func (t *BandwidthTracker) BuildSnapshot(flows []ConntrackFlow, capturedAt time.
 				origDelta = clampDelta(flow.OrigBytes - prev.origBytes)
 				replyDelta = clampDelta(flow.ReplyBytes - prev.replyBytes)
 			} else {
-				// Flow first-seen after baseline.
-				// Count current bytes as interval delta so short-lived flows are visible.
-				origDelta = clampDelta(flow.OrigBytes)
-				replyDelta = clampDelta(flow.ReplyBytes)
+				// Flow first-seen after baseline: skip the accumulated bytes.
+				// Long-running connections (etcd, ssh) have gigabytes of historical
+				// bytes that would create absurd rates if counted as one interval.
+				// The flow will get a real delta on the next sample.
+				origDelta = 0
+				replyDelta = 0
 			}
 		}
 

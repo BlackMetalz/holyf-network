@@ -100,12 +100,13 @@ func TestBandwidthTrackerClampsCounterReset(t *testing.T) {
 	}
 }
 
-func TestBandwidthTrackerFirstSeenFlowAfterBaselineCountsCurrentBytes(t *testing.T) {
+func TestBandwidthTrackerFirstSeenFlowAfterBaselineSkipsAccumulated(t *testing.T) {
 	t.Parallel()
 
 	tracker := NewBandwidthTracker()
 	t1 := time.Date(2026, 3, 5, 10, 0, 0, 0, time.UTC)
 	t2 := t1.Add(5 * time.Second)
+	t3 := t2.Add(5 * time.Second)
 
 	// First call sets global baseline with one unrelated flow.
 	baseline := ConntrackFlow{
@@ -116,7 +117,8 @@ func TestBandwidthTrackerFirstSeenFlowAfterBaselineCountsCurrentBytes(t *testing
 	}
 	tracker.BuildSnapshot([]ConntrackFlow{baseline}, t1)
 
-	// New short-lived flow appears after baseline.
+	// New flow appears after baseline with accumulated bytes — first-seen
+	// should report zero delta (accumulated bytes are historical, not this interval).
 	newFlow := ConntrackFlow{
 		Orig:       FlowTuple{SrcIP: "10.0.0.3", SrcPort: 50000, DstIP: "10.0.0.1", DstPort: 8080},
 		Reply:      FlowTuple{SrcIP: "10.0.0.1", SrcPort: 8080, DstIP: "10.0.0.3", DstPort: 50000},
@@ -135,8 +137,17 @@ func TestBandwidthTrackerFirstSeenFlowAfterBaselineCountsCurrentBytes(t *testing
 		DstPort: 50000,
 	}
 	bw := snapshot.ByTuple[localTuple]
-	if bw.TxBytesDelta != 8192 || bw.RxBytesDelta != 4096 || bw.TotalBytesDelta != 12288 {
-		t.Fatalf("first-seen flow should contribute current bytes, got %+v", bw)
+	if bw.TxBytesDelta != 0 || bw.RxBytesDelta != 0 {
+		t.Fatalf("first-seen flow should skip accumulated bytes, got %+v", bw)
+	}
+
+	// On the third sample, the flow gets a real delta.
+	newFlow.OrigBytes = 5096
+	newFlow.ReplyBytes = 9192
+	snapshot3 := tracker.BuildSnapshot([]ConntrackFlow{newFlow}, t3)
+	bw3 := snapshot3.ByTuple[localTuple]
+	if bw3.RxBytesDelta != 1000 || bw3.TxBytesDelta != 1000 {
+		t.Fatalf("second sample should show real delta, got %+v", bw3)
 	}
 }
 
