@@ -15,8 +15,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/BlackMetalz/holyf-network/internal/actions"
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/history"
+	"github.com/BlackMetalz/holyf-network/internal/kernelapi"
 	"github.com/spf13/cobra"
 )
 
@@ -507,6 +509,13 @@ func newDaemonRunCmd() *cobra.Command {
 				return err
 			}
 			defer writer.Close()
+			// Initialize kernel API managers for daemon mode
+			sm := kernelapi.NewSocketManager()
+			cm := kernelapi.NewConntrackManager()
+			fw := kernelapi.NewFirewall()
+			actions.SetManagers(sm, cm, fw)
+			collector.SetManagers(sm, cm)
+
 			bwTracker := collector.NewBandwidthTracker()
 			ssBWTracker := collector.NewSocketBandwidthTracker()
 

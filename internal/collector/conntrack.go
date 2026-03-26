@@ -102,7 +102,16 @@ func readSingleInt(path string) (int, error) {
 	return value, nil
 }
 
-// readConntrackCommand runs `conntrack -S` to get insert/drop counters.
+// readConntrackCommand returns insert/drop counters, preferring the kernel API
+// manager if available, falling back to exec.Command("conntrack", "-S").
+func readConntrackCommand() (inserts, drops int64, ok bool) {
+	if conntrackMgr != nil {
+		return conntrackMgr.ReadStats()
+	}
+	return readConntrackCommandExec()
+}
+
+// readConntrackCommandExec runs `conntrack -S` to get insert/drop counters.
 //
 // Output format (one line per CPU):
 //
@@ -111,7 +120,7 @@ func readSingleInt(path string) (int, error) {
 //
 // We sum insert and drop across all CPUs.
 // Returns (inserts, drops, ok). ok=false if conntrack command not found.
-func readConntrackCommand() (inserts, drops int64, ok bool) {
+func readConntrackCommandExec() (inserts, drops int64, ok bool) {
 	out, err := exec.Command("conntrack", "-S").Output()
 	if err != nil {
 		return 0, 0, false

@@ -2,8 +2,6 @@ package actions
 
 import (
 	"fmt"
-	"net"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -69,14 +67,14 @@ func (o KillConvergeOptions) normalized() KillConvergeOptions {
 }
 
 // KillPeerFlows performs bounded iterative sweeping for one peer+port:
-// 1) broad ss -K pass
+// 1) broad kill pass
 // 2) exact tuple kill pass
-// 3) conntrack -D pass
+// 3) conntrack delete pass
 // 4) re-count active states
 //
 // Active states include all matching sockets except TIME_WAIT.
 func KillPeerFlows(spec PeerBlockSpec, snapshotTuples []SocketTuple, opts KillConvergeOptions) KillConvergeReport {
-	ip, peerIP, err := validateSpec(spec)
+	_, peerIP, err := validateSpec(spec)
 	if err != nil {
 		return KillConvergeReport{
 			BeforeCountErr: err,
@@ -85,33 +83,44 @@ func KillPeerFlows(spec PeerBlockSpec, snapshotTuples []SocketTuple, opts KillCo
 	}
 	port := strconv.Itoa(spec.LocalPort)
 
-	hooks := killConvergeHooks{
+	hooks := defaultKillConvergeHooks(peerIP, port, spec.LocalPort)
+
+	return runKillPeerFlows(snapshotTuples, opts, hooks)
+}
+
+// defaultKillConvergeHooks wires the killConvergeHooks to the kernelapi managers.
+func defaultKillConvergeHooks(peerIP, port string, localPort int) killConvergeHooks {
+	return killConvergeHooks{
 		now:   time.Now,
 		sleep: time.Sleep,
 		broadKill: func() {
 			broadKillPeerSockets(peerIP, port)
 		},
 		queryExactTuples: func() ([]SocketTuple, error) {
-			snap, err := queryPeerSocketSnapshot(ip, peerIP, port)
+			if socketMgr == nil {
+				return nil, fmt.Errorf("socket manager not initialized")
+			}
+			snap, err := socketMgr.QueryPeerSnapshot(peerIP, localPort)
 			if err != nil {
 				return nil, err
 			}
-			return snap.ExactTuples, nil
+			return fromKernelSocketTuples(snap.ExactTuples), nil
 		},
 		killTuples: KillSockets,
 		dropConntrack: func() error {
-			return deleteConntrackFlows(ip, peerIP, port)
+			return deleteConntrackFlows(peerIP, localPort)
 		},
 		countStates: func() (int, int, error) {
-			snap, err := queryPeerSocketSnapshot(ip, peerIP, port)
+			if socketMgr == nil {
+				return 0, 0, fmt.Errorf("socket manager not initialized")
+			}
+			snap, err := socketMgr.QueryPeerSnapshot(peerIP, localPort)
 			if err != nil {
 				return 0, 0, err
 			}
 			return snap.ActiveCount, snap.TimeWaitCount, nil
 		},
 	}
-
-	return runKillPeerFlows(snapshotTuples, opts, hooks)
 }
 
 type killConvergeHooks struct {
@@ -198,124 +207,6 @@ func runKillPeerFlows(snapshotTuples []SocketTuple, opts KillConvergeOptions, ho
 	return report
 }
 
-type peerSocketSnapshot struct {
-	ExactTuples   []SocketTuple
-	ActiveCount   int
-	TimeWaitCount int
-}
-
-func queryPeerSocketSnapshot(_ net.IP, peerIP, localPort string) (peerSocketSnapshot, error) {
-	if _, err := exec.LookPath("ss"); err != nil {
-		return peerSocketSnapshot{}, fmt.Errorf("ss: command not found")
-	}
-
-	out, err := exec.Command("ss", "-tnp").CombinedOutput()
-	if err != nil {
-		return peerSocketSnapshot{}, fmt.Errorf("ss query: %w", err)
-	}
-
-	normalizedPeer := strings.TrimPrefix(peerIP, "::ffff:")
-	lines := strings.Split(string(out), "\n")
-
-	exactSeen := make(map[string]struct{})
-	activeSeen := make(map[string]struct{})
-	timeWaitSeen := make(map[string]struct{})
-
-	var snapshot peerSocketSnapshot
-	for _, rawLine := range lines {
-		line := strings.TrimSpace(rawLine)
-		if line == "" || strings.HasPrefix(line, "State") {
-			continue
-		}
-
-		state, localAddr, remoteAddr, ok := parseSSStateLine(line)
-		if !ok {
-			continue
-		}
-
-		localIP, localP, ok := splitHostPort(localAddr)
-		if !ok || localP != localPort {
-			continue
-		}
-		remoteIP, remoteP, ok := splitHostPort(remoteAddr)
-		if !ok {
-			continue
-		}
-		if strings.TrimPrefix(remoteIP, "::ffff:") != normalizedPeer {
-			continue
-		}
-
-		localPortInt, err := strconv.Atoi(localP)
-		if err != nil {
-			continue
-		}
-		remotePortInt, err := strconv.Atoi(remoteP)
-		if err != nil {
-			continue
-		}
-
-		tuple := SocketTuple{
-			LocalIP:    localIP,
-			LocalPort:  localPortInt,
-			RemoteIP:   remoteIP,
-			RemotePort: remotePortInt,
-		}
-		key := socketTupleKey(tuple)
-		if _, exists := exactSeen[key]; !exists {
-			exactSeen[key] = struct{}{}
-			snapshot.ExactTuples = append(snapshot.ExactTuples, tuple)
-		}
-
-		switch {
-		case state == "TIME_WAIT":
-			if _, exists := timeWaitSeen[key]; exists {
-				continue
-			}
-			timeWaitSeen[key] = struct{}{}
-			snapshot.TimeWaitCount++
-		case isKillActiveState(state):
-			if _, exists := activeSeen[key]; exists {
-				continue
-			}
-			activeSeen[key] = struct{}{}
-			snapshot.ActiveCount++
-		}
-	}
-
-	return snapshot, nil
-}
-
-func parseSSStateLine(line string) (state, localAddr, remoteAddr string, ok bool) {
-	fields := strings.Fields(line)
-	if len(fields) < 5 {
-		return "", "", "", false
-	}
-	return normalizeSSState(fields[0]), fields[3], fields[4], true
-}
-
-func normalizeSSState(raw string) string {
-	state := strings.ToUpper(strings.TrimSpace(raw))
-	state = strings.ReplaceAll(state, "-", "_")
-	switch state {
-	case "ESTAB":
-		return "ESTABLISHED"
-	case "SYNRECV":
-		return "SYN_RECV"
-	case "TIMEWAIT":
-		return "TIME_WAIT"
-	default:
-		return state
-	}
-}
-
-func isKillActiveState(state string) bool {
-	state = strings.TrimSpace(state)
-	if state == "" || state == "TIME_WAIT" {
-		return false
-	}
-	return true
-}
-
 func dedupeSocketTuples(tuples []SocketTuple) []SocketTuple {
 	if len(tuples) < 2 {
 		return tuples
@@ -336,4 +227,31 @@ func dedupeSocketTuples(tuples []SocketTuple) []SocketTuple {
 
 func socketTupleKey(tuple SocketTuple) string {
 	return fmt.Sprintf("%s|%d|%s|%d", tuple.LocalIP, tuple.LocalPort, tuple.RemoteIP, tuple.RemotePort)
+}
+
+// normalizeSSState normalizes ss state strings to canonical TCP state names.
+// Kept for backward compatibility and testing.
+func normalizeSSState(raw string) string {
+	state := strings.ToUpper(strings.TrimSpace(raw))
+	state = strings.ReplaceAll(state, "-", "_")
+	switch state {
+	case "ESTAB":
+		return "ESTABLISHED"
+	case "SYNRECV":
+		return "SYN_RECV"
+	case "TIMEWAIT":
+		return "TIME_WAIT"
+	default:
+		return state
+	}
+}
+
+// isKillActiveState returns true for any TCP state that is not TIME_WAIT.
+// Kept for backward compatibility and testing.
+func isKillActiveState(state string) bool {
+	state = strings.TrimSpace(state)
+	if state == "" || state == "TIME_WAIT" {
+		return false
+	}
+	return true
 }

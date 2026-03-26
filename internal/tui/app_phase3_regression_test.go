@@ -287,7 +287,7 @@ func TestLiveStatusBarKeepsBaseVersionWhenNoUpdateTag(t *testing.T) {
 	}
 }
 
-func TestLiveStatusBarShowsLinkSpeedUnknownWhenNotReadable(t *testing.T) {
+func TestLiveStatusBarHidesLinkSpeedWhenNotReadable(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
@@ -295,8 +295,8 @@ func TestLiveStatusBarShowsLinkSpeedUnknownWhenNotReadable(t *testing.T) {
 	a.updateStatusBar()
 
 	text := a.statusBar.GetText(true)
-	if !strings.Contains(text, "LINK(sysfs):UNKNOWN") {
-		t.Fatalf("expected unknown link speed marker, got=%q", text)
+	if strings.Contains(text, "LINK") {
+		t.Fatalf("expected no LINK marker when speed unknown, got=%q", text)
 	}
 }
 
@@ -308,7 +308,7 @@ func TestLiveStatusBarShowsLinkSpeedWhenKnown(t *testing.T) {
 	a.updateStatusBar()
 
 	text := a.statusBar.GetText(true)
-	if !strings.Contains(text, "LINK(sysfs):25000Mb/s") {
+	if !strings.Contains(text, "LINK:25000Mb/s") {
 		t.Fatalf("expected known link speed marker, got=%q", text)
 	}
 }

@@ -113,6 +113,9 @@ type App struct {
 
 	healthThresholds config.HealthThresholds
 	trafficManager   *traffic.Manager
+
+	// Backend indicator for status bar.
+	backendLabel string
 }
 
 var livePanelFocusOrder = []int{2, 0, 1, 3, 4} // 1=Top, 2=States, 3=Interface, 4=Conntrack, 5=Diagnosis
@@ -801,6 +804,9 @@ func (a *App) updateStatusBar() {
 	if a.sensitiveIP {
 		stateText += " [yellow]IP MASK[white] |"
 	}
+	if a.backendLabel != "" {
+		stateText += " " + a.backendLabel + " |"
+	}
 	if a.trafficManager.IfaceSpeedSample() && a.trafficManager.IfaceSpeedKnown() && a.trafficManager.IfaceSpeedMbps() > 0 {
 		stateText += fmt.Sprintf(" [aqua]LINK:%.0fMb/s[white] |", a.trafficManager.IfaceSpeedMbps())
 	}
@@ -1061,6 +1067,11 @@ func (a *App) PortFilter() string {
 
 func (a *App) LatestTalkers() []collector.Connection {
 	return a.latestTalkers
+}
+
+// SetBackendLabel sets the backend indicator shown in the status bar.
+func (a *App) SetBackendLabel(label string) {
+	a.backendLabel = label
 }
 
 // --- Shared Constants & Utilities ---

@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/BlackMetalz/holyf-network/internal/kernelapi"
 )
 
 // FlowTuple identifies one directional TCP flow tuple.
@@ -28,8 +30,54 @@ type ConntrackFlow struct {
 }
 
 // CollectConntrackFlowsTCP reads TCP flow counters from conntrack.
-// It requires conntrack-tools and typically root/sudo privileges.
+// When a ConntrackManager is available it uses the kernel API; otherwise it
+// falls back to exec.Command("conntrack", ...).
 func CollectConntrackFlowsTCP() ([]ConntrackFlow, error) {
+	if conntrackMgr != nil {
+		return collectConntrackFlowsTCPKernel()
+	}
+	return collectConntrackFlowsTCPExec()
+}
+
+// collectConntrackFlowsTCPKernel uses the kernelapi ConntrackManager.
+func collectConntrackFlowsTCPKernel() ([]ConntrackFlow, error) {
+	kaFlows, err := conntrackMgr.CollectFlowsTCP()
+	if err != nil {
+		return nil, err
+	}
+	flows := make([]ConntrackFlow, len(kaFlows))
+	for i, f := range kaFlows {
+		flows[i] = convertKernelConntrackFlow(f)
+	}
+	return flows, nil
+}
+
+// convertKernelConntrackFlow converts a kernelapi.ConntrackFlow to a
+// collector.ConntrackFlow.
+func convertKernelConntrackFlow(f kernelapi.ConntrackFlow) ConntrackFlow {
+	return ConntrackFlow{
+		State: f.State,
+		Orig: FlowTuple{
+			SrcIP:   f.Orig.SrcIP,
+			SrcPort: f.Orig.SrcPort,
+			DstIP:   f.Orig.DstIP,
+			DstPort: f.Orig.DstPort,
+		},
+		Reply: FlowTuple{
+			SrcIP:   f.Reply.SrcIP,
+			SrcPort: f.Reply.SrcPort,
+			DstIP:   f.Reply.DstIP,
+			DstPort: f.Reply.DstPort,
+		},
+		OrigBytes:  f.OrigBytes,
+		ReplyBytes: f.ReplyBytes,
+	}
+}
+
+// collectConntrackFlowsTCPExec reads TCP flow counters by executing the
+// conntrack command. It requires conntrack-tools and typically root/sudo
+// privileges.
+func collectConntrackFlowsTCPExec() ([]ConntrackFlow, error) {
 	var (
 		candidateLines int
 		successfulDump bool
