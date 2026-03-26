@@ -96,27 +96,42 @@ func RenderTimeSeriesChart(
 		canvas[r] = make([]rune, chartWidth)
 	}
 
-	// Plot data points
-	for x, v := range resampled {
+	// Convert values to dot Y positions
+	dotYs := make([]int, len(resampled))
+	for i, v := range resampled {
 		if v <= 0 {
-			continue
+			dotYs[i] = 0
+		} else {
+			dotYs[i] = int(v / maxVal * float64(dotsTall-1))
+			if dotYs[i] >= dotsTall {
+				dotYs[i] = dotsTall - 1
+			}
 		}
-		// Map value to dot Y position (0=bottom, dotsTall-1=top)
-		dotY := int(v / maxVal * float64(dotsTall-1))
-		if dotY >= dotsTall {
-			dotY = dotsTall - 1
-		}
+	}
 
-		// Convert dot coordinates to char position + sub-position
-		charCol := x / 2
-		subCol := x % 2
-		// Invert Y: dot row 0 is top of canvas
+	// setDot plots a single dot on the Braille canvas
+	setDot := func(dotX, dotY int) {
+		if dotX < 0 || dotX >= dotsWide || dotY < 0 || dotY >= dotsTall {
+			return
+		}
+		charCol := dotX / 2
+		subCol := dotX % 2
 		invertedDotY := (dotsTall - 1) - dotY
 		charRow := invertedDotY / 4
 		subRow := invertedDotY % 4
-
 		if charRow >= 0 && charRow < chartHeight && charCol >= 0 && charCol < chartWidth {
 			canvas[charRow][charCol] |= brailleDots[subRow][subCol]
+		}
+	}
+
+	// Draw connected lines between consecutive data points using Bresenham's algorithm
+	for i := 0; i < len(resampled); i++ {
+		setDot(i, dotYs[i])
+		if i > 0 {
+			// Draw line from (i-1, dotYs[i-1]) to (i, dotYs[i])
+			x0, y0 := i-1, dotYs[i-1]
+			x1, y1 := i, dotYs[i]
+			bresenhamLine(x0, y0, x1, y1, setDot)
 		}
 	}
 
@@ -150,13 +165,12 @@ func RenderTimeSeriesChart(
 	sb.WriteString(strings.Repeat("─", chartWidth))
 	sb.WriteString("\n")
 
-	// X-axis time labels
+	// X-axis time labels (left=oldest, right=now)
 	sb.WriteString("        ")
 	totalSecs := len(values)
 	if totalSecs < 1 {
 		totalSecs = 1
 	}
-	// Place ~4 labels evenly
 	labelCount := 4
 	if chartWidth < 30 {
 		labelCount = 2
@@ -164,17 +178,18 @@ func RenderTimeSeriesChart(
 	xLabels := make([]string, chartWidth+1)
 	for i := 0; i <= labelCount; i++ {
 		pos := i * chartWidth / labelCount
-		secAgo := totalSecs - (i * totalSecs / labelCount)
-		label := fmt.Sprintf("%ds", secAgo)
-		if i == labelCount {
-			label = "now"
+		if pos >= len(xLabels) {
+			pos = len(xLabels) - 1
 		}
-		if pos < len(xLabels) {
-			xLabels[pos] = label
+		secAgo := totalSecs - (i * totalSecs / labelCount)
+		if secAgo <= 0 {
+			xLabels[pos] = "now"
+		} else {
+			xLabels[pos] = fmt.Sprintf("-%ds", secAgo)
 		}
 	}
 	col := 0
-	for col <= chartWidth {
+	for col <= chartWidth && col < len(xLabels) {
 		if xLabels[col] != "" {
 			sb.WriteString(xLabels[col])
 			col += len(xLabels[col])
@@ -227,6 +242,45 @@ func niceMax(v float64) float64 {
 		}
 	}
 	return v
+}
+
+// bresenhamLine draws a line between two points using Bresenham's algorithm,
+// calling setDot for each point along the line.
+func bresenhamLine(x0, y0, x1, y1 int, setDot func(x, y int)) {
+	dx := x1 - x0
+	dy := y1 - y0
+	if dx < 0 {
+		dx = -dx
+	}
+	if dy < 0 {
+		dy = -dy
+	}
+
+	sx := 1
+	if x0 > x1 {
+		sx = -1
+	}
+	sy := 1
+	if y0 > y1 {
+		sy = -1
+	}
+
+	err := dx - dy
+	for {
+		setDot(x0, y0)
+		if x0 == x1 && y0 == y1 {
+			break
+		}
+		e2 := 2 * err
+		if e2 > -dy {
+			err -= dy
+			x0 += sx
+		}
+		if e2 < dx {
+			err += dx
+			y0 += sy
+		}
+	}
 }
 
 // formatAxisValue formats a byte rate for Y-axis label (max 6 chars).
