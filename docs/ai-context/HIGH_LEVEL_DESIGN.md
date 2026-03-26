@@ -23,7 +23,7 @@ flowchart TD
 Live scheduling now has 3 lanes:
 
 - Main lane: every `--refresh/-r` seconds (plus manual `r`) runs `refreshData()` end-to-end.
-- Interface fast lane: every `1s` updates only `Interface Stats` for faster RX/TX visibility.
+- Interface fast lane: every `1s` re-renders the `System Health` panel for faster RX/TX visibility.
 - Warm-up lane: one early full refresh at ~`1s` after startup to settle first-sample volatility.
 
 Inside `refreshData()`:
@@ -360,9 +360,11 @@ Behavior constraints:
 
 ### Live mode (`layout/live.go`)
 
-- Left: `Top Connections`
-- Right stack: `Connection States`, `Interface Stats`, `Conntrack`, `Diagnosis`
+- Left: `Top Connections` (spans full height)
+- Right top: `System Health` (merged: connection states + interface stats + conntrack in one panel with dim section separators)
+- Right bottom: `Diagnosis`
 - Bottom: status bar
+- 3 panels total (was 5 before the merge)
 - Live `GROUP` view groups by `(peer, process)` for clarity under mixed ownership (`sshd` + `ct/nat`, etc.)
 - Top Connections can render a live bandwidth note above the table when needed.
 - Top Connections can also render a footer preview for the selected row when panel height allows.
@@ -370,6 +372,7 @@ Behavior constraints:
 - Status bar indicators:
   - `API:kernel` (green) or `API:<backend details>` (yellow) — shows kernel API vs CLI fallback status
   - `LINK:<speed>Mb/s` — only shown when NIC speed is known (hidden otherwise)
+- Navigation: Tab cycles 3 panels, Ctrl+1..3 jumps directly
 
 ### Replay mode (`layout/replay.go`)
 

@@ -26,7 +26,6 @@ func newSortHotkeyTestApp(startMode tuishared.SortMode, startDesc bool, selected
 		tview.NewTextView(),
 		tview.NewTextView(),
 		tview.NewTextView(),
-		tview.NewTextView(),
 	}
 	panels[2].SetText("before")
 
@@ -190,8 +189,8 @@ func TestStatusHotkeysIncludeHelp(t *testing.T) {
 	}{
 		{name: "top incoming", focus: 2, direction: tuishared.TopConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "T=trace", "t=traces", "Enter/k=act", "?=help"}},
 		{name: "top outgoing", focus: 2, direction: tuishared.TopConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "T=trace", "t=traces", "Enter/k=disabled", "?=help"}},
-		{name: "states", focus: 0, direction: tuishared.TopConnectionIncoming, want: []string{"s=sort", "Ctrl+1..5=focus", "?=help"}},
-		{name: "diagnosis", focus: 4, direction: tuishared.TopConnectionIncoming, want: []string{"d=history", "Ctrl+1..5=focus", "?=help"}},
+		{name: "system health", focus: 0, direction: tuishared.TopConnectionIncoming, want: []string{"s=sort", "Ctrl+1..3=focus", "?=help"}},
+		{name: "diagnosis", focus: 1, direction: tuishared.TopConnectionIncoming, want: []string{"d=history", "Ctrl+1..3=focus", "?=help"}},
 	}
 
 	for _, tc := range tests {
@@ -259,7 +258,7 @@ func TestBuildLiveHelpTextTopOutgoingGroup(t *testing.T) {
 		"Disabled in OUT mode",
 		"Global Navigation",
 		"Other Panels",
-		"Connection States",
+		"System Health",
 		"Diagnosis",
 	} {
 		if !strings.Contains(text, want) {
@@ -275,7 +274,7 @@ func TestBuildLiveHelpTextDiagnosisFocus(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	a.focusIndex = 4
+	a.focusIndex = 1
 
 	text := tuioverlays.BuildLiveHelpText(tuioverlays.LiveHelpContext{FocusIndex: a.focusIndex, Direction: a.topDirection, GroupView: a.groupView})
 	for _, want := range []string{

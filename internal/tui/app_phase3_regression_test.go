@@ -23,8 +23,6 @@ func newPhase3TestApp() *App {
 		tview.NewTextView(),
 		tview.NewTextView(),
 		tview.NewTextView(),
-		tview.NewTextView(),
-		tview.NewTextView(),
 	}
 	pages := tview.NewPages()
 	pages.AddPage("main", tview.NewBox(), true, true)
@@ -446,20 +444,12 @@ func TestFocusOrderFollowsRequestedPanelSequence(t *testing.T) {
 	a.focusIndex = 2 // Top
 
 	a.focusNext()
-	if a.focusIndex != 0 { // States
+	if a.focusIndex != 0 { // System Health
 		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 0)
 	}
 	a.focusNext()
-	if a.focusIndex != 1 { // Interface
+	if a.focusIndex != 1 { // Diagnosis
 		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 1)
-	}
-	a.focusNext()
-	if a.focusIndex != 3 { // Conntrack
-		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 3)
-	}
-	a.focusNext()
-	if a.focusIndex != 4 { // Diagnosis
-		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 4)
 	}
 	a.focusNext()
 	if a.focusIndex != 2 { // wrap Top
@@ -475,11 +465,9 @@ func TestHandleKeyEventCtrlNumberFocusShortcuts(t *testing.T) {
 		rune      rune
 		wantFocus int
 	}{
-		{rune: '1', wantFocus: 2}, // Top
-		{rune: '2', wantFocus: 0}, // States
-		{rune: '3', wantFocus: 1}, // Interface
-		{rune: '4', wantFocus: 3}, // Conntrack
-		{rune: '5', wantFocus: 4}, // Diagnosis
+		{rune: '1', wantFocus: 2}, // Top Connections
+		{rune: '2', wantFocus: 0}, // System Health
+		{rune: '3', wantFocus: 1}, // Diagnosis
 	}
 
 	for _, tc := range tests {
@@ -524,7 +512,7 @@ func TestHandleKeyEventArrowKeysAreBlockedOutsideTopConnections(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	a.focusIndex = 4 // Diagnosis
+	a.focusIndex = 1 // Diagnosis
 	a.selectedTalkerIndex = 1
 
 	up := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyUp, 0, 0))

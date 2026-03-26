@@ -291,7 +291,7 @@ Chỉ bắt đầu coi retrans là strong signal khi:
 
 ## 6) Conntrack: đọc thế nào cho đúng
 
-Trong app này, panel `Conntrack` nên được xem là **pressure panel**.
+Trong app này, phần Conntrack (trong panel `System Health`) nên được xem là **pressure indicator**.
 
 Hãy nhìn:
 

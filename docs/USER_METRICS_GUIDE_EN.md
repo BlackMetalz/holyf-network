@@ -8,12 +8,11 @@ If you are still new to TCP states / queues / conntrack, read this first:
 
 ## 30-second incident scan
 
-1. Check `Connection States`:
+1. Check `System Health` panel:
    - Is `HEALTH` yellow/red?
    - Are `Retrans` or `Drops` rising?
-2. Check `Interface Stats`:
    - Is `RX/TX` spiking?
-   - Are `Errors/Drops` non-zero?
+   - Are NIC `Errors/Drops` non-zero?
    - If the `Traffic` line appears, treat it as a short interface spike warning.
 3. Open `Top Connections`:
    - Sort by bandwidth (`Shift+B`) to find heavy flows first.
@@ -73,7 +72,11 @@ Quick interpretation:
 - In `OUT`, `Selected Detail` switches to remote-port context and explicitly marks `Enter` / `k` as disabled.
 - The live Top panel hides TCP connections owned by the current `holyf-network` process so update-check/control traffic does not pollute operator-facing rows.
 
-## 2) Connection States
+## 2) System Health (merged panel)
+
+This single panel combines connection states, interface stats, and conntrack into one view with section separators.
+
+### Connection States section
 
 - Shows connection count distribution by TCP state.
 - `Retrans` indicates TCP path quality.
@@ -84,14 +87,14 @@ When to worry:
 - Persistently high retrans with sufficient `out seg/s`.
 - Rapid `TIME_WAIT` growth with high churn.
 
-## 3) Interface Stats
+### Interface section
 
 - `RX/TX`: NIC-level throughput (bytes/s).
 - `Packet rate`: packet rate RX/TX.
 - `App Usage`: CPU cores used and RSS memory of the current holyf-network process, not host-wide usage.
 - `Traffic`: short spike verdict, shown only when interface traffic needs attention.
 - `Errors`, `Drops`: NIC error/drop counters.
-- In live mode, this panel refreshes every `1s` so bandwidth spikes are visible faster.
+- In live mode, this section refreshes every `1s` so bandwidth spikes are visible faster.
 - This `1s` cadence is only for NIC throughput/packet counters.
 - `App` (CPU/RSS) is sampled on the configured refresh interval (`-r/--refresh`).
 - Right after startup, one early warm-up refresh runs (~1s) to stabilize first-sample volatility.
@@ -102,25 +105,25 @@ When to worry:
 - Hidden when the interface is quiet/stable.
 - Appears only for spike warn/crit conditions.
 - Uses NIC speed when available, otherwise falls back to throughput + moving-baseline ratio.
-- Footer shows link-speed debug: `LINK(sysfs):<Mb/s>` or `LINK(sysfs):UNKNOWN`.
+- Status bar shows `LINK:<Mb/s>` only when NIC speed is known (hidden otherwise).
 
 How to correlate:
 
 - High interface traffic but low Top rows: traffic may be short-lived between samples.
 - Low interface traffic but one very high Top row: a few flows dominate usage.
 
-## 4) Conntrack
+### Conntrack section
 
-This panel shows kernel state-table usage (`nf_conntrack`), not “how many outbound ports are open”.
+This section shows kernel state-table usage (`nf_conntrack`), not “how many outbound ports are open”.
 
 - `Used / Max`: tracked entries vs capacity.
 - `Drops`: failed inserts (often table pressure/full conditions).
 
-In the live panel, focus on state-table pressure:
+Focus on state-table pressure:
 
 - prioritize `Used / Max` and `Conntrack%`
 - pay special attention to `Drops` only when it is non-zero
-  - `Drops: 0` is intentionally hidden in the panel to keep noise down
+  - `Drops: 0` is intentionally hidden to keep noise down
 
 Conntrack thresholds come from `config/health_thresholds.toml` (or built-in defaults if no file is provided).
 Default conntrack thresholds are `warn >= 70%` and `crit >= 85%`.

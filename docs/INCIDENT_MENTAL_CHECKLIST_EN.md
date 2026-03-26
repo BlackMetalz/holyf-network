@@ -73,7 +73,7 @@ Treat retrans as a strong signal only when:
 
 ### 6. Is conntrack a side symptom or the actual bottleneck?
 
-Look at the `Conntrack` panel:
+Look at the Conntrack section in `System Health` panel:
 
 - `Used / Max`
 - `Conntrack%`

@@ -292,7 +292,7 @@ Treat retrans as a strong signal only when:
 
 ## 6) Conntrack: how to read it correctly
 
-In this app, the `Conntrack` panel should be treated as a **pressure panel**.
+In this app, the Conntrack section (inside `System Health` panel) should be treated as a **pressure indicator**.
 
 Look at:
 

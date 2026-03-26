@@ -116,9 +116,15 @@ type App struct {
 
 	// Backend indicator for status bar.
 	backendLabel string
+
+	// Cached data for the combined System Health panel (so the 1-second
+	// interface refresh lane can re-render the full panel).
+	cachedConnData       collector.ConnectionData
+	cachedRetransRates   *collector.RetransmitRates
+	cachedConntrackRates *collector.ConntrackRates
 }
 
-var livePanelFocusOrder = []int{2, 0, 1, 3, 4} // 1=Top, 2=States, 3=Interface, 4=Conntrack, 5=Diagnosis
+var livePanelFocusOrder = []int{2, 0, 1} // 1=Top, 2=System Health, 3=Diagnosis
 
 // NewApp creates a new TUI application.
 func NewApp(
@@ -315,7 +321,7 @@ func (a *App) startStatusTicker() {
 func (a *App) refreshInterfacePanel() {
 	ifaceStats, err := collector.CollectInterfaceStats(a.ifaceName)
 	if err != nil {
-		a.panels[1].SetText(fmt.Sprintf("  [red]%v[white]", err))
+		// Still render what we can for the combined panel.
 		return
 	}
 
@@ -327,12 +333,23 @@ func (a *App) refreshInterfacePanel() {
 	}
 	a.trafficManager.SetSpeed(linkSpeedMbps, linkSpeedKnown)
 	spike := a.trafficManager.EvaluateInterfaceSpike(rates, linkSpeedBps, linkSpeedKnown)
-	a.panels[1].SetText(tuipanels.RenderInterfacePanel(rates, spike, tuishared.InterfaceSystemSnapshot{
-		Usage:      a.latestSystemUsage,
-		Ready:      a.systemUsageReady,
-		Err:        a.systemUsageErr,
-		RefreshSec: a.refreshSec,
-	}))
+	activeThresholds := a.trafficManager.ActiveHealthThresholds()
+
+	a.panels[0].SetText(tuipanels.RenderSystemHealthPanel(
+		a.cachedConnData,
+		a.cachedRetransRates,
+		a.cachedConntrackRates,
+		activeThresholds,
+		rates,
+		spike,
+		tuishared.InterfaceSystemSnapshot{
+			Usage:      a.latestSystemUsage,
+			Ready:      a.systemUsageReady,
+			Err:        a.systemUsageErr,
+			RefreshSec: a.refreshSec,
+		},
+		a.connStateSortDesc,
+	))
 	a.prevIfaceStats = &ifaceStats
 }
 
@@ -353,16 +370,13 @@ func (a *App) refreshData() {
 	// Collect conntrack early so panel 0 health strip can use it too.
 	var conntrackRates *collector.ConntrackRates
 	ctData, err := collector.CollectConntrack()
-	if err != nil {
-		a.panels[3].SetText(fmt.Sprintf("  [red]%v[white]", err))
-	} else {
+	if err == nil {
 		rates := collector.CalculateConntrackRates(ctData, a.prevConntrack)
 		conntrackRates = &rates
-		a.panels[3].SetText(tuipanels.RenderConntrackPanel(rates, activeThresholds.ConntrackPercent))
 		a.prevConntrack = &ctData
 	}
 
-	// Panel 0: Connection States + Retransmits
+	// Panel 0: System Health (Connection States + Interface + Conntrack combined)
 	var retransRates *collector.RetransmitRates
 	var connData collector.ConnectionData
 	connDataAvailable := false
@@ -378,14 +392,16 @@ func (a *App) refreshData() {
 		a.panels[0].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
 		connDataAvailable = true
-		a.panels[0].SetText(tuipanels.RenderConnectionsPanelWithStateSort(connData, retransRates, conntrackRates, activeThresholds, a.connStateSortDesc))
+		// Cache connection data for the 1-second interface refresh lane.
+		a.cachedConnData = connData
+		a.cachedRetransRates = retransRates
+		a.cachedConntrackRates = conntrackRates
 	}
 
 	a.ensureListenPortsKnown()
 
-	// Panel 1: Interface Stats
-	// Kept here for initial/manual/full refresh coherence; a separate 1s lane
-	// also updates this panel for near-real-time bandwidth visibility.
+	// Refresh the combined System Health panel (includes interface stats).
+	// A separate 1s lane also re-renders this panel for near-real-time bandwidth visibility.
 	a.refreshInterfacePanel()
 
 	// Panel 2: Top Connections
@@ -671,12 +687,6 @@ func (a *App) handleCtrlPanelShortcut(r rune) bool {
 		return true
 	case '3':
 		a.focusPanel(1)
-		return true
-	case '4':
-		a.focusPanel(3)
-		return true
-	case '5':
-		a.focusPanel(4)
 		return true
 	default:
 		return false
@@ -997,12 +1007,12 @@ func (a *App) promptInterfaceStatsExplain() {
 }
 
 func (a *App) renderDiagnosisPanel() {
-	if len(a.panels) <= 4 || a.panels[4] == nil {
+	if len(a.panels) <= 1 || a.panels[1] == nil {
 		return
 	}
 
-	_, _, width, _ := a.panels[4].GetInnerRect()
-	a.panels[4].SetText(tuipanels.RenderDiagnosisPanel(a.topDiagnosis, width))
+	_, _, width, _ := a.panels[1].GetInnerRect()
+	a.panels[1].SetText(tuipanels.RenderDiagnosisPanel(a.topDiagnosis, width))
 }
 
 // --- UIContext interface implementation for blocking package ---

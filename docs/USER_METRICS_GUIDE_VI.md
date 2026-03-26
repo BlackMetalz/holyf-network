@@ -8,12 +8,11 @@ Nếu bạn còn mới với TCP state / queue / conntrack, nên đọc trước
 
 ## Đọc nhanh 30 giây khi có alert
 
-1. Nhìn `Connection States`:
+1. Nhìn panel `System Health`:
    - `HEALTH` có đỏ/vàng không.
    - `Retrans` hoặc `Drops` có tăng bất thường không.
-2. Nhìn `Interface Stats`:
    - `RX/TX` có tăng mạnh không.
-   - `Errors/Drops` có khác `0` không.
+   - `Errors/Drops` NIC có khác `0` không.
    - Nếu dòng `Traffic` xuất hiện thì coi đó là cảnh báo spike ngắn ở interface.
 3. Qua `Top Connections`:
    - Sort theo băng thông (`Shift+B`) để thấy flow nặng nhất.
@@ -73,7 +72,11 @@ Diễn giải nhanh:
 - Ở `OUT`, `Selected Detail` sẽ chuyển sang ngữ cảnh remote port và nói rõ `Enter` / `k` đang bị tắt.
 - Panel Top live sẽ ẩn TCP connection do chính process `holyf-network` hiện tại tạo ra, để traffic control-plane như update check không chui vào danh sách operator đang xem.
 
-## 2) Connection States
+## 2) System Health (panel gộp)
+
+Panel này gộp connection states, interface stats, và conntrack vào một view duy nhất, ngăn cách bằng dòng separator mờ.
+
+### Phần Connection States
 
 - Thể hiện phân bố số connection theo state.
 - `Retrans` dùng để nhìn chất lượng đường truyền TCP.
@@ -84,14 +87,14 @@ Khi nào đáng lo:
 - `Retrans` cao liên tục + `out seg/s` đủ lớn.
 - `TIME_WAIT` tăng mạnh kèm churn cao (thường do kết nối ngắn hạn dày).
 
-## 3) Interface Stats
+### Phần Interface
 
 - `RX/TX`: tổng lưu lượng theo NIC (bytes/s).
 - `Packet rate`: số packet/s RX/TX.
 - `App Usage`: số core CPU đang dùng và RSS memory của process holyf-network hiện tại, không phải số host-wide của cả máy.
 - `Traffic`: cảnh báo spike ngắn, chỉ hiện khi traffic cần chú ý.
 - `Errors`, `Drops`: lỗi và drop của interface.
-- Ở live mode, panel này refresh mỗi `1s` để thấy spike bandwidth nhanh hơn.
+- Ở live mode, phần này refresh mỗi `1s` để thấy spike bandwidth nhanh hơn.
 - Nhịp `1s` này chỉ áp dụng cho throughput/packet của NIC.
 - Dòng `App` (CPU/RSS) lấy mẫu theo refresh interval cấu hình (`-r/--refresh`).
 - Ngay sau lúc startup có một warm-up refresh sớm (~1s) để ổn định sample đầu.
@@ -102,25 +105,25 @@ Khi nào đáng lo:
 - Mặc định bị ẩn khi interface đang yên / ổn định.
 - Chỉ hiện khi có spike mức warn/crit.
 - Ưu tiên dùng speed NIC nếu đọc được; nếu không thì fallback về throughput + tỷ lệ so với baseline di động.
-- Footer có debug link-speed: `LINK(sysfs):<Mb/s>` hoặc `LINK(sysfs):UNKNOWN`.
+- Status bar hiện `LINK:<Mb/s>` chỉ khi biết được speed NIC (ẩn nếu không có).
 
 Cách đối chiếu:
 
 - Interface cao nhưng Top thấp: traffic có thể rất ngắn hạn, flow không giữ lâu trong sample.
 - Interface thấp nhưng một flow Top rất cao: có thể vài flow lớn đang chi phối.
 
-## 4) Conntrack
+### Phần Conntrack
 
 Đây là mức dùng bảng state tracking của kernel (`nf_conntrack`), không phải “số port outbound mở”.
 
 - `Used / Max`: số entry đang track trên tổng capacity.
 - `Drops`: số flow không insert được (thường do bảng đầy hoặc lỗi).
 
-Panel live ưu tiên nhìn áp lực bảng state:
+Ưu tiên nhìn áp lực bảng state:
 
 - tập trung vào `Used / Max` và `Conntrack%`
 - chỉ cần đặc biệt chú ý `Drops` nếu khác `0`
-  - `Drops: 0` được ẩn đi chủ đích để panel đỡ nhiễu
+  - `Drops: 0` được ẩn đi chủ đích để đỡ nhiễu
 
 Ngưỡng Conntrack lấy từ `config/health_thresholds.toml` (hoặc dùng default built-in nếu không có file).
 Mặc định conntrack là `warn >= 70%` và `crit >= 85%`.

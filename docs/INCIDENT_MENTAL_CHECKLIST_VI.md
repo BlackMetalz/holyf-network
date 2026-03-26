@@ -73,7 +73,7 @@ Chỉ coi retrans là strong signal khi:
 
 ### 6. Conntrack đang là symptom phụ hay bottleneck thật?
 
-Nhìn panel `Conntrack`:
+Nhìn phần Conntrack trong panel `System Health`:
 
 - `Used / Max`
 - `Conntrack%`

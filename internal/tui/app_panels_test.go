@@ -162,16 +162,14 @@ func TestCreatePanelsIncludesDiagnosisPanel(t *testing.T) {
 	t.Parallel()
 
 	panels := tuilayout.CreatePanels()
-	if len(panels) != 5 {
-		t.Fatalf("panel count mismatch: got=%d want=%d", len(panels), 5)
+	if len(panels) != 3 {
+		t.Fatalf("panel count mismatch: got=%d want=%d", len(panels), 3)
 	}
 
 	titles := []string{
-		" 2. Connection States ",
-		" 3. Interface Stats ",
+		" 2. System Health ",
+		" 3. Diagnosis ",
 		" 1. Top Incoming ",
-		" 4. Conntrack ",
-		" 5. Diagnosis ",
 	}
 	for i, want := range titles {
 		if got := panels[i].GetTitle(); got != want {
@@ -331,12 +329,12 @@ func TestDiagnosisPanelRemainsHostGlobalAcrossGroupToggle(t *testing.T) {
 	}
 
 	a.renderDiagnosisPanel()
-	before := a.panels[4].GetText(true)
+	before := a.panels[1].GetText(true)
 	ret := a.handleKeyEvent(tcellKeyRune('g'))
 	if ret != nil {
 		t.Fatalf("g should be handled")
 	}
-	after := a.panels[4].GetText(true)
+	after := a.panels[1].GetText(true)
 	if before != after {
 		t.Fatalf("expected diagnosis panel to remain unchanged across group toggle:\nbefore=%q\nafter=%q", before, after)
 	}
