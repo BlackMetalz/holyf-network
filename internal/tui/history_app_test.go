@@ -481,7 +481,7 @@ func TestHistoryHandleKeyEventOTogglesDirectionAndUsesOutgoingRows(t *testing.T)
 		t.Fatalf("expected outgoing rows after toggle, got=%+v", rows)
 	}
 	text := h.panel.GetText(true)
-	if !strings.Contains(text, "Dir=OUT") || !strings.Contains(text, "RPORT") {
+	if !strings.Contains(text, "Outgoing") || !strings.Contains(text, "RPORT") {
 		t.Fatalf("expected outgoing replay panel render, got=%q", text)
 	}
 }

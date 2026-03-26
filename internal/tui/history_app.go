@@ -959,7 +959,11 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 				h.currentIndex = h.adjustGenericIndexForSkipEmpty(h.currentIndex)
 			}
 			h.selectedIndex = 0
-			h.setStatusNote(fmt.Sprintf("Replay direction: %s", h.topDirection.Label()), 4*time.Second)
+			dirName := "Incoming"
+			if h.topDirection == tuishared.TopConnectionOutgoing {
+				dirName = "Outgoing"
+			}
+			h.setStatusNote(fmt.Sprintf("Switched to %s connections", dirName), 4*time.Second)
 			h.renderPanel()
 			h.updateStatusBar()
 			return nil

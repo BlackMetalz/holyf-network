@@ -15,7 +15,11 @@ func RenderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 	var sb strings.Builder
 
 	var chips []string
-	chips = append(chips, fmt.Sprintf("[aqua]Dir=%s[white]", direction.Label()))
+	dirLabel := "Incoming"
+	if direction == tuishared.TopConnectionOutgoing {
+		dirLabel = "Outgoing"
+	}
+	chips = append(chips, fmt.Sprintf("[aqua]%s[white]", dirLabel))
 	chips = append(chips, fmt.Sprintf("[yellow]Sort=%s[white]", tuishared.SortLabelWithDirection(sortMode, sortDesc)))
 	if strings.TrimSpace(portFilter) != "" {
 		chips = append(chips, fmt.Sprintf("[yellow]Port=%s[white]", strings.TrimSpace(portFilter)))
@@ -101,7 +105,11 @@ func RenderHistoryAggregatePanel(rows []history.SnapshotGroup, portFilter, textF
 		}
 		peer = tuishared.TruncateRight(peer, peerColWidth)
 		port := strconv.Itoa(row.Port)
-		proc := tuishared.TruncateRight(row.ProcName, procColWidth)
+		procName := row.ProcName
+		if procName == "unknown" || procName == "" {
+			procName = "-"
+		}
+		proc := tuishared.TruncateRight(procName, procColWidth)
 		conns := strconv.Itoa(row.ConnCount)
 		sendQ := FormatBytes(row.TxQueue)
 		recvQ := FormatBytes(row.RxQueue)
