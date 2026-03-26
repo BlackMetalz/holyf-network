@@ -14,7 +14,8 @@ If you are still new to TCP states / queues / conntrack, read this first:
    - Is `RX/TX` spiking?
    - Are NIC `Errors/Drops` non-zero?
    - If the `Traffic` line appears, treat it as a short interface spike warning.
-3. Open `Top Connections`:
+2. Press `Ctrl+2` for bandwidth chart view — see traffic trend over the last 60 seconds.
+3. Press `Ctrl+1` to return, then open `Top Connections`:
    - Sort by bandwidth (`Shift+B`) to find heavy flows first.
    - Look for unusual `Send-Q/Recv-Q`.
 4. If Docker/NAT is involved:

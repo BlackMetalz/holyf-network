@@ -34,5 +34,6 @@ go test ./...
 - Linux-first TUI network observability tool.
 - Core runtime data comes from `/proc` and `/sys`.
 - For Docker/NAT traffic, live/replay can show synthetic process label `ct/nat` (conntrack-derived visibility path).
-- Active mitigation uses `iptables`/`ip6tables`, `conntrack`, and `ss`.
-- Full functionality expects `sudo`.
+- Active mitigation uses kernel netlink APIs on Linux 4.9+ (nftables, SOCK_DESTROY, nfnetlink_conntrack). Falls back to `iptables`/`ss`/`conntrack` CLI tools when kernel API unavailable.
+- Only remaining external tool: `tcpdump` (packet capture feature only).
+- Full functionality expects `sudo` (or `CAP_NET_ADMIN` for netlink access).

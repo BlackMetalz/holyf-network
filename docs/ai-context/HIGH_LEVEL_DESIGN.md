@@ -189,12 +189,16 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
      - `clamp(x) = max(x, 0)` (handles counter reset/wrap)
    - Behavior:
      - first sample is baseline (no rates)
-     - first-seen flow after baseline counts current bytes as delta (to capture short-lived flows)
+     - first-seen flow after baseline: delta = 0 (accumulated historical bytes are skipped; real delta appears on next sample)
+     - sanity cap: per-flow delta capped at 12.5 GB/s (100 Gbps); anything above is treated as counter anomaly and zeroed
+     - `clamp(x) = max(min(x, maxDeltaPerFlow), 0)`
    - Fallback source (only overlay rows still 0):
-     - `kernelapi.SocketManager.CollectTCPCounters()` (INET_DIAG on Linux 4.9+, `ss -tinHn` fallback)
+     - `kernelapi.SocketManager.CollectTCPCounters()` — always delegates to `ss -tinHn` exec because raw `tcp_info` byte counter offsets vary across kernel versions and reading them via netlink produces garbage
    - Kernel API note:
-     - When using netlink, no `conntrack`/`ss` CLI tools are needed
+     - Conntrack flow dump uses netlink (no `conntrack` CLI needed)
+     - Socket counter collection (`bytes_acked`/`bytes_received`) uses `ss -tinHn` for reliability
      - `cat /proc/sys/net/netfilter/nf_conntrack_acct` should be `1` for byte accounting
+     - When `nf_conntrack_acct=0`, netlink conntrack returns zero byte counters
 
 ## 3) Daemon Snapshot Pipeline
 
@@ -358,21 +362,35 @@ Behavior constraints:
 
 ## 6) UI Composition
 
-### Live mode (`layout/live.go`)
+### Live mode — two views
 
+**View switching:**
+- `Ctrl+1`: Dashboard view (default)
+- `Ctrl+2`: Bandwidth chart view (full-screen dual time-series charts)
+
+**Dashboard view (Ctrl+1)** (`layout/live.go`):
 - Left: `Top Connections` (spans full height)
 - Right top: `System Health` (merged: connection states + interface stats + conntrack in one panel with dim section separators)
-- Right bottom: `Diagnosis`
+- Right bottom: `Diagnosis` — operator card: `Issue`, `Scope`, `Signal`, `Likely Cause`, `Confidence`, `Why`, `Next Actions`
 - Bottom: status bar
-- 3 panels total (was 5 before the merge)
-- Live `GROUP` view groups by `(peer, process)` for clarity under mixed ownership (`sshd` + `ct/nat`, etc.)
+- 3 panels total
+- `GROUP` view groups by `(peer, process)` for clarity under mixed ownership (`sshd` + `ct/nat`, etc.)
 - Top Connections can render a live bandwidth note above the table when needed.
 - Top Connections can also render a footer preview for the selected row when panel height allows.
-- `Diagnosis` is a separate live panel with an operator card: `Issue`, `Scope`, `Signal`, `Likely Cause`, `Confidence`, `Why`, and `Next Actions`.
 - Status bar indicators:
   - `API:kernel` (green) or `API:<backend details>` (yellow) — shows kernel API vs CLI fallback status
   - `LINK:<speed>Mb/s` — only shown when NIC speed is known (hidden otherwise)
-- Navigation: Tab cycles 3 panels, Ctrl+1..3 jumps directly
+- Navigation: Tab cycles 3 panels
+
+**Bandwidth chart view (Ctrl+2)** (`panels/chart.go`):
+- Two side-by-side time-series charts: `Incoming (RX)` and `Outgoing (TX)`
+- Rendered with Braille Unicode characters (U+2800-U+28FF) for high-resolution line graphs
+- Connected lines between data points using Bresenham's line algorithm on Braille grid
+- Y-axis: auto-scaled bandwidth labels (B, KB, MB, GB)
+- X-axis: time labels (-60s → now)
+- Data source: ring buffer of last 60 interface rate samples (1 sample/second)
+- In chart view, most hotkeys are disabled — only `q`, `?`, and `Ctrl+1` work
+- Ring buffer: `internal/tui/shared/ring.go` (fixed 60-sample circular buffer)
 
 ### Replay mode (`layout/replay.go`)
 

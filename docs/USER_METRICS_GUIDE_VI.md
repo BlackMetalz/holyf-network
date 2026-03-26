@@ -14,6 +14,8 @@ Nếu bạn còn mới với TCP state / queue / conntrack, nên đọc trước
    - `RX/TX` có tăng mạnh không.
    - `Errors/Drops` NIC có khác `0` không.
    - Nếu dòng `Traffic` xuất hiện thì coi đó là cảnh báo spike ngắn ở interface.
+2. Nhấn `Ctrl+2` xem biểu đồ bandwidth — thấy xu hướng traffic trong 60 giây gần nhất.
+3. Nhấn `Ctrl+1` quay lại dashboard.
 3. Qua `Top Connections`:
    - Sort theo băng thông (`Shift+B`) để thấy flow nặng nhất.
    - Dò `Send-Q/Recv-Q` bất thường.

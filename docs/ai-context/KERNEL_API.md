@@ -118,7 +118,8 @@ User space                         Kernel
 Open AF_NETLINK socket
   (NETLINK_SOCK_DIAG)
          │
-Send inet_diag_req_v2    ──────►  TCPDIAG_GETSOCK handler
+Send inet_diag_req_v2    ──────►  SOCK_DIAG_BY_FAMILY (type 20, modern)
+                                  fallback: TCPDIAG_GETSOCK (type 18, legacy)
   - state bitmask                  - filters sockets at kernel level
   - address/port filter            - returns matching sockets only
   - extension flags
@@ -136,13 +137,21 @@ For kills: send same msg  ──────►  SOCK_DESTROY handler (kernel 4.
 - No process spawn per query (netlink socket stays open)
 - Kernel-side filtering by state + address (no client-side text grep)
 - `SOCK_DESTROY` returns real success/failure (`ss -K` always exits 0)
-- `tcp_info` extension provides `bytes_acked`/`bytes_received` without parsing alternating text lines
+- `SOCK_DESTROY` returns real success/failure (`ss -K` always exits 0)
+
+**Known limitation: `CollectTCPCounters()` delegates to exec (`ss -tinHn`)**:
+- The `tcp_info` struct offsets for `bytes_acked`/`bytes_received` vary across kernel versions and compile-time config
+- Reading them via raw netlink at hardcoded offsets (100/108) produces garbage on some kernels
+- The netlink `SocketManager` delegates `CollectTCPCounters()` to the exec fallback which uses `ss -tinHn` — `ss` parses `tcp_info` correctly using the kernel's own formatting code
+- Socket query and kill operations still use netlink (struct layout for those is stable)
 
 **Constants** (from `socket_netlink.go`):
-- `_TCPDIAG_GETSOCK = 18` — netlink message type for socket query
+- `_SOCK_DIAG_BY_FAMILY = 20` — modern netlink message type for socket query (kernel 4.2+)
+- `_TCPDIAG_GETSOCK = 18` — legacy netlink message type (fallback)
 - `_SOCK_DESTROY = 21` — netlink message type for socket kill
 - `_INET_DIAG_INFO = 2` — extension flag to request tcp_info
 - State bitmask: `1 << TCP_ESTABLISHED`, `0xFFF` for all states
+- The implementation tries `SOCK_DIAG_BY_FAMILY` first, falls back to `TCPDIAG_GETSOCK` if the kernel returns EINVAL
 
 **IPv4/IPv6 handling**: Sends separate requests for `AF_INET` and `AF_INET6`. IPv4-mapped IPv6 addresses (`::ffff:x.x.x.x`) are normalized by stripping the prefix.
 
@@ -182,6 +191,8 @@ c.Stats()                  ──────►  IPCTNL_MSG_CT_GET_STATS_CPU
 - TCP state as typed uint8 instead of string parsing
 - Byte counters as uint64 instead of text parsing
 - Delete by flow object instead of constructing 4 different arg combinations
+
+**Byte accounting guard**: The netlink implementation checks `/proc/sys/net/netfilter/nf_conntrack_acct` before using byte counters. When `nf_conntrack_acct=0`, all byte counters are forced to zero to prevent garbage values.
 
 **TCP state mapping** (kernel `nf_conntrack_tcp.h` values):
 ```
@@ -278,12 +289,23 @@ When any of these aren't met, the specific subsystem falls back to exec (CLI too
 
 ## Fallback Behavior
 
-| Condition | Socket | Conntrack | Firewall |
-|-----------|--------|-----------|----------|
-| Linux 4.9+ with CAP_NET_ADMIN | netlink | netlink | nftables |
-| Linux without CAP_NET_ADMIN | exec(ss) | exec(conntrack) | exec(iptables) |
-| Linux without nf_conntrack | netlink | exec(conntrack) | nftables |
-| Non-Linux (macOS, etc.) | stub (no-op) | stub (no-op) | stub (no-op) |
-| CLI tool not installed | error on action | graceful empty | error on action |
+| Condition | Socket query/kill | Socket counters | Conntrack | Firewall |
+|-----------|-------------------|-----------------|-----------|----------|
+| Linux 4.9+ with CAP_NET_ADMIN | netlink | exec(ss)* | netlink | nftables |
+| Linux without CAP_NET_ADMIN | exec(ss) | exec(ss) | exec(conntrack) | exec(iptables) |
+| Linux without nf_conntrack | netlink | exec(ss) | exec(conntrack) | nftables |
+| Non-Linux (macOS, etc.) | stub (no-op) | stub (no-op) | stub (no-op) | stub (no-op) |
+| CLI tool not installed | error on action | graceful empty | graceful empty | error on action |
+
+*Socket counters (`CollectTCPCounters`) always delegate to `ss -tinHn` even when netlink is available, because `tcp_info` byte counter offsets in the raw struct are unreliable across kernel versions.
+
+## Bandwidth Sanity Guards
+
+The bandwidth tracker (`internal/collector/bandwidth_tracker.go`) applies two guards:
+
+1. **First-seen skip**: When a flow appears for the first time after baseline, its accumulated historical byte count is NOT treated as a single-interval delta. Delta = 0 for first-seen; real delta shows on next sample.
+2. **Per-flow cap**: Any per-flow delta exceeding 12.5 GB/s (100 Gbps) per direction is zeroed as a counter anomaly. Prevents display of petabyte/sec rates from counter bugs or kernel quirks.
+
+These guards apply to both the conntrack bandwidth tracker and the socket bandwidth tracker.
 
 "Graceful empty" means passive collection returns empty results (no error). Active actions (block/kill) return errors since the user needs to know the action failed.

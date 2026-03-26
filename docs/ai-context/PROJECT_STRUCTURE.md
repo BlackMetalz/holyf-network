@@ -119,8 +119,9 @@ This is the current high-signal layout (non-essential folders omitted):
 
 - `internal/tui`
   - App state machine, keyboard handling, modal flows, rendering panels.
+  - Two view modes: Dashboard (Ctrl+1) and Bandwidth Chart (Ctrl+2).
   - Root files (5 source):
-    - `app_core.go`: lifecycle, refresh loop, global key handling, status bar, shared constants/utils, UIContext adapter, diagnosis history modal, action log modal.
+    - `app_core.go`: lifecycle, refresh loop, global key handling, status bar, shared constants/utils, UIContext adapter, diagnosis history modal, action log modal, view mode switching.
     - `app_connections.go`: top-connection selection/filter/sort/search orchestration + panel layout for note/preview + kill target selection.
     - `app_trace_packet.go`: packet trace capture UI (form, progress, result display).
     - `app_trace_history.go`: trace history persistence/modals + trace packet analyzer logic.
@@ -128,11 +129,11 @@ This is the current high-signal layout (non-essential folders omitted):
   - Sub-packages by concern:
     - `blocking/`: block/kill flow manager, runtime control, target definitions, UI context.
     - `diagnosis/`: rule-based live diagnosis synthesis engine.
-    - `layout/`: grid composition for live and replay modes.
+    - `layout/`: grid composition for live (dashboard + chart) and replay modes.
     - `overlays/`: help text, modal, text overlay components.
-    - `panels/`: pure rendering for each panel (connections, conntrack, diagnosis, top connections, history aggregate).
+    - `panels/`: pure rendering for each panel (system health, diagnosis, top connections, history aggregate, sparkline, Braille chart).
     - `replay/`: historical data replay/timeline UI (search, navigation, trace visualization).
-    - `shared/`: shared utilities (formatting, health checks, conntrack stats, trace formatting, states, update checks).
+    - `shared/`: shared utilities (formatting, health checks, conntrack stats, trace formatting, states, update checks, ring buffer).
     - `trace/`: trace data storage and rendering.
     - `traffic/`: traffic manager and monitoring.
     - `livetrace/`: live packet trace engine.
