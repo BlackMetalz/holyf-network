@@ -801,7 +801,9 @@ func (a *App) updateStatusBar() {
 	if a.sensitiveIP {
 		stateText += " [yellow]IP MASK[white] |"
 	}
-	stateText += a.linkSpeedStatusIndicator()
+	if a.trafficManager.IfaceSpeedSample() && a.trafficManager.IfaceSpeedKnown() && a.trafficManager.IfaceSpeedMbps() > 0 {
+		stateText += fmt.Sprintf(" [aqua]LINK:%.0fMb/s[white] |", a.trafficManager.IfaceSpeedMbps())
+	}
 	if time.Now().Before(a.statusNoteUntil) && a.statusNote != "" {
 		stateText += fmt.Sprintf(" [yellow]%s[white] |", a.statusNote)
 	} else if strings.TrimSpace(a.lastStatusNote) != "" {
@@ -855,16 +857,6 @@ func (a *App) frontPageName() string {
 		return "main"
 	}
 	return name
-}
-
-func (a *App) linkSpeedStatusIndicator() string {
-	if !a.trafficManager.IfaceSpeedSample() {
-		return " [dim]LINK(sysfs):warming[white] |"
-	}
-	if a.trafficManager.IfaceSpeedKnown() && a.trafficManager.IfaceSpeedMbps() > 0 {
-		return fmt.Sprintf(" [aqua]LINK(sysfs):%.0fMb/s[white] |", a.trafficManager.IfaceSpeedMbps())
-	}
-	return " [yellow]LINK(sysfs):UNKNOWN[white] |"
 }
 
 func (a *App) statusHotkeysForPage(page string) (styled string, plain string) {
