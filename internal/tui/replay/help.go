@@ -9,7 +9,7 @@ const HelpText = `[yellow]Replay Shortcuts[white]
 [yellow]g[white]             Toggle replay view CONN <-> TRACE
 [yellow]h[white]             Open replay trace history modal (c=compare inside)
 [yellow]Shift+S[white]       Search timeline (all loaded snapshots)
-[yellow]L[white]             Follow latest snapshots
+[yellow]L[white]             Live tail (auto-jump to newest snapshot as daemon writes)
 [yellow]o[white]             Toggle replay IN/OUT direction
 [yellow]Up/Down[white]     Select row
 [yellow]f[white]           Port filter / clear all filters

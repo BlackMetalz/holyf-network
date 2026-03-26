@@ -16,25 +16,38 @@ Yes, fucking yes.
 Runtime requirements:
 
 ```bash
-# Required commands (Ubuntu/Debian)
-sudo apt update
-sudo apt install -y conntrack iproute2 iptables
+# Linux 4.9+ with root/sudo — no external tools needed for core features.
+# The app uses kernel APIs directly (netlink sockets) for:
+#   - Socket operations (replaces ss)
+#   - Conntrack queries (replaces conntrack CLI)
+#   - Firewall rules (replaces iptables/ip6tables via nftables)
+#
+# Optional: only needed if kernel API detection fails (rare on modern distros)
+sudo apt install -y conntrack iproute2 iptables    # Ubuntu/Debian
+sudo yum install -y conntrack-tools iproute iptables  # CentOS/RHEL
+
+# Required: only for Trace Packet feature (tcpdump is the only mandatory external tool)
+sudo apt install -y tcpdump   # Ubuntu/Debian
+sudo yum install -y tcpdump   # CentOS/RHEL
 ```
 
+For bandwidth monitoring, enable conntrack byte accounting:
 ```bash
-# Required commands (CentOS/RHEL)
-sudo yum install -y conntrack-tools iproute iptables
+sudo sysctl -w net.netfilter.nf_conntrack_acct=1
+# To make it persist across reboots:
+echo "net.netfilter.nf_conntrack_acct=1" | sudo tee -a /etc/sysctl.d/99-conntrack.conf
 ```
 
 Kernel / distro notes:
-- Linux only (this app reads `/proc` network data and uses netfilter tooling).
-- Conntrack panel needs `nf_conntrack` support (`/proc/sys/net/netfilter/nf_conntrack_count` and `nf_conntrack_max`).
-- Practical baseline: kernel `3.10+` (CentOS 7+) and newer.
-- Release binary is built static to run across common Linux distros (including Ubuntu 20.04+ and CentOS 7+).
+- Linux only (reads `/proc` network data, uses netlink kernel APIs).
+- **Kernel 4.9+** recommended — enables SOCK_DESTROY for socket killing and all netlink features.
+- Conntrack section needs `nf_conntrack` module loaded (`/proc/sys/net/netfilter/nf_conntrack_count`).
+- Release binary is built static to run across common Linux distros (Ubuntu 20.04+, CentOS 7+).
+- On startup, the app auto-detects kernel capabilities and shows `API:kernel` (green) or `API:exec(...)` (yellow) in the status bar.
 
 Privilege notes:
 - Run with `sudo` (or root) for full functionality.
-- `sudo` is required for: block/unblock peer, kill active flows, accurate conntrack stats on hardened hosts, and full process mapping from `/proc/[pid]/fd`.
+- `sudo` / `CAP_NET_ADMIN` is required for: netlink socket access, block/unblock peer, kill active flows, conntrack stats, and full process mapping from `/proc/[pid]/fd`.
 
 # Install
 ### Ubuntu/Linux (amd64)
@@ -55,7 +68,8 @@ sudo holyf-network -r 5
 
 # Keyboard shortcuts inside TUI
 # Tab / Shift+Tab: move focus between panels
-# Ctrl+1..5: focus panel (1=Top, 2=States, 3=Interface, 4=Conntrack, 5=Diagnosis)
+# Ctrl+1: dashboard view (default — Top Connections + System Health + Diagnosis)
+# Ctrl+2: bandwidth chart view (full-screen RX/TX time-series charts)
 # Up / Down: select row in Top Connections
 # [ / ]: previous / next page in Top Connections when rows exceed visible height
 # o: toggle Top Connections IN/OUT mode
@@ -96,11 +110,13 @@ make local ARGS="-r 5"
 ```
 
 Live refresh model:
-- `-r/--refresh` controls the main full refresh loop (Top/States/Conntrack/Diagnosis and full data recompute).
-- `3. Interface Stats` has a dedicated `1s` refresh lane in live mode for faster RX/TX visibility.
-- `App Usage` line in that panel shows holyf-network process CPU cores used + RSS only, sampled on the configured `-r/--refresh` interval.
-- `p` (pause) pauses both lanes.
-- Footer shows `LINK(sysfs):<speed>` or `LINK(sysfs):UNKNOWN` for quick NIC speed debug.
+- `-r/--refresh` controls the main full refresh loop (Top Connections + System Health + Diagnosis).
+- `System Health` panel has a dedicated `1s` refresh lane for faster RX/TX and bandwidth chart visibility.
+- `App Usage` line shows holyf-network process CPU cores + RSS, sampled on the configured `-r/--refresh` interval.
+- `Ctrl+2` switches to bandwidth chart view — two side-by-side RX/TX time-series charts (Braille rendering, 60s window).
+- `p` (pause) pauses both refresh lanes.
+- Status bar shows `API:kernel` (green) when using kernel APIs, `API:exec(...)` (yellow) when falling back to CLI tools.
+- `LINK:<speed>Mb/s` shown only when NIC speed is detectable.
 
 Mitigation behavior:
 - `minutes > 0`: block first, then kill active connections, then auto-unblock when timer expires.
@@ -241,7 +257,7 @@ Replay hotkeys:
 - left/right bracket (`[` / `]`): previous/next snapshot
 - `a` / `e`: oldest/latest snapshot
 - `t`: jump to specific timestamp
-- `L`: follow latest snapshots (tail-like)
+- `L`: live tail — auto-jump to newest snapshot as daemon writes new data (like `tail -f`)
 - `o`: toggle replay `IN/OUT`
 - `Up` / `Down`: select row
 - `f`: port filter (press again to clear filters)

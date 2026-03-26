@@ -596,10 +596,10 @@ func (h *HistoryApp) updateStatusBar() {
 		}
 	}
 
-	followState := "FOLLOW-OFF"
+	followState := "TAIL-OFF"
 	followColor := "dim"
 	if h.followLatest {
-		followState = "FOLLOW-ON"
+		followState = "TAIL-ON"
 		followColor = "green"
 	}
 
@@ -1023,9 +1023,9 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			if h.followLatest {
 				h.reloadIndex(false)
 				h.navigateLatest()
-				h.setStatusNote("Follow latest enabled", 4*time.Second)
+				h.setStatusNote("Live tail ON — auto-jumping to newest snapshot", 4*time.Second)
 			} else {
-				h.setStatusNote("Follow latest disabled", 4*time.Second)
+				h.setStatusNote("Live tail OFF", 4*time.Second)
 			}
 			h.renderPanel()
 			h.updateStatusBar()
