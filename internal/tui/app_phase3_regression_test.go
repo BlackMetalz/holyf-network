@@ -459,27 +459,28 @@ func TestFocusOrderFollowsRequestedPanelSequence(t *testing.T) {
 	}
 }
 
-func TestHandleKeyEventCtrlNumberFocusShortcuts(t *testing.T) {
+func TestHandleKeyEventCtrlNumberViewSwitching(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	tests := []struct {
-		rune      rune
-		wantFocus int
-	}{
-		{rune: '1', wantFocus: 2}, // Top Connections
-		{rune: '2', wantFocus: 0}, // System Health
-		{rune: '3', wantFocus: 1}, // Diagnosis
+	a.pages.AddPage("chart", tview.NewBox(), true, false)
+
+	// Ctrl+2 should switch to chart view
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, '2', tcell.ModCtrl))
+	if ret != nil {
+		t.Fatalf("ctrl+2 should be handled")
+	}
+	if a.currentView != viewChart {
+		t.Fatalf("ctrl+2 should switch to chart view, got=%d", a.currentView)
 	}
 
-	for _, tc := range tests {
-		ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, tc.rune, tcell.ModCtrl))
-		if ret != nil {
-			t.Fatalf("ctrl+%c should be handled", tc.rune)
-		}
-		if a.focusIndex != tc.wantFocus {
-			t.Fatalf("ctrl+%c focus mismatch: got=%d want=%d", tc.rune, a.focusIndex, tc.wantFocus)
-		}
+	// Ctrl+1 should switch back to dashboard
+	ret = a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, '1', tcell.ModCtrl))
+	if ret != nil {
+		t.Fatalf("ctrl+1 should be handled")
+	}
+	if a.currentView != viewDashboard {
+		t.Fatalf("ctrl+1 should switch to dashboard view, got=%d", a.currentView)
 	}
 }
 

@@ -189,8 +189,8 @@ func TestStatusHotkeysIncludeHelp(t *testing.T) {
 	}{
 		{name: "top incoming", focus: 2, direction: tuishared.TopConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "T=trace", "t=traces", "Enter/k=act", "?=help"}},
 		{name: "top outgoing", focus: 2, direction: tuishared.TopConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "T=trace", "t=traces", "Enter/k=disabled", "?=help"}},
-		{name: "system health", focus: 0, direction: tuishared.TopConnectionIncoming, want: []string{"s=sort", "Ctrl+1..3=focus", "?=help"}},
-		{name: "bandwidth", focus: 1, direction: tuishared.TopConnectionIncoming, want: []string{"Ctrl+1..3=focus", "?=help"}},
+		{name: "system health", focus: 0, direction: tuishared.TopConnectionIncoming, want: []string{"s=sort", "Ctrl+1=dashboard", "Ctrl+2=chart", "?=help"}},
+		{name: "diagnosis", focus: 1, direction: tuishared.TopConnectionIncoming, want: []string{"d=history", "Ctrl+1=dashboard", "Ctrl+2=chart", "?=help"}},
 	}
 
 	for _, tc := range tests {
@@ -259,7 +259,7 @@ func TestBuildLiveHelpTextTopOutgoingGroup(t *testing.T) {
 		"Global Navigation",
 		"Other Panels",
 		"System Health",
-		"Bandwidth",
+		"Diagnosis",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected help text to contain %q, got: %q", want, text)
@@ -270,7 +270,7 @@ func TestBuildLiveHelpTextTopOutgoingGroup(t *testing.T) {
 	}
 }
 
-func TestBuildLiveHelpTextBandwidthFocus(t *testing.T) {
+func TestBuildLiveHelpTextDiagnosisFocus(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
@@ -279,7 +279,7 @@ func TestBuildLiveHelpTextBandwidthFocus(t *testing.T) {
 	text := tuioverlays.BuildLiveHelpText(tuioverlays.LiveHelpContext{FocusIndex: a.focusIndex, Direction: a.topDirection, GroupView: a.groupView})
 	for _, want := range []string{
 		"Current Panel",
-		"Bandwidth",
+		"Diagnosis",
 		"Show diagnosis history",
 		"Top Connections",
 		"Logs / Blocks",

@@ -29,6 +29,13 @@ import (
 // app.go — Main TUI application. Wires together layout, navigation, help,
 // and auto-refresh via goroutines + channels.
 
+type viewMode int
+
+const (
+	viewDashboard viewMode = iota
+	viewChart
+)
+
 // App holds all TUI state.
 type App struct {
 	app       *tview.Application
@@ -125,6 +132,9 @@ type App struct {
 
 	rxHistory *tuishared.RingBuffer
 	txHistory *tuishared.RingBuffer
+
+	currentView viewMode
+	chartPanels []*tview.TextView // 2 panels: RX chart, TX chart
 }
 
 var livePanelFocusOrder = []int{2, 0, 1} // 1=Top, 2=System Health, 3=Bandwidth
@@ -179,10 +189,26 @@ func (a *App) Run() error {
 		a.helpView.SetText(tuioverlays.BuildLiveHelpText(tuioverlays.LiveHelpContext{FocusIndex: a.focusIndex, Direction: a.topDirection, GroupView: a.groupView}))
 	}
 
+	// Create chart panels
+	a.chartPanels = []*tview.TextView{
+		tview.NewTextView(),
+		tview.NewTextView(),
+	}
+	for _, cp := range a.chartPanels {
+		cp.SetBorder(true)
+		cp.SetDynamicColors(true)
+		cp.SetScrollable(true)
+	}
+	a.chartPanels[0].SetTitle(" Incoming (RX) ")
+	a.chartPanels[1].SetTitle(" Outgoing (TX) ")
+
+	chartGrid := tuilayout.CreateChartGrid(a.chartPanels[0], a.chartPanels[1], a.statusBar)
+
 	// tview.Pages lets us stack "pages" (layers) on top of each other.
-	// "main" is always visible, "help" is shown/hidden on top.
+	// "main" is the dashboard, "chart" is the chart view, "help" is shown/hidden on top.
 	a.pages = tview.NewPages()
 	a.pages.AddPage("main", a.grid, true, true)
+	a.pages.AddPage("chart", chartGrid, true, false)
 	a.pages.AddPage("help", helpModal, true, false) // resize=true, visible=false
 
 	// Set initial focus highlight
@@ -354,7 +380,6 @@ func (a *App) refreshInterfacePanel() {
 			RefreshSec: a.refreshSec,
 		},
 		a.connStateSortDesc,
-		a.topDiagnosis,
 	))
 
 	if !rates.FirstReading {
@@ -362,12 +387,12 @@ func (a *App) refreshInterfacePanel() {
 		a.txHistory.Push(time.Now(), rates.TxBytesPerSec)
 	}
 
-	if len(a.panels) > 1 {
-		_, _, bwWidth, _ := a.panels[1].GetInnerRect()
-		if bwWidth <= 0 {
-			bwWidth = 40
-		}
-		a.panels[1].SetText(tuipanels.RenderBandwidthChart(a.rxHistory, a.txHistory, bwWidth))
+	// Render chart view panels when in chart mode.
+	if a.currentView == viewChart && a.chartPanels != nil {
+		_, _, w0, h0 := a.chartPanels[0].GetInnerRect()
+		a.chartPanels[0].SetText(tuipanels.RenderTimeSeriesChart(a.rxHistory, "Incoming (RX)", w0, h0, "green"))
+		_, _, w1, h1 := a.chartPanels[1].GetInnerRect()
+		a.chartPanels[1].SetText(tuipanels.RenderTimeSeriesChart(a.txHistory, "Outgoing (TX)", w1, h1, "aqua"))
 	}
 
 	a.prevIfaceStats = &ifaceStats
@@ -470,12 +495,21 @@ func (a *App) refreshData() {
 		if connDataAvailable {
 			a.topDiagnosis = diagnosis.BuildTopDiagnosis(connData, retransRates, conntrackRates, activeThresholds, talkers, a.sensitiveIP)
 			a.appendDiagnosisHistory(a.lastRefresh, a.topDiagnosis)
+			a.renderDiagnosisPanel()
 		} else {
 			a.topDiagnosis = nil
 		}
 		a.renderTopConnectionsPanel()
 	}
 	a.updateStatusBar()
+}
+
+func (a *App) renderDiagnosisPanel() {
+	if len(a.panels) <= 1 || a.panels[1] == nil {
+		return
+	}
+	_, _, width, _ := a.panels[1].GetInnerRect()
+	a.panels[1].SetText(tuipanels.RenderDiagnosisPanel(a.topDiagnosis, width))
 }
 
 // handleKeyEvent processes all keyboard input.
@@ -490,6 +524,11 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 	// When non-help overlays are visible (forms/modals), let focused widget handle keys.
 	if a.isOverlayVisible() {
 		return event
+	}
+
+	// In chart view, block most non-rune keys (rune keys handled below)
+	if a.currentView == viewChart && event.Key() != tcell.KeyRune {
+		return nil
 	}
 
 	// Handle key by type
@@ -540,11 +579,34 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 
 	case tcell.KeyRune:
+		// Check for Ctrl+1 or Ctrl+2 before other key handling
 		if event.Modifiers()&tcell.ModCtrl != 0 {
-			if a.handleCtrlPanelShortcut(event.Rune()) {
+			switch event.Rune() {
+			case '1':
+				a.switchView(viewDashboard)
+				return nil
+			case '2':
+				a.switchView(viewChart)
 				return nil
 			}
 		}
+
+		// In chart view, only allow q and ? (plus Ctrl+1/2 handled above)
+		if a.currentView == viewChart {
+			switch event.Rune() {
+			case 'q':
+				a.cancelTracePacketCapture()
+				a.blockManager.CleanupActiveBlocks()
+				close(a.stopChan)
+				a.app.Stop()
+				return nil
+			case '?':
+				a.showHelp()
+				return nil
+			}
+			return nil
+		}
+
 		// tcell.KeyRune means a regular character key (not special key)
 		switch event.Rune() {
 		case 'q':
@@ -695,20 +757,21 @@ func (a *App) focusPrev() {
 	tuilayout.HighlightPanel(a.panels, a.focusIndex)
 }
 
-func (a *App) handleCtrlPanelShortcut(r rune) bool {
-	switch r {
-	case '1':
-		a.focusPanel(2)
-		return true
-	case '2':
-		a.focusPanel(0)
-		return true
-	case '3':
-		a.focusPanel(1)
-		return true
-	default:
-		return false
+func (a *App) switchView(mode viewMode) {
+	if a.currentView == mode {
+		return
 	}
+	a.currentView = mode
+	switch mode {
+	case viewDashboard:
+		a.pages.SwitchToPage("main")
+		if a.focusIndex >= 0 && a.focusIndex < len(a.panels) {
+			a.app.SetFocus(a.panels[a.focusIndex])
+		}
+	case viewChart:
+		a.pages.SwitchToPage("chart")
+	}
+	a.updateStatusBar()
 }
 
 func (a *App) focusPanel(index int) {
@@ -770,7 +833,7 @@ func (a *App) isHelpVisible() bool {
 }
 func (a *App) isOverlayVisible() bool {
 	name, _ := a.pages.GetFrontPage()
-	return name != "main" && name != "help"
+	return name != "main" && name != "help" && name != "chart"
 }
 
 // toggleZoom switches between grid view and fullscreen focused panel.

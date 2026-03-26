@@ -168,7 +168,7 @@ func TestCreatePanelsIncludesDiagnosisPanel(t *testing.T) {
 
 	titles := []string{
 		" 2. System Health ",
-		" 3. Bandwidth ",
+		" 3. Diagnosis ",
 		" 1. Top Incoming ",
 	}
 	for i, want := range titles {
@@ -310,7 +310,7 @@ func stripTviewTags(s string) string {
 	return tviewTagPattern.ReplaceAllString(s, "")
 }
 
-func TestBandwidthPanelRemainsUnchangedAcrossGroupToggle(t *testing.T) {
+func TestDiagnosisPanelRemainsUnchangedAcrossGroupToggle(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
@@ -320,7 +320,7 @@ func TestBandwidthPanelRemainsUnchangedAcrossGroupToggle(t *testing.T) {
 		{LocalIP: "10.0.0.10", LocalPort: 8080, RemoteIP: "198.51.100.10", RemotePort: 52002, State: "TIME_WAIT", ProcName: "api", Activity: 90},
 	}
 
-	a.panels[1].SetText("  Collecting samples...")
+	a.panels[1].SetText("  Loading...")
 	before := a.panels[1].GetText(true)
 	ret := a.handleKeyEvent(tcellKeyRune('g'))
 	if ret != nil {
@@ -328,7 +328,7 @@ func TestBandwidthPanelRemainsUnchangedAcrossGroupToggle(t *testing.T) {
 	}
 	after := a.panels[1].GetText(true)
 	if before != after {
-		t.Fatalf("expected bandwidth panel to remain unchanged across group toggle:\nbefore=%q\nafter=%q", before, after)
+		t.Fatalf("expected diagnosis panel to remain unchanged across group toggle:\nbefore=%q\nafter=%q", before, after)
 	}
 }
 

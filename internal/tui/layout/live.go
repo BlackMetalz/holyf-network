@@ -14,7 +14,7 @@ type panelInfo struct {
 
 var defaultPanels = []panelInfo{
 	{title: " 2. System Health ", text: "  Loading..."},
-	{title: " 3. Bandwidth ", text: "  Collecting samples..."},
+	{title: " 3. Diagnosis ", text: "  Loading..."},
 	{title: " 1. Top Incoming ", text: "  Loading..."},
 }
 
@@ -51,6 +51,16 @@ func CreateGrid(panels []*tview.TextView, statusBar *tview.TextView) *tview.Grid
 	grid.AddItem(panels[0], 0, 1, 1, 1, 0, 0, false) // System Health
 	grid.AddItem(panels[1], 1, 1, 1, 1, 0, 0, false) // Bandwidth
 	grid.AddItem(statusBar, 2, 0, 1, 2, 0, 0, false) // Status bar
+	return grid
+}
+
+func CreateChartGrid(rxPanel, txPanel *tview.TextView, statusBar *tview.TextView) *tview.Grid {
+	grid := tview.NewGrid()
+	grid.SetRows(0, 1)
+	grid.SetColumns(-1, -1)
+	grid.AddItem(rxPanel, 0, 0, 1, 1, 0, 0, false)
+	grid.AddItem(txPanel, 0, 1, 1, 1, 0, 0, false)
+	grid.AddItem(statusBar, 1, 0, 1, 2, 0, 0, false)
 	return grid
 }
 

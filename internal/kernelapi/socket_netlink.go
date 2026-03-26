@@ -12,7 +12,8 @@ import (
 
 // INET_DIAG constants not always exposed in golang.org/x/sys/unix.
 const (
-	_TCPDIAG_GETSOCK = 18 // nlmsg_type for INET_DIAG query
+	_SOCK_DIAG_BY_FAMILY = 20 // nlmsg_type for inet_diag_req_v2 (modern kernels 4.2+)
+	_TCPDIAG_GETSOCK     = 18 // legacy nlmsg_type (fallback for older kernels)
 	_SOCK_DESTROY    = 21 // nlmsg_type for SOCK_DESTROY
 
 	_INET_DIAG_INFO = 2 // nlattr type for tcp_info extension
@@ -219,6 +220,16 @@ func (m *NetlinkSocketManager) dumpSockets(stateMask uint32, extMask uint32) ([]
 }
 
 func (m *NetlinkSocketManager) dumpSocketsFamily(family uint8, stateMask, extMask uint32) ([][]byte, error) {
+	// Try modern SOCK_DIAG_BY_FAMILY first, fall back to legacy TCPDIAG_GETSOCK.
+	msgs, err := m.dumpSocketsFamilyWithType(family, stateMask, extMask, _SOCK_DIAG_BY_FAMILY)
+	if err == nil {
+		return msgs, nil
+	}
+	// Fallback to legacy type (pre-4.2 kernels).
+	return m.dumpSocketsFamilyWithType(family, stateMask, extMask, _TCPDIAG_GETSOCK)
+}
+
+func (m *NetlinkSocketManager) dumpSocketsFamilyWithType(family uint8, stateMask, extMask uint32, msgType uint16) ([][]byte, error) {
 	fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, unix.NETLINK_SOCK_DIAG)
 	if err != nil {
 		return nil, fmt.Errorf("open netlink socket: %w", err)
@@ -229,17 +240,15 @@ func (m *NetlinkSocketManager) dumpSocketsFamily(family uint8, stateMask, extMas
 		return nil, fmt.Errorf("bind netlink: %w", err)
 	}
 
-	// Build inet_diag_req_v2.
 	req := buildInetDiagReq(family, unix.IPPROTO_TCP, stateMask, extMask)
 
-	// Wrap in netlink message header.
 	nlmsgLen := uint32(_NLM_HDR_SIZE + len(req))
 	hdr := make([]byte, _NLM_HDR_SIZE)
-	binary.LittleEndian.PutUint32(hdr[0:4], nlmsgLen)                                // nlmsg_len
-	binary.LittleEndian.PutUint16(hdr[4:6], _TCPDIAG_GETSOCK)                        // nlmsg_type
-	binary.LittleEndian.PutUint16(hdr[6:8], unix.NLM_F_REQUEST|unix.NLM_F_DUMP)      // nlmsg_flags
-	binary.LittleEndian.PutUint32(hdr[8:12], 1)                                      // nlmsg_seq
-	binary.LittleEndian.PutUint32(hdr[12:16], 0)                                     // nlmsg_pid
+	binary.LittleEndian.PutUint32(hdr[0:4], nlmsgLen)                           // nlmsg_len
+	binary.LittleEndian.PutUint16(hdr[4:6], msgType)                            // nlmsg_type
+	binary.LittleEndian.PutUint16(hdr[6:8], unix.NLM_F_REQUEST|unix.NLM_F_DUMP) // nlmsg_flags
+	binary.LittleEndian.PutUint32(hdr[8:12], 1)                                 // nlmsg_seq
+	binary.LittleEndian.PutUint32(hdr[12:16], 0)                                // nlmsg_pid
 
 	msg := append(hdr, req...)
 	if _, err := unix.Write(fd, msg); err != nil {

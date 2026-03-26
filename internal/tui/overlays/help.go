@@ -26,11 +26,11 @@ func LiveMainStatusHotkeys(focusIndex int, direction tuishared.TopConnectionDire
 		}
 		return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=OUT [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]T[white]=trace [dim]t[white]=traces [dim]Enter/k[white]=act [dim]Tab[white]=panel [dim]?[white]=help", "Up/Down=select [ ]=page o=OUT g=group /=search f=filter T=trace t=traces Enter/k=act Tab=panel ?=help"
 	case 0:
-		return "[dim]s[white]=sort [dim]Shift+I[white]=explain [dim]Tab[white]=panel [dim]Ctrl+1..3[white]=focus [dim]?[white]=help", "s=sort Shift+I=explain Tab=panel Ctrl+1..3=focus ?=help"
+		return "[dim]s[white]=sort [dim]Shift+I[white]=explain [dim]Tab[white]=panel [dim]Ctrl+1[white]=dashboard [dim]Ctrl+2[white]=chart [dim]?[white]=help", "s=sort Shift+I=explain Tab=panel Ctrl+1=dashboard Ctrl+2=chart ?=help"
 	case 1:
-		return "[dim]Tab[white]=panel [dim]Ctrl+1..3[white]=focus [dim]?[white]=help", "Tab=panel Ctrl+1..3=focus ?=help"
+		return "[dim]d[white]=history [dim]Tab[white]=panel [dim]Ctrl+1[white]=dashboard [dim]Ctrl+2[white]=chart [dim]?[white]=help", "d=history Tab=panel Ctrl+1=dashboard Ctrl+2=chart ?=help"
 	default:
-		return "[dim]Tab[white]=panel [dim]Ctrl+1..3[white]=focus [dim]r[white]=refresh [dim]?[white]=help", "Tab=panel Ctrl+1..3=focus r=refresh ?=help"
+		return "[dim]Tab[white]=panel [dim]Ctrl+1[white]=dashboard [dim]Ctrl+2[white]=chart [dim]r[white]=refresh [dim]?[white]=help", "Tab=panel Ctrl+1=dashboard Ctrl+2=chart r=refresh ?=help"
 	}
 }
 
@@ -38,7 +38,8 @@ func BuildLiveHelpText(ctx LiveHelpContext) string {
 	currentTitle, currentEntries := currentPanelHelpSection(ctx)
 	globalEntries := []liveHelpEntry{
 		{label: "Tab / Shift+Tab", desc: "Move focus between panels"},
-		{label: "Ctrl+1..3", desc: "Focus 1=Top 2=System Health 3=Bandwidth"},
+		{label: "Ctrl+1", desc: "Switch to dashboard view"},
+		{label: "Ctrl+2", desc: "Switch to chart view (RX/TX)"},
 		{label: "r", desc: "Refresh now"},
 		{label: "p", desc: "Pause / resume auto-refresh"},
 		{label: "m", desc: "Toggle sensitive IP mask"},
@@ -89,7 +90,7 @@ func currentPanelHelpSection(ctx LiveHelpContext) (string, []liveHelpEntry) {
 			{label: "Shift+I", desc: "Explain RX/TX, packet rate, app CPU/mem, errors, and drops"},
 		}
 	case 1:
-		return "Bandwidth", []liveHelpEntry{{label: "d", desc: "Show diagnosis history"}}
+		return "Diagnosis", []liveHelpEntry{{label: "d", desc: "Show diagnosis history"}}
 	default:
 		return "Dashboard", nil
 	}
@@ -104,7 +105,7 @@ func otherPanelHelpEntries(ctx LiveHelpContext) []liveHelpEntry {
 		entries = append(entries, liveHelpEntry{label: "System Health", desc: "s sort states, Shift+I explain metrics"})
 	}
 	if ctx.FocusIndex != 1 {
-		entries = append(entries, liveHelpEntry{label: "Bandwidth", desc: "Real-time RX/TX sparkline chart"})
+		entries = append(entries, liveHelpEntry{label: "Diagnosis", desc: "Live network health diagnosis"})
 	}
 	entries = append(entries, liveHelpEntry{label: "Logs / Blocks", desc: "h action log, t trace history, b blocked peers"})
 	return entries
