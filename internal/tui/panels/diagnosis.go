@@ -181,10 +181,16 @@ func writeDiagnosisActionsField(sb *strings.Builder, label string, actions []str
 	for i, action := range actions {
 		prefix := fmt.Sprintf("    %d) ", i+1)
 		available := max(1, contentWidth-len(prefix))
-		line := truncateDiagnosisText(normalizeDiagnosisText(action), available)
+		wrapped := wrapDiagnosisText(normalizeDiagnosisText(action), available)
+		indent := strings.Repeat(" ", len(prefix))
 		sb.WriteString(prefix)
-		sb.WriteString(line)
+		sb.WriteString(wrapped[0])
 		sb.WriteString("\n")
+		for _, line := range wrapped[1:] {
+			sb.WriteString(indent)
+			sb.WriteString(line)
+			sb.WriteString("\n")
+		}
 	}
 	sb.WriteString("[white]\n")
 }
