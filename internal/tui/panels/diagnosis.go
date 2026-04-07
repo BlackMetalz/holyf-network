@@ -12,23 +12,118 @@ const (
 	diagnosisMinPanelWidth     = 24
 )
 
+type diagField struct {
+	label string
+	value string
+	color string
+}
+
 func RenderDiagnosisPanel(diagnosis *tuishared.Diagnosis, panelWidth int) string {
+	return RenderDiagnosisPanelWithHeight(diagnosis, panelWidth, 0)
+}
+
+func RenderDiagnosisPanelWithHeight(diagnosis *tuishared.Diagnosis, panelWidth, panelHeight int) string {
 	if diagnosis == nil {
 		return "  [dim]Waiting for live diagnosis data[white]"
 	}
 
 	contentWidth := diagnosisContentWidth(panelWidth)
 
+	// Build fields with full content first.
+	fields := []diagField{
+		{"Issue", DiagnosisIssueValue(diagnosis), tuishared.ColorForHealthLevel(diagnosis.Severity)},
+		{"Scope", DiagnosisScopeValue(diagnosis), "dim"},
+		{"Signal", DiagnosisSignalValue(diagnosis), "white"},
+		{"Likely Cause", DiagnosisLikelyValue(diagnosis), "white"},
+		{"Confidence", DiagnosisConfidenceValue(diagnosis), "aqua"},
+		{"Why", DiagnosisWhyValue(diagnosis), "white"},
+	}
+	actions := DiagnosisNextActionsList(diagnosis)
+
+	// If height is known, estimate line usage and condense to fit.
+	if panelHeight > 0 {
+		fields, actions = fitDiagnosisToHeight(fields, actions, contentWidth, panelHeight)
+	}
+
 	var sb strings.Builder
-	writeDiagnosisField(&sb, "Issue", DiagnosisIssueValue(diagnosis), contentWidth, tuishared.ColorForHealthLevel(diagnosis.Severity))
-	writeDiagnosisField(&sb, "Scope", DiagnosisScopeValue(diagnosis), contentWidth, "dim")
-	writeDiagnosisField(&sb, "Signal", DiagnosisSignalValue(diagnosis), contentWidth, "white")
-	writeDiagnosisField(&sb, "Likely Cause", DiagnosisLikelyValue(diagnosis), contentWidth, "white")
-	writeDiagnosisField(&sb, "Confidence", DiagnosisConfidenceValue(diagnosis), contentWidth, "aqua")
-	writeDiagnosisField(&sb, "Why", DiagnosisWhyValue(diagnosis), contentWidth, "white")
-	writeDiagnosisActionsField(&sb, "Next Actions", DiagnosisNextActionsList(diagnosis), contentWidth, "white")
+	for _, f := range fields {
+		writeDiagnosisField(&sb, f.label, f.value, contentWidth, f.color)
+	}
+	writeDiagnosisActionsField(&sb, "Next Actions", actions, contentWidth, "white")
 
 	return strings.TrimRight(sb.String(), "\n")
+}
+
+// fitDiagnosisToHeight progressively condenses diagnosis content to fit within
+// the available panel height. Reduction steps (applied in order until it fits):
+//  1. Reduce actions from 3 → 2 → 1
+//  2. Remove "Why" field
+//  3. Truncate remaining wrapped fields to single lines
+func fitDiagnosisToHeight(fields []diagField, actions []string, contentWidth, height int) ([]diagField, []string) {
+	// Estimate total lines for a given field set + action list.
+	estimate := func(fs []diagField, acts []string) int {
+		lines := 0
+		for _, f := range fs {
+			prefix := f.label + ": "
+			avail := max(1, contentWidth-len(prefix))
+			lines += len(wrapDiagnosisText(normalizeDiagnosisText(f.value), avail))
+		}
+		// Actions header line.
+		if len(acts) > 0 {
+			lines++ // "Next Actions:" label
+			for _, a := range acts {
+				prefix := "    1) " // all prefixes same length
+				avail := max(1, contentWidth-len(prefix))
+				lines += len(wrapDiagnosisText(normalizeDiagnosisText(a), avail))
+			}
+		} else {
+			lines++ // "Next Actions: -"
+		}
+		return lines
+	}
+
+	total := estimate(fields, actions)
+	if total <= height {
+		return fields, actions
+	}
+
+	// Step 1: reduce actions count.
+	for maxActs := min(len(actions), 2); maxActs >= 1; maxActs-- {
+		trimmed := actions[:maxActs]
+		if estimate(fields, trimmed) <= height {
+			return fields, trimmed
+		}
+	}
+	if len(actions) > 1 {
+		actions = actions[:1]
+	}
+
+	// Step 2: remove "Why" field.
+	if estimate(fields, actions) > height {
+		stripped := make([]diagField, 0, len(fields))
+		for _, f := range fields {
+			if f.label != "Why" {
+				stripped = append(stripped, f)
+			}
+		}
+		fields = stripped
+	}
+
+	// Step 3: truncate all wrapped fields to single line.
+	if estimate(fields, actions) > height {
+		for i, f := range fields {
+			prefix := f.label + ": "
+			avail := max(1, contentWidth-len(prefix))
+			fields[i].value = truncateDiagnosisText(f.value, avail)
+		}
+		if len(actions) > 0 {
+			prefix := "    1) "
+			avail := max(1, contentWidth-len(prefix))
+			actions = []string{truncateDiagnosisText(actions[0], avail)}
+		}
+	}
+
+	return fields, actions
 }
 
 func DiagnosisIssueValue(diagnosis *tuishared.Diagnosis) string {

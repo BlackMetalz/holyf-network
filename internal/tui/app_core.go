@@ -508,8 +508,8 @@ func (a *App) renderDiagnosisPanel() {
 	if len(a.panels) <= 1 || a.panels[1] == nil {
 		return
 	}
-	_, _, width, _ := a.panels[1].GetInnerRect()
-	a.panels[1].SetText(tuipanels.RenderDiagnosisPanel(a.topDiagnosis, width))
+	_, _, width, height := a.panels[1].GetInnerRect()
+	a.panels[1].SetText(tuipanels.RenderDiagnosisPanelWithHeight(a.topDiagnosis, width, height))
 }
 
 // handleKeyEvent processes all keyboard input.
