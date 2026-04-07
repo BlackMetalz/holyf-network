@@ -16,14 +16,17 @@ const pageName = "pod-lookup-form"
 // PromptPodLookup shows an input modal to enter a port number for K8s pod lookup.
 func PromptPodLookup(ctx blocking.UIContext, prefilledPort string) {
 	portInput := tview.NewInputField().
-		SetLabel("Port number: ").
-		SetFieldWidth(10).
+		SetLabel("  Port: ").
+		SetFieldWidth(8).
 		SetText(prefilledPort)
 	portInput.SetAcceptanceFunc(tview.InputFieldInteger)
 
 	form := tview.NewForm().AddFormItem(portInput)
 	form.SetItemPadding(0)
-	form.SetButtonsAlign(tview.AlignRight)
+	form.SetButtonsAlign(tview.AlignCenter)
+	form.SetBorder(true)
+	form.SetTitle(" K8s Pod Lookup ")
+	form.SetTitleAlign(tview.AlignCenter)
 
 	cancelFunc := func() {
 		ctx.RemovePage(pageName)
@@ -35,7 +38,7 @@ func PromptPodLookup(ctx blocking.UIContext, prefilledPort string) {
 		portStr := portInput.GetText()
 		port, err := strconv.Atoi(portStr)
 		if err != nil || port <= 0 || port > 65535 {
-			ctx.SetStatusNote("Invalid port number", 4*time.Second)
+			ctx.SetStatusNote("Invalid port number (1-65535)", 4*time.Second)
 			return
 		}
 
@@ -62,18 +65,11 @@ func PromptPodLookup(ctx blocking.UIContext, prefilledPort string) {
 		return event
 	})
 
-	helpLine := tview.NewTextView().
-		SetDynamicColors(true).
-		SetText("  [dim]Scan all network namespaces to find the pod owning this port[white]")
-
 	modal := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
 		AddItem(tview.NewFlex().
 			AddItem(nil, 0, 1, false).
-			AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
-				AddItem(helpLine, 1, 0, false).
-				AddItem(form, 0, 1, true),
-				60, 0, true).
+			AddItem(form, 44, 0, true).
 			AddItem(nil, 0, 1, false),
 			7, 0, true).
 		AddItem(nil, 0, 1, false)

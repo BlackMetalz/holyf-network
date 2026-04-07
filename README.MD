@@ -74,6 +74,7 @@ sudo holyf-network -r 5
 # [ / ]: previous / next page in Top Connections when rows exceed visible height
 # o: toggle Top Connections IN/OUT mode
 # Enter / k: block selected Top Connections row (IN mode only)
+# K: K8s pod lookup by port (scan network namespaces → PID, pod, deployment)
 # T: trace packet for selected Top Connections row (bounded tcpdump flow)
 # t: open Trace History (latest trace runs, Enter=view detail)
 # Shift+B: sort by Bandwidth (press again toggles DESC/ASC)

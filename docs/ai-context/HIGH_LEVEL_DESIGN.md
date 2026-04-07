@@ -60,9 +60,27 @@ Live Top Connections also has a few important presentation behaviors:
 - The Diagnosis panel is host-global in v1; it is not scoped to the current filter/search slice.
 - `d` opens an in-memory Diagnosis History modal that records diagnosis changes for the current live session.
 
-Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).
+Live TUI is the only mode that can run active mitigation (`k`, block/kill flow) and K8s pod lookup (`K`).
 
-### 2.1) Active mitigation path (block vs kill flow)
+### 2.1) K8s Pod Lookup (`K` hotkey)
+
+On K8s worker nodes, connections often come from container network namespaces, so the host `/proc/net/tcp` doesn't show the owning pod. `K` (Shift+K) provides on-demand lookup:
+
+1. User presses `K` → input modal with port number (pre-filled from selected row).
+2. Background goroutine scans all network namespaces:
+   - Enumerate unique namespaces via `/proc/*/ns/net` symlink inodes.
+   - For each NS, read `/proc/{representative_pid}/net/tcp{,6}` to match the target port.
+3. On match, resolve the owning PID via socket inode → `/proc/{pid}/fd/` scan (scoped to same netns).
+4. Resolve pod info via layered strategy:
+   - Parse `/proc/{pid}/cgroup` for pod UID + container ID (containerd/CRI-O formats).
+   - Read `HOSTNAME` from `/proc/{pid}/environ`.
+   - Fallback: `crictl inspect` + `crictl inspectp` for pod name, namespace, labels.
+   - Infer deployment name from pod name or labels (`app`, `app.kubernetes.io/name`).
+5. Result modal shows: PID, process, container ID, pod, namespace, deployment, network NS.
+
+Implementation: `internal/podlookup/` (core logic) + `internal/tui/podlookup/` (UI modals).
+
+### 2.2) Active mitigation path (block vs kill flow)
 
 Mitigation is implemented in `internal/tui/blocking/runtime.go` and `internal/actions/peer_blocker.go`, using `internal/kernelapi` interfaces.
 
@@ -93,7 +111,7 @@ Important clarification:
 - Under conn storm/race windows, converge can return partial (`remaining N (storm/race)`) by design when bounded limits are hit.
 - `minutes = 0` is pure kill-only semantics.
 
-### 2.2) Metric sources, formulas, and equivalent shell commands
+### 2.3) Metric sources, formulas, and equivalent shell commands
 
 All per-second metrics in app use the same pattern:
 

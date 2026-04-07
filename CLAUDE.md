@@ -55,11 +55,19 @@ Three async refresh lanes: main (full refresh at `-r` interval), fast (interface
 - `internal/history/` — writer (JSONL append + lock file), reader (index + seek-by-offset), prune
 - `internal/tui/history_app.go` + `internal/tui/replay/` — read-only TUI, snapshot navigation
 
+### K8s Pod Lookup (`internal/podlookup/`)
+
+On-demand feature (`K` hotkey in live TUI) to identify which K8s pod owns a network port:
+- Enumerates all network namespaces via `/proc/*/ns/net` (pure Go, no `setns`)
+- Scans `/proc/{pid}/net/tcp{,6}` per namespace using `collector.ParseTCPConnections`
+- Resolves PID → pod name → deployment via cgroup parsing, `/proc/{pid}/environ`, and `crictl` fallback
+
 ### TUI Structure (`internal/tui/`)
 
 - `app_core.go` — main refresh loop, hotkey dispatch, layout switching
 - `blocking/` — peer block/unblock + kill convergence flow
 - `diagnosis/` — rule-based health diagnosis engine
+- `podlookup/` — K8s pod lookup modal (input + result display)
 - `panels/` — pure render helpers for each panel
 - `shared/` — formatting, health checks, ring buffer
 - `overlays/` — modals and help screens

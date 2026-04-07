@@ -49,6 +49,10 @@ This is the current high-signal layout (non-essential folders omitted):
 │   │   └── new_stub.go
 │   ├── network/
 │   │   └── interface.go
+│   ├── podlookup/
+│   │   ├── types.go
+│   │   ├── namespace_scan.go
+│   │   └── pod_resolve.go
 │   └── tui/
 │       ├── app_core.go
 │       ├── app_connections.go
@@ -57,6 +61,7 @@ This is the current high-signal layout (non-essential folders omitted):
 │       ├── history_app.go
 │       ├── blocking/
 │       ├── diagnosis/
+│       ├── podlookup/
 │       ├── layout/
 │       ├── livetrace/
 │       ├── overlays/
@@ -108,6 +113,16 @@ This is the current high-signal layout (non-essential folders omitted):
     - list active firewall blocks
   - Uses `kernelapi` interfaces (netlink on Linux 4.9+, exec fallback otherwise).
 
+- `internal/podlookup`
+  - On-demand K8s pod identification by port number.
+  - Enumerates network namespaces via `/proc/*/ns/net`, scans `/proc/{pid}/net/tcp{,6}` per NS.
+  - Resolves PID → pod name → deployment via layered strategy:
+    - Parse `/proc/{pid}/cgroup` for pod UID and container ID (containerd + CRI-O formats).
+    - Read `HOSTNAME` from `/proc/{pid}/environ` (fast, no exec).
+    - Fallback to `crictl inspect` / `crictl inspectp` for pod metadata + labels.
+    - Infer deployment name from pod name pattern (`<deploy>-<rs-hash>-<pod-hash>`).
+  - Reuses `collector.ParseTCPConnections` and `collector.GetProcessName`.
+
 - `internal/config`
   - Health threshold model + parser for TOML-like file.
 
@@ -129,6 +144,7 @@ This is the current high-signal layout (non-essential folders omitted):
   - Sub-packages by concern:
     - `blocking/`: block/kill flow manager, runtime control, target definitions, UI context.
     - `diagnosis/`: rule-based live diagnosis synthesis engine.
+    - `podlookup/`: K8s pod lookup prompt and result modals (uses `internal/podlookup` core).
     - `layout/`: grid composition for live (dashboard + chart) and replay modes.
     - `overlays/`: help text, modal, text overlay components.
     - `panels/`: pure rendering for each panel (system health, diagnosis, top connections, history aggregate, sparkline, Braille chart).
