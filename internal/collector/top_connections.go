@@ -45,7 +45,7 @@ func CollectTopTalkers(limit int) ([]Connection, error) {
 	parsed := false
 
 	for _, file := range files {
-		conns, err := parseTCPConnections(file)
+		conns, err := ParseTCPConnections(file)
 		if err != nil {
 			continue
 		}
@@ -58,11 +58,11 @@ func CollectTopTalkers(limit int) ([]Connection, error) {
 	}
 
 	// Build inode→PID map once, then enrich all connections
-	inodeMap := buildInodeToPIDMap()
+	inodeMap := BuildInodeToPIDMap()
 	for i := range allConns {
 		if pid, ok := inodeMap[allConns[i].Inode]; ok {
 			allConns[i].PID = pid
-			allConns[i].ProcName = getProcessName(pid)
+			allConns[i].ProcName = GetProcessName(pid)
 		}
 	}
 
@@ -79,7 +79,7 @@ func CollectTopTalkers(limit int) ([]Connection, error) {
 	return allConns, nil
 }
 
-// parseTCPConnections reads a /proc/net/tcp file and extracts connections.
+// ParseTCPConnections reads a /proc/net/tcp file and extracts connections.
 //
 // File format (columns):
 //
@@ -93,7 +93,7 @@ func CollectTopTalkers(limit int) ([]Connection, error) {
 //	[2] = remote address:port (hex)
 //	[3] = state (hex)
 //	[4] = tx_queue:rx_queue (hex)
-func parseTCPConnections(filePath string) ([]Connection, error) {
+func ParseTCPConnections(filePath string) ([]Connection, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read %s: %w", filePath, err)
@@ -274,7 +274,7 @@ func parseQueueSizes(field string) (int64, int64) {
 	return tx, rx
 }
 
-// buildInodeToPIDMap scans /proc/[pid]/fd/ to build a map from socket inode → PID.
+// BuildInodeToPIDMap scans /proc/[pid]/fd/ to build a map from socket inode → PID.
 //
 // How it works:
 //  1. List all /proc/[pid] directories (numeric names = process IDs)
@@ -284,7 +284,7 @@ func parseQueueSizes(field string) (int64, int64) {
 //
 // Requires root to read other processes' fd directories.
 // Errors are silently ignored (permission denied, process exited, etc.)
-func buildInodeToPIDMap() map[string]int {
+func BuildInodeToPIDMap() map[string]int {
 	result := make(map[string]int)
 
 	// List all /proc entries
@@ -325,9 +325,9 @@ func buildInodeToPIDMap() map[string]int {
 	return result
 }
 
-// getProcessName reads the process name from /proc/[pid]/comm.
+// GetProcessName reads the process name from /proc/[pid]/comm.
 // Returns empty string if the process no longer exists or can't be read.
-func getProcessName(pid int) string {
+func GetProcessName(pid int) string {
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
 	if err != nil {
 		return ""

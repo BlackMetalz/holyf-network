@@ -82,6 +82,7 @@ func currentPanelHelpSection(ctx LiveHelpContext) (string, []liveHelpEntry) {
 		} else {
 			entries = append(entries, liveHelpEntry{label: "Enter / k", desc: "Block selected target"})
 		}
+		entries = append(entries, liveHelpEntry{label: "K", desc: "K8s pod lookup by port"})
 		entries = append(entries, liveHelpEntry{label: "z", desc: "Zoom Top Connections"})
 		return title, entries
 	case 0:

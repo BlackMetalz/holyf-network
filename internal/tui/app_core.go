@@ -19,6 +19,7 @@ import (
 	tuilayout "github.com/BlackMetalz/holyf-network/internal/tui/layout"
 	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
 	tuioverlays "github.com/BlackMetalz/holyf-network/internal/tui/overlays"
+	tuipodlookup "github.com/BlackMetalz/holyf-network/internal/tui/podlookup"
 	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
 	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/BlackMetalz/holyf-network/internal/tui/traffic"
@@ -680,6 +681,9 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'T':
 			a.promptTracePacket()
 			return nil
+		case 'K':
+			a.promptPodLookup()
+			return nil
 		case 'B', 'C', 'P':
 			mode, ok := directSortModeForRune(event.Rune())
 			if !ok {
@@ -1085,6 +1089,19 @@ func (a *App) promptInterfaceStatsExplain() {
 	a.pages.AddPage("interface-stats-explain", modal, true, true)
 	a.updateStatusBar()
 	a.app.SetFocus(modal)
+}
+
+func (a *App) promptPodLookup() {
+	// Pre-fill port from selected connection row if available.
+	prefilledPort := ""
+	if a.focusIndex == 2 {
+		conns := a.topConnectionsSource()
+		if len(conns) > 0 && a.selectedTalkerIndex >= 0 && a.selectedTalkerIndex < len(conns) {
+			conn := conns[a.selectedTalkerIndex]
+			prefilledPort = fmt.Sprintf("%d", conn.RemotePort)
+		}
+	}
+	tuipodlookup.PromptPodLookup(a, prefilledPort)
 }
 
 // --- UIContext interface implementation for blocking package ---
