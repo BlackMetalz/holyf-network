@@ -7,8 +7,8 @@ import (
 
 	"github.com/BlackMetalz/holyf-network/internal/podlookup"
 	"github.com/BlackMetalz/holyf-network/internal/tui/blocking"
+	tuioverlays "github.com/BlackMetalz/holyf-network/internal/tui/overlays"
 	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 const resultPageName = "pod-lookup-result"
@@ -52,13 +52,7 @@ func ShowPodLookupNotFound(ctx blocking.UIContext, port int, nsCount int, elapse
 }
 
 func showResultModal(ctx blocking.UIContext, title, text string) {
-	view := tview.NewTextView()
-	view.SetDynamicColors(true)
-	view.SetText(text)
-	view.SetTextAlign(tview.AlignLeft)
-	view.SetBorder(true)
-	view.SetTitle(title)
-	view.SetTitleAlign(tview.AlignCenter)
+	modal, view := tuioverlays.CreateCenteredTextViewModal(title, text)
 
 	closeFunc := func() {
 		ctx.RemovePage(resultPageName)
@@ -78,14 +72,6 @@ func showResultModal(ctx blocking.UIContext, title, text string) {
 		}
 		return event
 	})
-
-	inner := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(view, 0, 1, true)
-
-	modal := tview.NewFlex().
-		AddItem(nil, 0, 1, false).
-		AddItem(inner, 70, 0, true).
-		AddItem(nil, 0, 1, false)
 
 	ctx.RemovePage(resultPageName)
 	ctx.AddPage(resultPageName, modal, true, true)

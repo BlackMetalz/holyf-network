@@ -72,7 +72,7 @@ func findPortInNamespace(ns NetNSEntry, targetPort int) *PodLookupResult {
 	}
 
 	for _, file := range files {
-		conns, err := collector.ParseTCPConnections(file)
+		conns, err := collector.ParseAllTCPConnections(file)
 		if err != nil {
 			continue
 		}
@@ -115,12 +115,21 @@ func findPortInNamespace(ns NetNSEntry, targetPort int) *PodLookupResult {
 
 // resolveSocketOwnerPID finds the PID that owns a specific socket inode
 // within the network namespace of nsPID.
+// It tries the representative nsPID first (common case), then falls back
+// to scanning all PIDs in the same namespace.
 func resolveSocketOwnerPID(nsPID int, targetInode string) int {
 	if targetInode == "" || targetInode == "0" {
 		return 0
 	}
 
-	// Get the netns inode for filtering.
+	socketTarget := "socket:[" + targetInode + "]"
+
+	// Fast path: check the representative nsPID first.
+	if findSocketInPID(nsPID, socketTarget) {
+		return nsPID
+	}
+
+	// Slow path: scan all PIDs in the same network namespace.
 	nsLink, err := os.Readlink(fmt.Sprintf("/proc/%d/ns/net", nsPID))
 	if err != nil {
 		return 0
@@ -133,32 +142,37 @@ func resolveSocketOwnerPID(nsPID int, targetInode string) int {
 
 	for _, entry := range entries {
 		pid, err := strconv.Atoi(entry.Name())
-		if err != nil || pid == 0 {
+		if err != nil || pid == 0 || pid == nsPID {
 			continue
 		}
 
-		// Only scan PIDs in the same network namespace.
 		pidNS, err := os.Readlink(fmt.Sprintf("/proc/%d/ns/net", pid))
 		if err != nil || pidNS != nsLink {
 			continue
 		}
 
-		fdDir := filepath.Join("/proc", entry.Name(), "fd")
-		fds, err := os.ReadDir(fdDir)
-		if err != nil {
-			continue
-		}
-
-		for _, fd := range fds {
-			link, err := os.Readlink(filepath.Join(fdDir, fd.Name()))
-			if err != nil {
-				continue
-			}
-			if link == "socket:["+targetInode+"]" {
-				return pid
-			}
+		if findSocketInPID(pid, socketTarget) {
+			return pid
 		}
 	}
 
 	return 0
+}
+
+func findSocketInPID(pid int, socketTarget string) bool {
+	fdDir := fmt.Sprintf("/proc/%d/fd", pid)
+	fds, err := os.ReadDir(fdDir)
+	if err != nil {
+		return false
+	}
+	for _, fd := range fds {
+		link, err := os.Readlink(filepath.Join(fdDir, fd.Name()))
+		if err != nil {
+			continue
+		}
+		if link == socketTarget {
+			return true
+		}
+	}
+	return false
 }

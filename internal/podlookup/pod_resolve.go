@@ -51,11 +51,6 @@ func ResolvePodInfo(pid int) *PodInfo {
 		}
 	}
 
-	// Fallback: infer deployment from pod name if still empty.
-	if info.Deployment == "" && info.PodName != "" {
-		info.Deployment = InferDeploymentFromPodName(info.PodName)
-	}
-
 	return info
 }
 
@@ -204,24 +199,22 @@ func resolvePodSandbox(sandboxID string) *PodInfo {
 	return info
 }
 
+// deploymentPattern matches Deployment pod names: <deploy>-<rs-hash>-<pod-hash>
+var deploymentPattern = regexp.MustCompile(`^(.+)-[a-z0-9]{5,10}-[a-z0-9]{4,5}$`)
+
+// statefulSetPattern matches StatefulSet pod names: <sts>-<ordinal>
+var statefulSetPattern = regexp.MustCompile(`^(.+)-\d+$`)
+
 // InferDeploymentFromPodName strips the ReplicaSet hash and pod hash suffix
 // from a pod name to infer the deployment name.
 // E.g. "my-service-7f8d9c-abc12" → "my-service"
 func InferDeploymentFromPodName(podName string) string {
-	// K8s pod names: <deployment>-<replicaset-hash>-<pod-hash>
-	// ReplicaSet hash: 5-10 alphanumeric chars
-	// Pod hash: 5 alphanumeric chars
-	re := regexp.MustCompile(`^(.+)-[a-z0-9]{5,10}-[a-z0-9]{4,5}$`)
-	if m := re.FindStringSubmatch(podName); len(m) > 1 {
+	if m := deploymentPattern.FindStringSubmatch(podName); len(m) > 1 {
 		return m[1]
 	}
-
-	// StatefulSet: <statefulset>-<ordinal>
-	re2 := regexp.MustCompile(`^(.+)-\d+$`)
-	if m := re2.FindStringSubmatch(podName); len(m) > 1 {
+	if m := statefulSetPattern.FindStringSubmatch(podName); len(m) > 1 {
 		return m[1]
 	}
-
 	return podName
 }
 

@@ -93,7 +93,18 @@ func CollectTopTalkers(limit int) ([]Connection, error) {
 //	[2] = remote address:port (hex)
 //	[3] = state (hex)
 //	[4] = tx_queue:rx_queue (hex)
+// ParseAllTCPConnections reads a /proc/net/tcp file and returns all
+// connections including LISTEN state. Use this when you need to find
+// socket owners by port regardless of state.
+func ParseAllTCPConnections(filePath string) ([]Connection, error) {
+	return parseTCPConnectionsInternal(filePath, false)
+}
+
 func ParseTCPConnections(filePath string) ([]Connection, error) {
+	return parseTCPConnectionsInternal(filePath, true)
+}
+
+func parseTCPConnectionsInternal(filePath string, skipListen bool) ([]Connection, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read %s: %w", filePath, err)
@@ -113,9 +124,9 @@ func ParseTCPConnections(filePath string) ([]Connection, error) {
 			continue
 		}
 
-		// Parse state — skip LISTEN (0A), we want active connections
+		// Parse state — optionally skip LISTEN (0A)
 		stateHex := fields[3]
-		if stateHex == "0A" {
+		if skipListen && stateHex == "0A" {
 			continue
 		}
 		stateName := tcpStateMap[stateHex]
