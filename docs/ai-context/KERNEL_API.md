@@ -276,7 +276,7 @@ refreshData()
 | `github.com/ti-mo/conntrack` | No | Conntrack netlink (query/delete/stats) |
 | `github.com/google/nftables` | No | nftables netlink (rules management) |
 
-All pure Go. No CGO required. `tcpdump` is the only remaining external tool (for packet capture feature only).
+All pure Go. No CGO required. Optional external tool: `crictl` (K8s pod lookup enrichment only).
 
 ## Requirements
 

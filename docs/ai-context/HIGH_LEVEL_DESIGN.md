@@ -37,12 +37,7 @@ Inside `refreshData()`:
 7. Compute conntrack byte deltas and per-row throughput metrics (`TX/s`, `RX/s`).
 8. Fallback collect socket counters from `ss` and overlay missing bandwidth.
 9. Enrich top talkers with throughput metrics and internal total-delta fields for ranking/sort.
-10. Build live Top Connections diagnosis from:
-   - connection states
-   - retrans health/sample gate
-   - conntrack pressure/drops
-   - top talker culprit extraction for dominant TCP-state patterns
-11. Render panels and status bar.
+10. Render panels and status bar.
 
 `ct/nat` in live Top Connections means the row is conntrack/NAT-derived visibility (not direct host PID ownership).
 
@@ -57,8 +52,6 @@ Live Top Connections also has a few important presentation behaviors:
 - Live `GROUP` view is capped to the top 20 groups by `CONNS`; footer shows `shown / total` when the cap is active.
 - The selected row gets an inline footer preview (`Selected Detail`) with the full grouped state breakdown and, in `IN`, the effective `Enter`/`k` target.
 - Live Top Connections hides TCP connections owned by the current `holyf-network` PID so internal update/control traffic does not appear as an operator-facing top row.
-- The Diagnosis panel is host-global in v1; it is not scoped to the current filter/search slice.
-- `d` opens an in-memory Diagnosis History modal that records diagnosis changes for the current live session.
 
 Live TUI is the only mode that can run active mitigation (`k`, block/kill flow) and K8s pod lookup (`K`).
 
@@ -380,35 +373,18 @@ Behavior constraints:
 
 ## 6) UI Composition
 
-### Live mode — two views
+### Live mode (`layout/live.go`)
 
-**View switching:**
-- `Ctrl+1`: Dashboard view (default)
-- `Ctrl+2`: Bandwidth chart view (full-screen dual time-series charts)
-
-**Dashboard view (Ctrl+1)** (`layout/live.go`):
 - Left: `Top Connections` (spans full height)
-- Right top: `System Health` (merged: connection states + interface stats + conntrack in one panel with dim section separators)
-- Right bottom: `Diagnosis` — operator card: `Issue`, `Scope`, `Signal`, `Likely Cause`, `Confidence`, `Why`, `Next Actions`
+- Right: `System Health` (spans full height — merged: connection states + interface stats + conntrack with dim section separators)
 - Bottom: status bar
-- 3 panels total
 - `GROUP` view groups by `(peer, process)` for clarity under mixed ownership (`sshd` + `ct/nat`, etc.)
 - Top Connections can render a live bandwidth note above the table when needed.
 - Top Connections can also render a footer preview for the selected row when panel height allows.
 - Status bar indicators:
   - `API:kernel` (green) or `API:<backend details>` (yellow) — shows kernel API vs CLI fallback status
   - `LINK:<speed>Mb/s` — only shown when NIC speed is known (hidden otherwise)
-- Navigation: Tab cycles 3 panels
-
-**Bandwidth chart view (Ctrl+2)** (`panels/chart.go`):
-- Two side-by-side time-series charts: `Incoming (RX)` and `Outgoing (TX)`
-- Rendered with Braille Unicode characters (U+2800-U+28FF) for high-resolution line graphs
-- Connected lines between data points using Bresenham's line algorithm on Braille grid
-- Y-axis: auto-scaled bandwidth labels (B, KB, MB, GB)
-- X-axis: time labels (-60s → now)
-- Data source: ring buffer of last 60 interface rate samples (1 sample/second)
-- In chart view, most hotkeys are disabled — only `q`, `?`, and `Ctrl+1` work
-- Ring buffer: `internal/tui/shared/ring.go` (fixed 60-sample circular buffer)
+- Navigation: Tab cycles between Top Connections and System Health panels
 
 ### Replay mode (`layout/replay.go`)
 
@@ -447,7 +423,6 @@ Behavior constraints:
 - Kernel API layer (`internal/kernelapi/`):
   - On Linux 4.9+ with `CAP_NET_ADMIN`: uses direct netlink sockets (no CLI tools needed)
   - Fallback: `iptables`/`ip6tables`, `ss`, `conntrack` CLI tools
-  - `tcpdump` is the only remaining external tool dependency (for packet capture feature)
   - See `docs/ai-context/KERNEL_API.md` for full architecture details
 - `sudo` recommended for full live-mode visibility/mitigation (required for netlink access).
 

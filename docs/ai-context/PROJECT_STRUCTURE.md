@@ -56,19 +56,14 @@ This is the current high-signal layout (non-essential folders omitted):
 │   └── tui/
 │       ├── app_core.go
 │       ├── app_connections.go
-│       ├── app_trace_packet.go
-│       ├── app_trace_history.go
 │       ├── history_app.go
 │       ├── blocking/
-│       ├── diagnosis/
 │       ├── podlookup/
 │       ├── layout/
-│       ├── livetrace/
 │       ├── overlays/
 │       ├── panels/
 │       ├── replay/
 │       ├── shared/
-│       ├── trace/
 │       └── traffic/
 ├── .github/
 │   └── workflows/
@@ -134,25 +129,19 @@ This is the current high-signal layout (non-essential folders omitted):
 
 - `internal/tui`
   - App state machine, keyboard handling, modal flows, rendering panels.
-  - Two view modes: Dashboard (Ctrl+1) and Bandwidth Chart (Ctrl+2).
-  - Root files (5 source):
-    - `app_core.go`: lifecycle, refresh loop, global key handling, status bar, shared constants/utils, UIContext adapter, diagnosis history modal, action log modal, view mode switching.
+  - Root files:
+    - `app_core.go`: lifecycle, refresh loop, global key handling, status bar, shared constants/utils, UIContext adapter, action log modal.
     - `app_connections.go`: top-connection selection/filter/sort/search orchestration + panel layout for note/preview + kill target selection.
-    - `app_trace_packet.go`: packet trace capture UI (form, progress, result display).
-    - `app_trace_history.go`: trace history persistence/modals + trace packet analyzer logic.
     - `history_app.go`: read-only replay mode UI, key handling, UIContext, navigation, timeline search.
   - Sub-packages by concern:
     - `blocking/`: block/kill flow manager, runtime control, target definitions, UI context.
-    - `diagnosis/`: rule-based live diagnosis synthesis engine.
     - `podlookup/`: K8s pod lookup prompt and result modals (uses `internal/podlookup` core).
-    - `layout/`: grid composition for live (dashboard + chart) and replay modes.
+    - `layout/`: grid composition for live and replay modes.
     - `overlays/`: help text, modal, text overlay components.
-    - `panels/`: pure rendering for each panel (system health, diagnosis, top connections, history aggregate, sparkline, Braille chart).
-    - `replay/`: historical data replay/timeline UI (search, navigation, trace visualization).
-    - `shared/`: shared utilities (formatting, health checks, conntrack stats, trace formatting, states, update checks, ring buffer).
-    - `trace/`: trace data storage and rendering.
+    - `panels/`: pure rendering for each panel (system health, top connections, history aggregate).
+    - `replay/`: historical data replay/timeline UI (search, navigation).
+    - `shared/`: shared utilities (formatting, health checks, conntrack stats, states, update checks).
     - `traffic/`: traffic manager and monitoring.
-    - `livetrace/`: live packet trace engine.
     - `actionlog/`: action/event logging.
 
 ## Test Map

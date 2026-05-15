@@ -26,9 +26,6 @@ Runtime requirements:
 sudo apt install -y conntrack iproute2 iptables    # Ubuntu/Debian
 sudo yum install -y conntrack-tools iproute iptables  # CentOS/RHEL
 
-# Required: only for Trace Packet feature (tcpdump is the only mandatory external tool)
-sudo apt install -y tcpdump   # Ubuntu/Debian
-sudo yum install -y tcpdump   # CentOS/RHEL
 ```
 
 For bandwidth monitoring, enable conntrack byte accounting:
@@ -68,15 +65,11 @@ sudo holyf-network -r 5
 
 # Keyboard shortcuts inside TUI
 # Tab / Shift+Tab: move focus between panels
-# Ctrl+1: dashboard view (default — Top Connections + System Health + Diagnosis)
-# Ctrl+2: bandwidth chart view (full-screen RX/TX time-series charts)
 # Up / Down: select row in Top Connections
 # [ / ]: previous / next page in Top Connections when rows exceed visible height
 # o: toggle Top Connections IN/OUT mode
 # Enter / k: block selected Top Connections row (IN mode only)
 # K: K8s pod lookup by port (scan network namespaces → PID, pod, deployment)
-# T: trace packet for selected Top Connections row (bounded tcpdump flow)
-# t: open Trace History (latest trace runs, Enter=view detail)
 # Shift+B: sort by Bandwidth (press again toggles DESC/ASC)
 # Shift+C: sort by Conns (press again toggles DESC/ASC)
 # Shift+P: sort by Port (press again toggles DESC/ASC)
@@ -88,7 +81,6 @@ sudo holyf-network -r 5
 # m: toggle sensitive IP masking
 # s: sort Connection States by count (toggle DESC/ASC)
 # b: list active blocks and remove selected peer block
-# d: show Diagnosis History (latest 20 changes in current live session)
 # h: show action log (latest 20)
 # p: pause/resume auto-refresh
 # r: refresh now
@@ -111,10 +103,9 @@ make local ARGS="-r 5"
 ```
 
 Live refresh model:
-- `-r/--refresh` controls the main full refresh loop (Top Connections + System Health + Diagnosis).
-- `System Health` panel has a dedicated `1s` refresh lane for faster RX/TX and bandwidth chart visibility.
+- `-r/--refresh` controls the main full refresh loop (Top Connections + System Health).
+- `System Health` panel has a dedicated `1s` refresh lane for faster RX/TX visibility.
 - `App Usage` line shows holyf-network process CPU cores + RSS, sampled on the configured `-r/--refresh` interval.
-- `Ctrl+2` switches to bandwidth chart view — two side-by-side RX/TX time-series charts (Braille rendering, 60s window).
 - `p` (pause) pauses both refresh lanes.
 - Status bar shows `API:kernel` (green) when using kernel APIs, `API:exec(...)` (yellow) when falling back to CLI tools.
 - `LINK:<speed>Mb/s` shown only when NIC speed is detectable.
@@ -128,8 +119,6 @@ Mitigation behavior:
 
 - Beginner TCP/network foundation (English, operator-first): `docs/NETWORK_FOUNDATIONS_FOR_SRE_EN.md`
 - Beginner TCP/network foundation (Vietnamese, operator-first): `docs/NETWORK_FOUNDATIONS_FOR_SRE_VI.md`
-- Tcpdump for beginners (Vietnamese, practical packet-capture basics): `docs/TCPDUMP_FOR_BEGINNERS_VI.md`
-- Tcpdump trace feature in holyf-network (Vietnamese, UX/guardrails): `docs/TCPDUMP_TRACE_FEATURE_VI.md`
 - Incident mental checklist (English, 1-page quick reference): `docs/INCIDENT_MENTAL_CHECKLIST_EN.md`
 - Incident mental checklist (Vietnamese, 1-page quick reference): `docs/INCIDENT_MENTAL_CHECKLIST_VI.md`
 - Vietnamese (practical ops): `docs/USER_METRICS_GUIDE_VI.md`
