@@ -5,6 +5,11 @@ I'm suck at Linux Network!
 # Vibe Code
 Yes, fucking yes.
 
+# Screenshots
+
+![Dashboard view](images/history/v8.3-1.png)
+![Top Connections](images/history/v8.3-2.png)
+
 # AI Onboarding Docs
 - See `docs/ai-context/`:
   - `README.md`
