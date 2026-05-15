@@ -40,8 +40,6 @@ func newPhase3TestApp() *App {
 		blockManager:   blocking.NewManager(),
 		trafficManager: traffic.NewManager(config.DefaultHealthThresholds()),
 		actionLogger: actionlog.NewLogger(""),
-		rxHistory:    tuishared.NewRingBuffer(60),
-		txHistory:    tuishared.NewRingBuffer(60),
 	}
 }
 
@@ -400,31 +398,6 @@ func TestFocusOrderFollowsRequestedPanelSequence(t *testing.T) {
 	a.focusNext()
 	if a.focusIndex != 2 { // wrap Top
 		t.Fatalf("next wrap mismatch: got=%d want=%d", a.focusIndex, 2)
-	}
-}
-
-func TestHandleKeyEventCtrlNumberViewSwitching(t *testing.T) {
-	t.Parallel()
-
-	a := newPhase3TestApp()
-	a.pages.AddPage("chart", tview.NewBox(), true, false)
-
-	// Ctrl+2 should switch to chart view
-	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, '2', tcell.ModCtrl))
-	if ret != nil {
-		t.Fatalf("ctrl+2 should be handled")
-	}
-	if a.currentView != viewChart {
-		t.Fatalf("ctrl+2 should switch to chart view, got=%d", a.currentView)
-	}
-
-	// Ctrl+1 should switch back to dashboard
-	ret = a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, '1', tcell.ModCtrl))
-	if ret != nil {
-		t.Fatalf("ctrl+1 should be handled")
-	}
-	if a.currentView != viewDashboard {
-		t.Fatalf("ctrl+1 should switch to dashboard view, got=%d", a.currentView)
 	}
 }
 

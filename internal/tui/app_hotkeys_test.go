@@ -179,7 +179,7 @@ func TestStatusHotkeysIncludeHelp(t *testing.T) {
 	}{
 		{name: "top incoming", focus: 2, direction: tuishared.TopConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "Enter/k=act", "?=help"}},
 		{name: "top outgoing", focus: 2, direction: tuishared.TopConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "Enter/k=disabled", "?=help"}},
-		{name: "system health", focus: 0, direction: tuishared.TopConnectionIncoming, want: []string{"s=sort", "Ctrl+1=dashboard", "Ctrl+2=chart", "?=help"}},
+		{name: "system health", focus: 0, direction: tuishared.TopConnectionIncoming, want: []string{"s=sort", "?=help"}},
 	}
 
 	for _, tc := range tests {

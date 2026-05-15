@@ -26,9 +26,9 @@ func LiveMainStatusHotkeys(focusIndex int, direction tuishared.TopConnectionDire
 		}
 		return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=OUT [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]Enter/k[white]=act [dim]Tab[white]=panel [dim]?[white]=help", "Up/Down=select [ ]=page o=OUT g=group /=search f=filter Enter/k=act Tab=panel ?=help"
 	case 0:
-		return "[dim]s[white]=sort [dim]Shift+I[white]=explain [dim]Tab[white]=panel [dim]Ctrl+1[white]=dashboard [dim]Ctrl+2[white]=chart [dim]?[white]=help", "s=sort Shift+I=explain Tab=panel Ctrl+1=dashboard Ctrl+2=chart ?=help"
+		return "[dim]s[white]=sort [dim]Shift+I[white]=explain [dim]Tab[white]=panel [dim]?[white]=help", "s=sort Shift+I=explain Tab=panel ?=help"
 	default:
-		return "[dim]Tab[white]=panel [dim]Ctrl+1[white]=dashboard [dim]Ctrl+2[white]=chart [dim]r[white]=refresh [dim]?[white]=help", "Tab=panel Ctrl+1=dashboard Ctrl+2=chart r=refresh ?=help"
+		return "[dim]Tab[white]=panel [dim]r[white]=refresh [dim]?[white]=help", "Tab=panel r=refresh ?=help"
 	}
 }
 
@@ -36,8 +36,6 @@ func BuildLiveHelpText(ctx LiveHelpContext) string {
 	currentTitle, currentEntries := currentPanelHelpSection(ctx)
 	globalEntries := []liveHelpEntry{
 		{label: "Tab / Shift+Tab", desc: "Move focus between panels"},
-		{label: "Ctrl+1", desc: "Switch to dashboard view"},
-		{label: "Ctrl+2", desc: "Switch to chart view (RX/TX)"},
 		{label: "r", desc: "Refresh now"},
 		{label: "p", desc: "Pause / resume auto-refresh"},
 		{label: "m", desc: "Toggle sensitive IP mask"},
