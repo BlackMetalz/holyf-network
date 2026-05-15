@@ -26,11 +26,9 @@ func LiveMainStatusHotkeys(focusIndex int, direction tuishared.TopConnectionDire
 		}
 		return "[dim]Up/Down[white]=select [dim]pg[white]=page [dim]o[white]=OUT [dim]g[white]=group [dim]/[white]=search [dim]f[white]=filter [dim]Enter/k[white]=act [dim]Tab[white]=panel [dim]?[white]=help", "Up/Down=select [ ]=page o=OUT g=group /=search f=filter Enter/k=act Tab=panel ?=help"
 	case 0:
-		return "[dim]s[white]=sort [dim]Tab[white]=panel [dim]Ctrl+1..4[white]=focus [dim]?[white]=help", "s=sort Tab=panel Ctrl+1..4=focus ?=help"
-	case 1:
-		return "[dim]Shift+I[white]=explain [dim]Tab[white]=panel [dim]Ctrl+1..4[white]=focus [dim]?[white]=help", "Shift+I=explain Tab=panel Ctrl+1..4=focus ?=help"
+		return "[dim]s[white]=sort [dim]Shift+I[white]=explain [dim]Tab[white]=panel [dim]Ctrl+1[white]=dashboard [dim]Ctrl+2[white]=chart [dim]?[white]=help", "s=sort Shift+I=explain Tab=panel Ctrl+1=dashboard Ctrl+2=chart ?=help"
 	default:
-		return "[dim]Tab[white]=panel [dim]Ctrl+1..4[white]=focus [dim]r[white]=refresh [dim]?[white]=help", "Tab=panel Ctrl+1..4=focus r=refresh ?=help"
+		return "[dim]Tab[white]=panel [dim]Ctrl+1[white]=dashboard [dim]Ctrl+2[white]=chart [dim]r[white]=refresh [dim]?[white]=help", "Tab=panel Ctrl+1=dashboard Ctrl+2=chart r=refresh ?=help"
 	}
 }
 
@@ -38,7 +36,8 @@ func BuildLiveHelpText(ctx LiveHelpContext) string {
 	currentTitle, currentEntries := currentPanelHelpSection(ctx)
 	globalEntries := []liveHelpEntry{
 		{label: "Tab / Shift+Tab", desc: "Move focus between panels"},
-		{label: "Ctrl+1..4", desc: "Focus 1=Top 2=States 3=Interface 4=Conntrack"},
+		{label: "Ctrl+1", desc: "Switch to dashboard view"},
+		{label: "Ctrl+2", desc: "Switch to chart view (RX/TX)"},
 		{label: "r", desc: "Refresh now"},
 		{label: "p", desc: "Pause / resume auto-refresh"},
 		{label: "m", desc: "Toggle sensitive IP mask"},
@@ -78,29 +77,26 @@ func currentPanelHelpSection(ctx LiveHelpContext) (string, []liveHelpEntry) {
 		} else {
 			entries = append(entries, liveHelpEntry{label: "Enter / k", desc: "Block selected target"})
 		}
+		entries = append(entries, liveHelpEntry{label: "K", desc: "K8s pod lookup by port"})
 		entries = append(entries, liveHelpEntry{label: "z", desc: "Zoom Top Connections"})
 		return title, entries
 	case 0:
-		return "Connection States", []liveHelpEntry{{label: "s", desc: "Sort state rows by count (DESC/ASC)"}}
-	case 1:
-		return "Interface Stats", []liveHelpEntry{{label: "Shift+I", desc: "Explain RX/TX, packet rate, app CPU/mem, errors, and drops"}}
-	case 3:
-		return "Conntrack", []liveHelpEntry{{label: "Info", desc: "Read-only pressure panel; watch usage and drops"}}
+		return "System Health", []liveHelpEntry{
+			{label: "s", desc: "Sort state rows by count (DESC/ASC)"},
+			{label: "Shift+I", desc: "Explain RX/TX, packet rate, app CPU/mem, errors, and drops"},
+		}
 	default:
 		return "Dashboard", nil
 	}
 }
 
 func otherPanelHelpEntries(ctx LiveHelpContext) []liveHelpEntry {
-	entries := make([]liveHelpEntry, 0, 5)
+	entries := make([]liveHelpEntry, 0, 4)
 	if ctx.FocusIndex != 2 {
 		entries = append(entries, liveHelpEntry{label: "Top Connections", desc: "Up/Down rows, [ ] pages, o IN/OUT, g group, / search, f filter, Enter/k actions (IN only)"})
 	}
 	if ctx.FocusIndex != 0 {
-		entries = append(entries, liveHelpEntry{label: "Connection States", desc: "s sort states"})
-	}
-	if ctx.FocusIndex != 1 {
-		entries = append(entries, liveHelpEntry{label: "Interface Stats", desc: "Shift+I explain metrics"})
+		entries = append(entries, liveHelpEntry{label: "System Health", desc: "s sort states, Shift+I explain metrics"})
 	}
 	entries = append(entries, liveHelpEntry{label: "Logs / Blocks", desc: "h action log, b blocked peers"})
 	return entries

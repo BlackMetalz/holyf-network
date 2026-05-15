@@ -67,6 +67,20 @@ func ColorForHealthLevel(level HealthLevel) string {
 	}
 }
 
+// HealthLevelLabel returns a short human-readable label for a HealthLevel.
+func HealthLevelLabel(level HealthLevel) string {
+	switch level {
+	case HealthCrit:
+		return "CRIT"
+	case HealthWarn:
+		return "WARN"
+	case HealthOK:
+		return "OK"
+	default:
+		return "?"
+	}
+}
+
 func MaxHealthLevel(a, b HealthLevel) HealthLevel {
 	if a > b {
 		return a

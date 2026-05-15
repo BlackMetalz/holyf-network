@@ -21,7 +21,6 @@ func newPhase3TestApp() *App {
 		tview.NewTextView(),
 		tview.NewTextView(),
 		tview.NewTextView(),
-		tview.NewTextView(),
 	}
 	pages := tview.NewPages()
 	pages.AddPage("main", tview.NewBox(), true, true)
@@ -40,7 +39,9 @@ func newPhase3TestApp() *App {
 		refreshChan:    make(chan struct{}, 1),
 		blockManager:   blocking.NewManager(),
 		trafficManager: traffic.NewManager(config.DefaultHealthThresholds()),
-		actionLogger:   actionlog.NewLogger(""),
+		actionLogger: actionlog.NewLogger(""),
+		rxHistory:    tuishared.NewRingBuffer(60),
+		txHistory:    tuishared.NewRingBuffer(60),
 	}
 }
 
@@ -235,7 +236,7 @@ func TestLiveStatusBarKeepsBaseVersionWhenNoUpdateTag(t *testing.T) {
 	}
 }
 
-func TestLiveStatusBarShowsLinkSpeedUnknownWhenNotReadable(t *testing.T) {
+func TestLiveStatusBarHidesLinkSpeedWhenNotReadable(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
@@ -243,8 +244,8 @@ func TestLiveStatusBarShowsLinkSpeedUnknownWhenNotReadable(t *testing.T) {
 	a.updateStatusBar()
 
 	text := a.statusBar.GetText(true)
-	if !strings.Contains(text, "LINK(sysfs):UNKNOWN") {
-		t.Fatalf("expected unknown link speed marker, got=%q", text)
+	if strings.Contains(text, "LINK") {
+		t.Fatalf("expected no LINK marker when speed unknown, got=%q", text)
 	}
 }
 
@@ -256,7 +257,7 @@ func TestLiveStatusBarShowsLinkSpeedWhenKnown(t *testing.T) {
 	a.updateStatusBar()
 
 	text := a.statusBar.GetText(true)
-	if !strings.Contains(text, "LINK(sysfs):25000Mb/s") {
+	if !strings.Contains(text, "LINK:25000Mb/s") {
 		t.Fatalf("expected known link speed marker, got=%q", text)
 	}
 }
@@ -393,16 +394,8 @@ func TestFocusOrderFollowsRequestedPanelSequence(t *testing.T) {
 	a.focusIndex = 2 // Top
 
 	a.focusNext()
-	if a.focusIndex != 0 { // States
+	if a.focusIndex != 0 { // System Health
 		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 0)
-	}
-	a.focusNext()
-	if a.focusIndex != 1 { // Interface
-		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 1)
-	}
-	a.focusNext()
-	if a.focusIndex != 3 { // Conntrack
-		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 3)
 	}
 	a.focusNext()
 	if a.focusIndex != 2 { // wrap Top
@@ -410,28 +403,28 @@ func TestFocusOrderFollowsRequestedPanelSequence(t *testing.T) {
 	}
 }
 
-func TestHandleKeyEventCtrlNumberFocusShortcuts(t *testing.T) {
+func TestHandleKeyEventCtrlNumberViewSwitching(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	tests := []struct {
-		rune      rune
-		wantFocus int
-	}{
-		{rune: '1', wantFocus: 2}, // Top
-		{rune: '2', wantFocus: 0}, // States
-		{rune: '3', wantFocus: 1}, // Interface
-		{rune: '4', wantFocus: 3}, // Conntrack
+	a.pages.AddPage("chart", tview.NewBox(), true, false)
+
+	// Ctrl+2 should switch to chart view
+	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, '2', tcell.ModCtrl))
+	if ret != nil {
+		t.Fatalf("ctrl+2 should be handled")
+	}
+	if a.currentView != viewChart {
+		t.Fatalf("ctrl+2 should switch to chart view, got=%d", a.currentView)
 	}
 
-	for _, tc := range tests {
-		ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, tc.rune, tcell.ModCtrl))
-		if ret != nil {
-			t.Fatalf("ctrl+%c should be handled", tc.rune)
-		}
-		if a.focusIndex != tc.wantFocus {
-			t.Fatalf("ctrl+%c focus mismatch: got=%d want=%d", tc.rune, a.focusIndex, tc.wantFocus)
-		}
+	// Ctrl+1 should switch back to dashboard
+	ret = a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, '1', tcell.ModCtrl))
+	if ret != nil {
+		t.Fatalf("ctrl+1 should be handled")
+	}
+	if a.currentView != viewDashboard {
+		t.Fatalf("ctrl+1 should switch to dashboard view, got=%d", a.currentView)
 	}
 }
 
@@ -466,7 +459,7 @@ func TestHandleKeyEventArrowKeysAreBlockedOutsideTopConnections(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	a.focusIndex = 3 // Conntrack
+	a.focusIndex = 0 // System Health
 	a.selectedTalkerIndex = 1
 
 	up := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyUp, 0, 0))

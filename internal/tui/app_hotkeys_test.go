@@ -10,15 +10,17 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/tui/blocking"
 	tuioverlays "github.com/BlackMetalz/holyf-network/internal/tui/overlays"
 	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
+	tuireplay "github.com/BlackMetalz/holyf-network/internal/tui/replay"
 	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/BlackMetalz/holyf-network/internal/tui/traffic"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
+// --- from app_sort_hotkeys_test.go ---
+
 func newSortHotkeyTestApp(startMode tuishared.SortMode, startDesc bool, selectedIndex int) *App {
 	panels := []*tview.TextView{
-		tview.NewTextView(),
 		tview.NewTextView(),
 		tview.NewTextView(),
 		tview.NewTextView(),
@@ -177,7 +179,7 @@ func TestStatusHotkeysIncludeHelp(t *testing.T) {
 	}{
 		{name: "top incoming", focus: 2, direction: tuishared.TopConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "Enter/k=act", "?=help"}},
 		{name: "top outgoing", focus: 2, direction: tuishared.TopConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "Enter/k=disabled", "?=help"}},
-		{name: "states", focus: 0, direction: tuishared.TopConnectionIncoming, want: []string{"s=sort", "Ctrl+1..4=focus", "?=help"}},
+		{name: "system health", focus: 0, direction: tuishared.TopConnectionIncoming, want: []string{"s=sort", "Ctrl+1=dashboard", "Ctrl+2=chart", "?=help"}},
 	}
 
 	for _, tc := range tests {
@@ -189,3 +191,65 @@ func TestStatusHotkeysIncludeHelp(t *testing.T) {
 		}
 	}
 }
+
+// --- from status_hotkeys_test.go ---
+
+func TestHistoryStatusHotkeysForModalPages(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		page      string
+		wantPlain string
+	}{
+		{page: "history-help", wantPlain: "any key=close"},
+		{page: "history-filter", wantPlain: "Enter=apply Esc=cancel"},
+		{page: "history-search", wantPlain: "Enter=apply Esc=cancel"},
+		{page: "history-jump-time", wantPlain: "Enter=apply Esc=cancel"},
+		{page: "history-timeline-search", wantPlain: "Enter=search Esc=cancel"},
+		{page: "history-timeline-results", wantPlain: "Up/Down=select Enter=jump Esc=close"},
+		{page: "main", wantPlain: "[=prev ]=next a e t f / Shift+S Shift+B/C/P o m i Shift+I x z L ? q"},
+		{page: "history-socket-queue-explain", wantPlain: "Enter=close Esc=close"},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.page, func(t *testing.T) {
+			t.Parallel()
+			_, plain := tuireplay.StatusHotkeysForPage(tc.page)
+			if plain != tc.wantPlain {
+				t.Fatalf("plain hotkeys mismatch for page=%q: got=%q want=%q", tc.page, plain, tc.wantPlain)
+			}
+		})
+	}
+}
+
+// --- from help_test.go ---
+
+func TestBuildLiveHelpTextTopOutgoingGroup(t *testing.T) {
+	t.Parallel()
+
+	a := newPhase3TestApp()
+	a.focusIndex = 2
+	a.topDirection = tuishared.TopConnectionOutgoing
+	a.groupView = true
+
+	text := tuioverlays.BuildLiveHelpText(tuioverlays.LiveHelpContext{FocusIndex: a.focusIndex, Direction: a.topDirection, GroupView: a.groupView})
+	for _, want := range []string{
+		"Current Panel",
+		"Top Connections (OUT, group view)",
+		"Toggle to IN mode",
+		"Switch to connections view",
+		"Disabled in OUT mode",
+		"Global Navigation",
+		"Other Panels",
+		"System Health",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected help text to contain %q, got: %q", want, text)
+		}
+	}
+	if strings.Count(text, "Top Connections (OUT, group view)") != 1 {
+		t.Fatalf("current panel should not be repeated under Other Panels: %q", text)
+	}
+}
+

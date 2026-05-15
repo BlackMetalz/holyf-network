@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/tui/blocking"
 	tuilayout "github.com/BlackMetalz/holyf-network/internal/tui/layout"
 	tuioverlays "github.com/BlackMetalz/holyf-network/internal/tui/overlays"
+	tuipodlookup "github.com/BlackMetalz/holyf-network/internal/tui/podlookup"
 	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
 	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/BlackMetalz/holyf-network/internal/tui/traffic"
@@ -24,6 +27,13 @@ import (
 
 // app.go — Main TUI application. Wires together layout, navigation, help,
 // and auto-refresh via goroutines + channels.
+
+type viewMode int
+
+const (
+	viewDashboard viewMode = iota
+	viewChart
+)
 
 // App holds all TUI state.
 type App struct {
@@ -104,9 +114,24 @@ type App struct {
 
 	healthThresholds config.HealthThresholds
 	trafficManager   *traffic.Manager
+
+	// Backend indicator for status bar.
+	backendLabel string
+
+	// Cached data for the combined System Health panel (so the 1-second
+	// interface refresh lane can re-render the full panel).
+	cachedConnData       collector.ConnectionData
+	cachedRetransRates   *collector.RetransmitRates
+	cachedConntrackRates *collector.ConntrackRates
+
+	rxHistory *tuishared.RingBuffer
+	txHistory *tuishared.RingBuffer
+
+	currentView viewMode
+	chartPanels []*tview.TextView // 2 panels: RX chart, TX chart
 }
 
-var livePanelFocusOrder = []int{2, 0, 1, 3} // 1=Top, 2=States, 3=Interface, 4=Conntrack
+var livePanelFocusOrder = []int{2, 0} // Top Connections, System Health
 
 // NewApp creates a new TUI application.
 func NewApp(
@@ -139,6 +164,8 @@ func NewApp(
 		connStateSortDesc:   true,
 		bwTracker:           collector.NewBandwidthTracker(),
 		ssBWTracker:         collector.NewSocketBandwidthTracker(),
+		rxHistory:           tuishared.NewRingBuffer(60),
+		txHistory:           tuishared.NewRingBuffer(60),
 	}
 }
 
@@ -154,10 +181,26 @@ func (a *App) Run() error {
 		a.helpView.SetText(tuioverlays.BuildLiveHelpText(tuioverlays.LiveHelpContext{FocusIndex: a.focusIndex, Direction: a.topDirection, GroupView: a.groupView}))
 	}
 
+	// Create chart panels
+	a.chartPanels = []*tview.TextView{
+		tview.NewTextView(),
+		tview.NewTextView(),
+	}
+	for _, cp := range a.chartPanels {
+		cp.SetBorder(true)
+		cp.SetDynamicColors(true)
+		cp.SetScrollable(true)
+	}
+	a.chartPanels[0].SetTitle(" Incoming (RX) ")
+	a.chartPanels[1].SetTitle(" Outgoing (TX) ")
+
+	chartGrid := tuilayout.CreateChartGrid(a.chartPanels[0], a.chartPanels[1], a.statusBar)
+
 	// tview.Pages lets us stack "pages" (layers) on top of each other.
-	// "main" is always visible, "help" is shown/hidden on top.
+	// "main" is the dashboard, "chart" is the chart view, "help" is shown/hidden on top.
 	a.pages = tview.NewPages()
 	a.pages.AddPage("main", a.grid, true, true)
+	a.pages.AddPage("chart", chartGrid, true, false)
 	a.pages.AddPage("help", helpModal, true, false) // resize=true, visible=false
 
 	// Set initial focus highlight
@@ -301,7 +344,7 @@ func (a *App) startStatusTicker() {
 func (a *App) refreshInterfacePanel() {
 	ifaceStats, err := collector.CollectInterfaceStats(a.ifaceName)
 	if err != nil {
-		a.panels[1].SetText(fmt.Sprintf("  [red]%v[white]", err))
+		// Still render what we can for the combined panel.
 		return
 	}
 
@@ -313,19 +356,43 @@ func (a *App) refreshInterfacePanel() {
 	}
 	a.trafficManager.SetSpeed(linkSpeedMbps, linkSpeedKnown)
 	spike := a.trafficManager.EvaluateInterfaceSpike(rates, linkSpeedBps, linkSpeedKnown)
-	a.panels[1].SetText(tuipanels.RenderInterfacePanel(rates, spike, tuishared.InterfaceSystemSnapshot{
-		Usage:      a.latestSystemUsage,
-		Ready:      a.systemUsageReady,
-		Err:        a.systemUsageErr,
-		RefreshSec: a.refreshSec,
-	}))
+	activeThresholds := a.trafficManager.ActiveHealthThresholds()
+
+	a.panels[0].SetText(tuipanels.RenderSystemHealthPanel(
+		a.cachedConnData,
+		a.cachedRetransRates,
+		a.cachedConntrackRates,
+		activeThresholds,
+		rates,
+		spike,
+		tuishared.InterfaceSystemSnapshot{
+			Usage:      a.latestSystemUsage,
+			Ready:      a.systemUsageReady,
+			Err:        a.systemUsageErr,
+			RefreshSec: a.refreshSec,
+		},
+		a.connStateSortDesc,
+	))
+
+	if !rates.FirstReading {
+		a.rxHistory.Push(time.Now(), rates.RxBytesPerSec)
+		a.txHistory.Push(time.Now(), rates.TxBytesPerSec)
+	}
+
+	// Render chart view panels when in chart mode.
+	if a.currentView == viewChart && a.chartPanels != nil {
+		_, _, w0, h0 := a.chartPanels[0].GetInnerRect()
+		a.chartPanels[0].SetText(tuipanels.RenderTimeSeriesChart(a.rxHistory, "Incoming (RX)", w0, h0, "green"))
+		_, _, w1, h1 := a.chartPanels[1].GetInnerRect()
+		a.chartPanels[1].SetText(tuipanels.RenderTimeSeriesChart(a.txHistory, "Outgoing (TX)", w1, h1, "aqua"))
+	}
+
 	a.prevIfaceStats = &ifaceStats
 }
 
 // refreshData collects data from system and updates all panels.
 func (a *App) refreshData() {
 	a.lastRefresh = time.Now()
-	activeThresholds := a.trafficManager.ActiveHealthThresholds()
 
 	if usage, cpuStats, usageErr := collector.CollectSystemUsage(a.prevCPUStats); usageErr != nil {
 		a.systemUsageErr = shortStatus(usageErr.Error(), 96)
@@ -339,16 +406,13 @@ func (a *App) refreshData() {
 	// Collect conntrack early so panel 0 health strip can use it too.
 	var conntrackRates *collector.ConntrackRates
 	ctData, err := collector.CollectConntrack()
-	if err != nil {
-		a.panels[3].SetText(fmt.Sprintf("  [red]%v[white]", err))
-	} else {
+	if err == nil {
 		rates := collector.CalculateConntrackRates(ctData, a.prevConntrack)
 		conntrackRates = &rates
-		a.panels[3].SetText(tuipanels.RenderConntrackPanel(rates, activeThresholds.ConntrackPercent))
 		a.prevConntrack = &ctData
 	}
 
-	// Panel 0: Connection States + Retransmits
+	// Panel 0: System Health (Connection States + Interface + Conntrack combined)
 	var retransRates *collector.RetransmitRates
 	var connData collector.ConnectionData
 	retransData, retransErr := collector.CollectRetransmits()
@@ -362,14 +426,16 @@ func (a *App) refreshData() {
 	if err != nil {
 		a.panels[0].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
-		a.panels[0].SetText(tuipanels.RenderConnectionsPanelWithStateSort(connData, retransRates, conntrackRates, activeThresholds, a.connStateSortDesc))
+		// Cache connection data for the 1-second interface refresh lane.
+		a.cachedConnData = connData
+		a.cachedRetransRates = retransRates
+		a.cachedConntrackRates = conntrackRates
 	}
 
 	a.ensureListenPortsKnown()
 
-	// Panel 1: Interface Stats
-	// Kept here for initial/manual/full refresh coherence; a separate 1s lane
-	// also updates this panel for near-real-time bandwidth visibility.
+	// Refresh the combined System Health panel (includes interface stats).
+	// A separate 1s lane also re-renders this panel for near-real-time bandwidth visibility.
 	a.refreshInterfacePanel()
 
 	// Panel 2: Top Connections
@@ -416,7 +482,6 @@ func (a *App) refreshData() {
 		a.latestTalkers = talkers
 		a.renderTopConnectionsPanel()
 	}
-
 	a.updateStatusBar()
 }
 
@@ -432,6 +497,11 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 	// When non-help overlays are visible (forms/modals), let focused widget handle keys.
 	if a.isOverlayVisible() {
 		return event
+	}
+
+	// In chart view, block most non-rune keys (rune keys handled below)
+	if a.currentView == viewChart && event.Key() != tcell.KeyRune {
+		return nil
 	}
 
 	// Handle key by type
@@ -482,11 +552,33 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 
 	case tcell.KeyRune:
+		// Check for Ctrl+1 or Ctrl+2 before other key handling
 		if event.Modifiers()&tcell.ModCtrl != 0 {
-			if a.handleCtrlPanelShortcut(event.Rune()) {
+			switch event.Rune() {
+			case '1':
+				a.switchView(viewDashboard)
+				return nil
+			case '2':
+				a.switchView(viewChart)
 				return nil
 			}
 		}
+
+		// In chart view, only allow q and ? (plus Ctrl+1/2 handled above)
+		if a.currentView == viewChart {
+			switch event.Rune() {
+			case 'q':
+				a.blockManager.CleanupActiveBlocks()
+				close(a.stopChan)
+				a.app.Stop()
+				return nil
+			case '?':
+				a.showHelp()
+				return nil
+			}
+			return nil
+		}
+
 		// tcell.KeyRune means a regular character key (not special key)
 		switch event.Rune() {
 		case 'q':
@@ -549,6 +641,9 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		case 'I':
 			a.promptInterfaceStatsExplain()
+			return nil
+		case 'K':
+			a.promptPodLookup()
 			return nil
 		case 'B', 'C', 'P':
 			mode, ok := directSortModeForRune(event.Rune())
@@ -627,23 +722,21 @@ func (a *App) focusPrev() {
 	tuilayout.HighlightPanel(a.panels, a.focusIndex)
 }
 
-func (a *App) handleCtrlPanelShortcut(r rune) bool {
-	switch r {
-	case '1':
-		a.focusPanel(2)
-		return true
-	case '2':
-		a.focusPanel(0)
-		return true
-	case '3':
-		a.focusPanel(1)
-		return true
-	case '4':
-		a.focusPanel(3)
-		return true
-	default:
-		return false
+func (a *App) switchView(mode viewMode) {
+	if a.currentView == mode {
+		return
 	}
+	a.currentView = mode
+	switch mode {
+	case viewDashboard:
+		a.pages.SwitchToPage("main")
+		if a.focusIndex >= 0 && a.focusIndex < len(a.panels) {
+			a.app.SetFocus(a.panels[a.focusIndex])
+		}
+	case viewChart:
+		a.pages.SwitchToPage("chart")
+	}
+	a.updateStatusBar()
 }
 
 func (a *App) focusPanel(index int) {
@@ -705,7 +798,7 @@ func (a *App) isHelpVisible() bool {
 }
 func (a *App) isOverlayVisible() bool {
 	name, _ := a.pages.GetFrontPage()
-	return name != "main" && name != "help"
+	return name != "main" && name != "help" && name != "chart"
 }
 
 // toggleZoom switches between grid view and fullscreen focused panel.
@@ -767,7 +860,12 @@ func (a *App) updateStatusBar() {
 	if a.sensitiveIP {
 		stateText += " [yellow]IP MASK[white] |"
 	}
-	stateText += a.linkSpeedStatusIndicator()
+	if a.backendLabel != "" {
+		stateText += " " + a.backendLabel + " |"
+	}
+	if a.trafficManager.IfaceSpeedSample() && a.trafficManager.IfaceSpeedKnown() && a.trafficManager.IfaceSpeedMbps() > 0 {
+		stateText += fmt.Sprintf(" [aqua]LINK:%.0fMb/s[white] |", a.trafficManager.IfaceSpeedMbps())
+	}
 	if time.Now().Before(a.statusNoteUntil) && a.statusNote != "" {
 		stateText += fmt.Sprintf(" [yellow]%s[white] |", a.statusNote)
 	} else if strings.TrimSpace(a.lastStatusNote) != "" {
@@ -821,16 +919,6 @@ func (a *App) frontPageName() string {
 		return "main"
 	}
 	return name
-}
-
-func (a *App) linkSpeedStatusIndicator() string {
-	if !a.trafficManager.IfaceSpeedSample() {
-		return " [dim]LINK(sysfs):warming[white] |"
-	}
-	if a.trafficManager.IfaceSpeedKnown() && a.trafficManager.IfaceSpeedMbps() > 0 {
-		return fmt.Sprintf(" [aqua]LINK(sysfs):%.0fMb/s[white] |", a.trafficManager.IfaceSpeedMbps())
-	}
-	return " [yellow]LINK(sysfs):UNKNOWN[white] |"
 }
 
 func (a *App) statusHotkeysForPage(page string) (styled string, plain string) {
@@ -950,3 +1038,248 @@ func (a *App) promptInterfaceStatsExplain() {
 	a.app.SetFocus(modal)
 }
 
+func (a *App) promptPodLookup() {
+	// Pre-fill port from selected connection row if available.
+	prefilledPort := ""
+	if a.focusIndex == 2 {
+		conns := a.topConnectionsSource()
+		if len(conns) > 0 && a.selectedTalkerIndex >= 0 && a.selectedTalkerIndex < len(conns) {
+			conn := conns[a.selectedTalkerIndex]
+			prefilledPort = fmt.Sprintf("%d", conn.RemotePort)
+		}
+	}
+	tuipodlookup.PromptPodLookup(a, prefilledPort)
+}
+
+// --- UIContext interface implementation for blocking package ---
+
+func (a *App) AddPage(name string, item tview.Primitive, resize, visible bool) {
+	a.pages.AddPage(name, item, resize, visible)
+}
+
+func (a *App) RemovePage(name string) {
+	a.pages.RemovePage(name)
+}
+
+func (a *App) SendToFront(name string) {
+	a.pages.SendToFront(name)
+}
+
+func (a *App) SetFocus(p tview.Primitive) {
+	a.app.SetFocus(p)
+}
+
+func (a *App) RestoreFocus() {
+	if a.focusIndex >= 0 && a.focusIndex < len(a.panels) {
+		a.app.SetFocus(a.panels[a.focusIndex])
+	}
+}
+
+func (a *App) SetStatusNote(msg string, ttl time.Duration) {
+	a.setStatusNote(msg, ttl)
+}
+
+func (a *App) AddActionLog(msg string) {
+	a.addActionLog(msg)
+}
+
+func (a *App) QueueUpdateDraw(f func()) {
+	a.app.QueueUpdateDraw(f)
+}
+
+func (a *App) UpdateStatusBar() {
+	a.updateStatusBar()
+}
+
+func (a *App) RefreshData() {
+	a.refreshData()
+}
+
+func (a *App) IsPaused() bool {
+	return a.paused.Load()
+}
+
+func (a *App) SetPaused(paused bool) {
+	a.paused.Store(paused)
+}
+
+func (a *App) TopDirection() tuishared.TopConnectionDirection {
+	return a.topDirection
+}
+
+func (a *App) PortFilter() string {
+	return a.portFilter
+}
+
+func (a *App) LatestTalkers() []collector.Connection {
+	return a.latestTalkers
+}
+
+// SetBackendLabel sets the backend indicator shown in the status bar.
+func (a *App) SetBackendLabel(label string) {
+	a.backendLabel = label
+}
+
+// --- Shared Constants & Utilities ---
+
+const (
+	defaultBlockMinutes = 10
+	maxBlockMinutes     = 1440
+
+	actionLogModalLimit      = 20
+	inMemoryActionLogMax     = 500
+	actionLogRotateLimit     = 500
+	actionHistoryDirName     = ".holyf-network"
+	actionHistoryFileName    = "history.log"
+	actionHistoryDisplayPath = "~/.holyf-network/history.log"
+)
+
+func shortStatus(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	if max <= 3 {
+		return s[:max]
+	}
+	return s[:max-3] + "..."
+}
+
+func formatBlockDuration(duration time.Duration) string {
+	minutes := int(duration / time.Minute)
+	if minutes > 0 {
+		return fmt.Sprintf("%dm", minutes)
+	}
+	seconds := int(duration / time.Second)
+	if seconds < 1 {
+		seconds = 1
+	}
+	return fmt.Sprintf("%ds", seconds)
+}
+
+func formatRemainingDuration(duration time.Duration) string {
+	if duration <= 0 {
+		return "00:00"
+	}
+
+	totalSeconds := int(duration.Round(time.Second) / time.Second)
+	if totalSeconds < 0 {
+		totalSeconds = 0
+	}
+
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
+	if hours > 0 {
+		return fmt.Sprintf("%dh%02dm", hours, minutes)
+	}
+	return fmt.Sprintf("%02d:%02d", minutes, seconds)
+}
+
+func sanitizeActionLogMessage(message string) string {
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		return ""
+	}
+	if !strings.HasPrefix(msg, "Blocked ") {
+		return msg
+	}
+
+	parts := strings.Split(msg, " | ")
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		p := strings.TrimSpace(part)
+		if p == "" {
+			continue
+		}
+		if strings.HasPrefix(p, "expires in ") {
+			continue
+		}
+		if p == "killed 0/0 flows" {
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+	if len(filtered) == 0 {
+		return ""
+	}
+	return strings.Join(filtered, " | ")
+}
+
+// --- Action Log Modal ---
+
+func (a *App) promptActionLog() {
+	logs := a.actionLogger.Recent(actionLogModalLimit)
+
+	var body strings.Builder
+	if len(logs) == 0 {
+		body.WriteString("  No actions yet")
+	} else {
+		for i, entry := range logs {
+			body.WriteString("  ")
+			body.WriteString(entry)
+			if i < len(logs)-1 {
+				body.WriteString("\n")
+			}
+		}
+	}
+	body.WriteString("\n\n")
+	body.WriteString(fmt.Sprintf(
+		"  [dim]Showing latest %d. Full history: %s (rolling %d events)[white]",
+		actionLogModalLimit,
+		actionHistoryDisplayPath,
+		actionLogRotateLimit,
+	))
+
+	view := tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(false).
+		SetTextAlign(tview.AlignLeft).
+		SetText(body.String())
+	view.SetBorder(true)
+	view.SetTitle(fmt.Sprintf(" Action Log (latest %d) ", actionLogModalLimit))
+
+	closeModal := func() {
+		a.pages.RemovePage("action-log")
+		a.app.SetFocus(a.panels[a.focusIndex])
+		a.updateStatusBar()
+	}
+
+	view.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc, tcell.KeyEnter:
+			closeModal()
+			return nil
+		}
+		return event
+	})
+
+	modal := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(view, 100, 0, true).
+			AddItem(nil, 0, 1, false),
+			16, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	a.pages.RemovePage("action-log")
+	a.pages.AddPage("action-log", modal, true, true)
+	a.updateStatusBar()
+	a.app.SetFocus(view)
+}
+
+func (a *App) addActionLog(message string) {
+	a.actionLogger.Add(message)
+}
+
+func (a *App) recentActionLogs(limit int) []string {
+	if limit <= 0 {
+		limit = actionLogModalLimit
+	}
+	return a.actionLogger.Recent(limit)
+}
+
+func defaultActionHistoryPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(strings.TrimSpace(home), actionHistoryDirName, actionHistoryFileName)
+}

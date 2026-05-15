@@ -226,7 +226,7 @@ func TestHistoryHandleKeyEventOTogglesDirectionAndUsesOutgoingRows(t *testing.T)
 		t.Fatalf("expected outgoing rows after toggle, got=%+v", rows)
 	}
 	text := h.panel.GetText(true)
-	if !strings.Contains(text, "Dir=OUT") || !strings.Contains(text, "RPORT") {
+	if !strings.Contains(text, "Outgoing") || !strings.Contains(text, "RPORT") {
 		t.Fatalf("expected outgoing replay panel render, got=%q", text)
 	}
 }
@@ -753,13 +753,13 @@ func TestHistoryAggregateHintLineChangesWithSkipEmpty(t *testing.T) {
 	thresholds := config.DefaultHealthThresholds()
 
 	withSkip := tuipanels.RenderHistoryAggregatePanel(rows, "", "", 20, false, 0, tuishared.SortByBandwidth, true, tuishared.TopConnectionIncoming, true, thresholds, true)
-	if !strings.Contains(withSkip, "]=next active snapshot") || !strings.Contains(withSkip, "x=show all snapshots") {
-		t.Fatalf("expected active hint line when skip-empty on, got=%q", withSkip)
+	if !strings.Contains(withSkip, "SkipEmpty") {
+		t.Fatalf("expected SkipEmpty chip when skip-empty on, got=%q", withSkip)
 	}
 
 	withoutSkip := tuipanels.RenderHistoryAggregatePanel(rows, "", "", 20, false, 0, tuishared.SortByBandwidth, true, tuishared.TopConnectionIncoming, false, thresholds, true)
-	if !strings.Contains(withoutSkip, "]=next snapshot") || !strings.Contains(withoutSkip, "x=skip empty snapshots") {
-		t.Fatalf("expected raw hint line when skip-empty off, got=%q", withoutSkip)
+	if strings.Contains(withoutSkip, "SkipEmpty") {
+		t.Fatalf("expected no SkipEmpty chip when skip-empty off, got=%q", withoutSkip)
 	}
 }
 
@@ -791,7 +791,7 @@ func TestHistoryStatusBarKeepsLastMessageAfterTTL(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 	h.updateStatusBar()
 	text := h.statusBar.GetText(true)
-	if !strings.Contains(text, "Last:test message") {
+	if !strings.Contains(text, "test message") {
 		t.Fatalf("status bar should keep last message after ttl, got=%q", text)
 	}
 }

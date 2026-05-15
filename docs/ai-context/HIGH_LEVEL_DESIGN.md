@@ -23,7 +23,7 @@ flowchart TD
 Live scheduling now has 3 lanes:
 
 - Main lane: every `--refresh/-r` seconds (plus manual `r`) runs `refreshData()` end-to-end.
-- Interface fast lane: every `1s` updates only `Interface Stats` for faster RX/TX visibility.
+- Interface fast lane: every `1s` re-renders the `System Health` panel for faster RX/TX visibility.
 - Warm-up lane: one early full refresh at ~`1s` after startup to settle first-sample volatility.
 
 Inside `refreshData()`:
@@ -60,16 +60,34 @@ Live Top Connections also has a few important presentation behaviors:
 - The Diagnosis panel is host-global in v1; it is not scoped to the current filter/search slice.
 - `d` opens an in-memory Diagnosis History modal that records diagnosis changes for the current live session.
 
-Live TUI is the only mode that can run active mitigation (`k`, block/kill flow).
+Live TUI is the only mode that can run active mitigation (`k`, block/kill flow) and K8s pod lookup (`K`).
 
-### 2.1) Active mitigation path (block vs kill flow)
+### 2.1) K8s Pod Lookup (`K` hotkey)
 
-Mitigation is implemented in `internal/tui/app_blocking_runtime.go` and `internal/actions/peer_blocker.go`.
+On K8s worker nodes, connections often come from container network namespaces, so the host `/proc/net/tcp` doesn't show the owning pod. `K` (Shift+K) provides on-demand lookup:
+
+1. User presses `K` → input modal with port number (pre-filled from selected row).
+2. Background goroutine scans all network namespaces:
+   - Enumerate unique namespaces via `/proc/*/ns/net` symlink inodes.
+   - For each NS, read `/proc/{representative_pid}/net/tcp{,6}` to match the target port.
+3. On match, resolve the owning PID via socket inode → `/proc/{pid}/fd/` scan (scoped to same netns).
+4. Resolve pod info via layered strategy:
+   - Parse `/proc/{pid}/cgroup` for pod UID + container ID (containerd/CRI-O formats).
+   - Read `HOSTNAME` from `/proc/{pid}/environ`.
+   - Fallback: `crictl inspect` + `crictl inspectp` for pod name, namespace, labels.
+   - Infer deployment name from pod name or labels (`app`, `app.kubernetes.io/name`).
+5. Result modal shows: PID, process, container ID, pod, namespace, deployment, network NS.
+
+Implementation: `internal/podlookup/` (core logic) + `internal/tui/podlookup/` (UI modals).
+
+### 2.2) Active mitigation path (block vs kill flow)
+
+Mitigation is implemented in `internal/tui/blocking/runtime.go` and `internal/actions/peer_blocker.go`, using `internal/kernelapi` interfaces.
 
 Execution paths:
 
 1. Timed block (`minutes > 0`, from `k/Enter` flow):
-   - Step 1: insert firewall DROP rules (`BlockPeer`) with `iptables`/`ip6tables` for `INPUT` + `OUTPUT`.
+   - Step 1: insert firewall DROP rules (`BlockPeer`) via `kernelapi.Firewall` (nftables netlink on Linux 4.9+, `iptables`/`ip6tables` fallback).
    - Step 2: clear active connections with bounded converge sweep:
      - `KillPeerFlows` loop (default: max `4s`, max `12` iterations, sleep `120ms`)
      - each iteration:
@@ -88,12 +106,12 @@ Execution paths:
 
 Important clarification:
 
-- `iptables/ip6tables` is for block/unblock policy only.
-- Actual active flow termination uses `ss -K` and `conntrack -D`.
+- Firewall rules are managed via `kernelapi.Firewall` (nftables netlink or iptables fallback).
+- Active flow termination uses `kernelapi.SocketManager` (SOCK_DESTROY netlink or `ss -K` fallback) and `kernelapi.ConntrackManager` (netlink delete or `conntrack -D` fallback).
 - Under conn storm/race windows, converge can return partial (`remaining N (storm/race)`) by design when bounded limits are hit.
 - `minutes = 0` is pure kill-only semantics.
 
-### 2.2) Metric sources, formulas, and equivalent shell commands
+### 2.3) Metric sources, formulas, and equivalent shell commands
 
 All per-second metrics in app use the same pattern:
 
@@ -105,7 +123,7 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
    - Source:
      - `/proc/sys/net/netfilter/nf_conntrack_count`
      - `/proc/sys/net/netfilter/nf_conntrack_max`
-     - `conntrack -S` (fields `insert`, `drop`)
+     - `kernelapi.ConntrackManager.ReadStats()` (netlink on Linux 4.9+, `conntrack -S` fallback)
    - Formulas:
      - `usage_percent = current / max * 100`
      - `inserts_per_sec = (curr_insert - prev_insert) / elapsed`
@@ -176,12 +194,11 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
 
 6. Per-connection bandwidth (`internal/collector/conntrack_flows.go`, `bandwidth_tracker.go`, `socket_counters.go`, `socket_bandwidth_tracker.go`)
    - Primary source:
-     - union of:
-       - `conntrack -L -p tcp -o extended -n`
-       - `conntrack -L -p tcp`
+     - `kernelapi.ConntrackManager.CollectFlowsTCP()` (netlink on Linux 4.9+)
+     - Fallback: `conntrack -L -p tcp -o extended -n` + `conntrack -L -p tcp`
      - flows are de-duplicated by canonical tuple key
      - duplicate preference favors richer `bytes=` counters (then larger byte totals)
-     - parse both directional `bytes=` counters per flow (orig/reply)
+     - returns both directional byte counters per flow (orig/reply)
    - Primary formulas:
      - `tx_delta = clamp(curr_orig_bytes - prev_orig_bytes)`
      - `rx_delta = clamp(curr_reply_bytes - prev_reply_bytes)`
@@ -190,14 +207,16 @@ If `previous` is missing (first sample) or `elapsed_seconds <= 0`, the app shows
      - `clamp(x) = max(x, 0)` (handles counter reset/wrap)
    - Behavior:
      - first sample is baseline (no rates)
-     - first-seen flow after baseline counts current bytes as delta (to capture short-lived flows)
+     - first-seen flow after baseline: delta = 0 (accumulated historical bytes are skipped; real delta appears on next sample)
+     - sanity cap: per-flow delta capped at 12.5 GB/s (100 Gbps); anything above is treated as counter anomaly and zeroed
+     - `clamp(x) = max(min(x, maxDeltaPerFlow), 0)`
    - Fallback source (only overlay rows still 0):
-     - `ss -tinHn` metrics `bytes_acked` / `bytes_received`
-   - Commands:
-     - `conntrack -L -p tcp -o extended -n`
-     - `conntrack -L -p tcp`
-     - `cat /proc/sys/net/netfilter/nf_conntrack_acct` (should be `1` for byte accounting)
-     - `ss -tinHn`
+     - `kernelapi.SocketManager.CollectTCPCounters()` — always delegates to `ss -tinHn` exec because raw `tcp_info` byte counter offsets vary across kernel versions and reading them via netlink produces garbage
+   - Kernel API note:
+     - Conntrack flow dump uses netlink (no `conntrack` CLI needed)
+     - Socket counter collection (`bytes_acked`/`bytes_received`) uses `ss -tinHn` for reliability
+     - `cat /proc/sys/net/netfilter/nf_conntrack_acct` should be `1` for byte accounting
+     - When `nf_conntrack_acct=0`, netlink conntrack returns zero byte counters
 
 ## 3) Daemon Snapshot Pipeline
 
@@ -232,7 +251,8 @@ Package: `internal/history` + `cmd/daemon.go`
      - `conn_count DESC`
      - `total_queue DESC`
      - then deterministic tie-break: `peer_ip`, `port`, `proc_name`
-   - write one aggregate `SnapshotRecord` as JSON Lines record (one JSON object per line)
+   - collect daemon process CPU/memory via `collector.CollectSystemUsage()` (getrusage + /proc/self/statm)
+   - write one aggregate `SnapshotRecord` as JSON Lines record (includes `cpu_cores` and `rss_bytes`)
 5. Segment file naming by server local day: `connections-YYYYMMDD.jsonl`.
 6. Retention:
    - remove segments older than `--retention-hours`
@@ -315,7 +335,7 @@ Single format policy:
 
 ## 5) Replay TUI (Read-only)
 
-Package: `internal/tui/history_*.go` + `cmd/replay.go`
+Package: `internal/tui/history_app.go` + `internal/tui/replay/` + `cmd/replay.go`
 
 State includes:
 
@@ -360,21 +380,44 @@ Behavior constraints:
 
 ## 6) UI Composition
 
-### Live mode (`layout.go`)
+### Live mode — two views
 
-- Left: `Top Connections`
-- Right stack: `Connection States`, `Interface Stats`, `Conntrack`, `Diagnosis`
+**View switching:**
+- `Ctrl+1`: Dashboard view (default)
+- `Ctrl+2`: Bandwidth chart view (full-screen dual time-series charts)
+
+**Dashboard view (Ctrl+1)** (`layout/live.go`):
+- Left: `Top Connections` (spans full height)
+- Right top: `System Health` (merged: connection states + interface stats + conntrack in one panel with dim section separators)
+- Right bottom: `Diagnosis` — operator card: `Issue`, `Scope`, `Signal`, `Likely Cause`, `Confidence`, `Why`, `Next Actions`
 - Bottom: status bar
-- Live `GROUP` view groups by `(peer, process)` for clarity under mixed ownership (`sshd` + `ct/nat`, etc.)
+- 3 panels total
+- `GROUP` view groups by `(peer, process)` for clarity under mixed ownership (`sshd` + `ct/nat`, etc.)
 - Top Connections can render a live bandwidth note above the table when needed.
 - Top Connections can also render a footer preview for the selected row when panel height allows.
-- `Diagnosis` is a separate live panel with an operator card: `Issue`, `Scope`, `Signal`, `Likely Cause`, `Confidence`, `Why`, and `Next Actions`.
+- Status bar indicators:
+  - `API:kernel` (green) or `API:<backend details>` (yellow) — shows kernel API vs CLI fallback status
+  - `LINK:<speed>Mb/s` — only shown when NIC speed is known (hidden otherwise)
+- Navigation: Tab cycles 3 panels
 
-### Replay mode (`history_layout.go`)
+**Bandwidth chart view (Ctrl+2)** (`panels/chart.go`):
+- Two side-by-side time-series charts: `Incoming (RX)` and `Outgoing (TX)`
+- Rendered with Braille Unicode characters (U+2800-U+28FF) for high-resolution line graphs
+- Connected lines between data points using Bresenham's line algorithm on Braille grid
+- Y-axis: auto-scaled bandwidth labels (B, KB, MB, GB)
+- X-axis: time labels (-60s → now)
+- Data source: ring buffer of last 60 interface rate samples (1 sample/second)
+- In chart view, most hotkeys are disabled — only `q`, `?`, and `Ctrl+1` work
+- Ring buffer: `internal/tui/shared/ring.go` (fixed 60-sample circular buffer)
+
+### Replay mode (`layout/replay.go`)
 
 - Single panel: `Connection History`
 - Bottom: replay status bar
 - Overlay help/filter/search pages only
+- Status bar shows daemon process metrics when available in snapshot:
+  - `CPU:<cores>c RSS:<size>MB` — daemon CPU and memory at capture time
+  - Omitted for old snapshots that don't include these fields
 
 ## 7) Persistence
 
@@ -399,17 +442,19 @@ Behavior constraints:
 
 - Linux runtime (`/proc`, `/sys`, netfilter tooling).
 - Collector path relies on kernel network procfs/sysfs files.
-- Bandwidth/NAT enrichment relies on conntrack TCP dumps (`-o extended` + plain fallback) and tuple normalization.
+- Bandwidth/NAT enrichment uses `kernelapi.ConntrackManager` (netlink on Linux 4.9+, conntrack CLI fallback).
 - `ct/nat` indicates conntrack-derived NAT visibility, not direct host process PID ownership.
-- Mitigation path uses:
-  - `iptables`/`ip6tables` for block/unblock rules
-  - `ss -K` + `conntrack -D` for killing active flows
-- `sudo` recommended for full live-mode visibility/mitigation.
+- Kernel API layer (`internal/kernelapi/`):
+  - On Linux 4.9+ with `CAP_NET_ADMIN`: uses direct netlink sockets (no CLI tools needed)
+  - Fallback: `iptables`/`ip6tables`, `ss`, `conntrack` CLI tools
+  - `tcpdump` is the only remaining external tool dependency (for packet capture feature)
+  - See `docs/ai-context/KERNEL_API.md` for full architecture details
+- `sudo` recommended for full live-mode visibility/mitigation (required for netlink access).
 
 ## 10) Extension Guidelines
 
 1. Put read-only scraping into `internal/collector`.
 2. Put side effects into `internal/actions` or `internal/history` (for snapshot persistence).
-3. Keep renderer files (`panel_*.go`) side-effect free.
-4. Keep interaction flow split by mode (`app_*` for live, `history_*` for replay).
+3. Keep renderer files (`panels/`) side-effect free.
+4. Keep interaction flow split by mode (`app_*` for live, `history_app.go` + `replay/` for replay).
 5. Add tests for parsing/indexing/retention and key handling regressions.

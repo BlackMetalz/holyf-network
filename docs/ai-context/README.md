@@ -6,8 +6,9 @@ This folder is the fastest way for a new AI agent (or new teammate, probably not
 
 1. Read `PROJECT_STRUCTURE.md` for package-level ownership.
 2. Read `HIGH_LEVEL_DESIGN.md` for runtime behavior and data flow.
-3. Read `../SNAPSHOT_FORMAT.md` for daemon/replay on-disk snapshot contract.
-4. Read root `README.MD` for runtime requirements and user-facing shortcuts.
+3. Read `KERNEL_API.md` for netlink kernel API layer (replaces ss/conntrack/iptables).
+4. Read `../SNAPSHOT_FORMAT.md` for daemon/replay on-disk snapshot contract.
+5. Read root `README.MD` for runtime requirements and user-facing shortcuts.
 
 ## Suggested Read Order In Code
 
@@ -17,8 +18,8 @@ This folder is the fastest way for a new AI agent (or new teammate, probably not
 4. `internal/tui/app_core.go`
 5. `internal/tui/history_app.go`
 6. `internal/history/*.go`
-7. `internal/tui/app_top_connections.go`
-8. `internal/tui/app_blocking_kill_flow.go`
+7. `internal/tui/app_connections.go`
+8. `internal/tui/blocking/runtime.go`
 9. `internal/actions/peer_blocker.go`
 10. `internal/collector/*.go`
 
@@ -33,5 +34,7 @@ go test ./...
 - Linux-first TUI network observability tool.
 - Core runtime data comes from `/proc` and `/sys`.
 - For Docker/NAT traffic, live/replay can show synthetic process label `ct/nat` (conntrack-derived visibility path).
-- Active mitigation uses `iptables`/`ip6tables`, `conntrack`, and `ss`.
-- Full functionality expects `sudo`.
+- K8s pod lookup (`K` hotkey) scans container network namespaces via `/proc/{pid}/net/tcp`, resolves pod/deployment via cgroup + `crictl`.
+- Active mitigation uses kernel netlink APIs on Linux 4.9+ (nftables, SOCK_DESTROY, nfnetlink_conntrack). Falls back to `iptables`/`ss`/`conntrack` CLI tools when kernel API unavailable.
+- Optional external tools: `tcpdump` (packet capture), `crictl` (K8s pod lookup enrichment).
+- Full functionality expects `sudo` (or `CAP_NET_ADMIN` for netlink access).

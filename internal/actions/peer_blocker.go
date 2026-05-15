@@ -3,7 +3,6 @@ package actions
 import (
 	"fmt"
 	"net"
-	"os/exec"
 	"runtime"
 	"sort"
 	"strconv"
@@ -24,8 +23,6 @@ type SocketTuple struct {
 	RemotePort int
 }
 
-const ruleComment = "holyf-network-peer-block"
-
 // ListBlockedPeers inspects firewall INPUT rules and returns all peer blocks
 // that were created by holyf-network (based on rule comment prefix).
 func ListBlockedPeers() ([]PeerBlockSpec, error) {
@@ -33,56 +30,16 @@ func ListBlockedPeers() ([]PeerBlockSpec, error) {
 		return nil, fmt.Errorf("peer blocking is only supported on Linux")
 	}
 
-	seen := make(map[string]PeerBlockSpec)
-	var errs []string
-
-	for _, bin := range []string{"iptables", "ip6tables"} {
-		if _, err := exec.LookPath(bin); err != nil {
-			continue
-		}
-
-		out, err := exec.Command(bin, "-S", "INPUT").CombinedOutput()
-		if err != nil {
-			msg := strings.TrimSpace(string(out))
-			if msg == "" {
-				msg = err.Error()
-			}
-			errs = append(errs, fmt.Sprintf("%s: %s", bin, msg))
-			continue
-		}
-
-		lines := strings.Split(string(out), "\n")
-		for _, line := range lines {
-			if !strings.Contains(line, ruleComment+":") {
-				continue
-			}
-
-			fields := strings.Fields(line)
-			peerRaw := argValue(fields, "-s")
-			portRaw := argValue(fields, "--dport")
-			if peerRaw == "" || portRaw == "" {
-				continue
-			}
-
-			port, err := strconv.Atoi(portRaw)
-			if err != nil || port < 1 || port > 65535 {
-				continue
-			}
-
-			peerIP := normalizeRuleIP(peerRaw)
-			spec := PeerBlockSpec{PeerIP: peerIP, LocalPort: port}
-			seen[fmt.Sprintf("%s|%d", spec.PeerIP, spec.LocalPort)] = spec
-		}
+	specs, err := firewall.ListBlockedPeers()
+	if err != nil {
+		return nil, err
 	}
 
-	if len(seen) == 0 && len(errs) > 0 {
-		return nil, fmt.Errorf("%s", strings.Join(errs, "; "))
+	blocks := make([]PeerBlockSpec, 0, len(specs))
+	for _, s := range specs {
+		blocks = append(blocks, fromKernelPeerBlockSpec(s))
 	}
 
-	blocks := make([]PeerBlockSpec, 0, len(seen))
-	for _, spec := range seen {
-		blocks = append(blocks, spec)
-	}
 	sort.Slice(blocks, func(i, j int) bool {
 		if blocks[i].PeerIP != blocks[j].PeerIP {
 			return blocks[i].PeerIP < blocks[j].PeerIP
@@ -95,113 +52,34 @@ func ListBlockedPeers() ([]PeerBlockSpec, error) {
 
 // BlockPeer inserts INPUT+OUTPUT DROP rules for peer IP on the target local port.
 func BlockPeer(spec PeerBlockSpec) error {
-	ip, peerIP, err := validateSpec(spec)
+	_, _, err := validateSpec(spec)
 	if err != nil {
 		return err
 	}
 
-	bin, err := firewallBinary(ip)
-	if err != nil {
-		return err
-	}
-
-	port := strconv.Itoa(spec.LocalPort)
-	comment := ruleCommentForPort(port)
-	inputArgs := []string{
-		"-I", "INPUT",
-		"-s", peerIP,
-		"-p", "tcp",
-		"--dport", port,
-		"-m", "comment",
-		"--comment", comment,
-		"-j", "DROP",
-	}
-	outputArgs := []string{
-		"-I", "OUTPUT",
-		"-d", peerIP,
-		"-p", "tcp",
-		"--sport", port,
-		"-m", "comment",
-		"--comment", comment,
-		"-j", "DROP",
-	}
-
-	if err := runCommand(bin, inputArgs...); err != nil {
-		return fmt.Errorf("cannot block peer %s:%s: %w", peerIP, port, err)
-	}
-	if err := runCommand(bin, outputArgs...); err != nil {
-		_ = runCommand(bin,
-			"-D", "INPUT",
-			"-s", peerIP,
-			"-p", "tcp",
-			"--dport", port,
-			"-m", "comment",
-			"--comment", comment,
-			"-j", "DROP",
-		)
-		return fmt.Errorf("cannot block peer %s:%s output path: %w", peerIP, port, err)
-	}
-
-	return nil
+	return firewall.BlockPeer(toKernelPeerBlockSpec(spec))
 }
 
 // UnblockPeer removes a previously inserted block rule.
 func UnblockPeer(spec PeerBlockSpec) error {
-	ip, peerIP, err := validateSpec(spec)
+	_, _, err := validateSpec(spec)
 	if err != nil {
 		return err
 	}
 
-	bin, err := firewallBinary(ip)
-	if err != nil {
-		return err
-	}
-
-	port := strconv.Itoa(spec.LocalPort)
-	comment := ruleCommentForPort(port)
-	inputArgs := []string{
-		"-D", "INPUT",
-		"-s", peerIP,
-		"-p", "tcp",
-		"--dport", port,
-		"-m", "comment",
-		"--comment", comment,
-		"-j", "DROP",
-	}
-	outputArgs := []string{
-		"-D", "OUTPUT",
-		"-d", peerIP,
-		"-p", "tcp",
-		"--sport", port,
-		"-m", "comment",
-		"--comment", comment,
-		"-j", "DROP",
-	}
-
-	var errs []string
-	if err := runCommand(bin, inputArgs...); err != nil && !isRuleMissingError(err) {
-		errs = append(errs, err.Error())
-	}
-	if err := runCommand(bin, outputArgs...); err != nil && !isRuleMissingError(err) {
-		errs = append(errs, err.Error())
-	}
-	if len(errs) > 0 {
-		return fmt.Errorf("cannot unblock peer %s:%s: %s", peerIP, port, strings.Join(errs, "; "))
-	}
-
-	return nil
+	return firewall.UnblockPeer(toKernelPeerBlockSpec(spec))
 }
 
 // DropPeerConnections removes matching conntrack entries (best effort).
 func DropPeerConnections(spec PeerBlockSpec) error {
-	ip, peerIP, err := validateSpec(spec)
+	_, peerIP, err := validateSpec(spec)
 	if err != nil {
 		return err
 	}
 
 	port := strconv.Itoa(spec.LocalPort)
-	ssErr := killSocketByPeerAndPort(ip, peerIP, port)
-	ctErr := deleteConntrackFlows(ip, peerIP, port)
+	ssErr := killSocketByPeerAndPort(peerIP, port)
+	ctErr := deleteConntrackFlows(peerIP, spec.LocalPort)
 
 	// At least one mechanism succeeded.
 	if ssErr == nil || ctErr == nil {
@@ -214,13 +92,12 @@ func DropPeerConnections(spec PeerBlockSpec) error {
 // CountEstablishedPeerSockets returns the number of established sockets that
 // currently match peer IP + local port.
 func CountEstablishedPeerSockets(spec PeerBlockSpec) (int, error) {
-	ip, peerIP, err := validateSpec(spec)
+	_, peerIP, err := validateSpec(spec)
 	if err != nil {
 		return 0, err
 	}
 
-	port := strconv.Itoa(spec.LocalPort)
-	tuples, err := queryEstablishedSockets(ip, peerIP, port)
+	tuples, err := queryEstablishedSockets(peerIP, spec.LocalPort)
 	if err != nil {
 		return 0, err
 	}
@@ -234,7 +111,7 @@ func CountEstablishedPeerSockets(spec PeerBlockSpec) (int, error) {
 // brute-force strategy: try multiple family/address formats, then re-query to
 // verify sockets are actually gone.
 func QueryAndKillPeerSockets(spec PeerBlockSpec) error {
-	ip, peerIP, err := validateSpec(spec)
+	_, peerIP, err := validateSpec(spec)
 	if err != nil {
 		return err
 	}
@@ -242,17 +119,16 @@ func QueryAndKillPeerSockets(spec PeerBlockSpec) error {
 	port := strconv.Itoa(spec.LocalPort)
 
 	// Phase 1: Broad kill — try every family/address combination.
-	// This covers plain IPv4, IPv4-mapped IPv6 (::ffff:), and pure IPv6.
 	broadKillPeerSockets(peerIP, port)
 
-	// Phase 2: Exact kill — query ss for remaining sockets, kill each one.
-	tuples, _ := queryEstablishedSockets(ip, peerIP, port)
+	// Phase 2: Exact kill — query for remaining sockets, kill each one.
+	tuples, _ := queryEstablishedSockets(peerIP, spec.LocalPort)
 	if len(tuples) > 0 {
 		_ = KillSockets(tuples)
 	}
 
 	// Phase 3: Verify — re-query to check if sockets survived.
-	remaining, verifyErr := queryEstablishedSockets(ip, peerIP, port)
+	remaining, verifyErr := queryEstablishedSockets(peerIP, spec.LocalPort)
 	if verifyErr != nil {
 		return nil // can't verify, assume success
 	}
@@ -262,157 +138,31 @@ func QueryAndKillPeerSockets(spec PeerBlockSpec) error {
 	return nil
 }
 
-// broadKillPeerSockets tries ss -K with every reasonable combination of
-// address family (-4, -6, unspecified) and address format (plain IPv4 vs
-// IPv4-mapped IPv6). This shotgun approach handles edge cases where sshd
-// listens on [::] creating IPv4-mapped IPv6 sockets.
+// broadKillPeerSockets tries to kill sockets using multiple address format
+// combinations via the kernelapi SocketManager.
 func broadKillPeerSockets(peerIP, port string) {
-	if _, err := exec.LookPath("ss"); err != nil {
+	if socketMgr == nil {
 		return
 	}
-
-	stripped := strings.TrimPrefix(peerIP, "::ffff:")
-	mapped := "::ffff:" + stripped
-
-	type combo struct {
-		family string // "", "-4", or "-6"
-		addr   string
-	}
-	combos := []combo{
-		{"-4", stripped},
-		{"-6", mapped},
-		{"", stripped},
-		{"", mapped},
-	}
-
-	for _, c := range combos {
-		for _, filter := range [][]string{
-			{"dst", c.addr, "sport", "=", ":" + port},
-			{"src", c.addr, "dport", "=", ":" + port},
-		} {
-			args := []string{}
-			if c.family != "" {
-				args = append(args, c.family)
-			}
-			args = append(args, "-K")
-			args = append(args, filter...)
-			exec.Command("ss", args...).Run() //nolint:errcheck // ss -K always returns 0
-		}
-	}
+	socketMgr.BroadKill(peerIP, port)
 }
 
-// queryEstablishedSockets runs `ss -tnp state established` and parses the
-// output to find connections matching peerIP and localPort.
-//
-// ss output format (header + data lines):
-//
-//	Recv-Q  Send-Q  Local Address:Port  Peer Address:Port  Process
-//	0       0       10.0.0.1:8080       10.0.0.2:54321     users:(("nginx",pid=1234,fd=5))
-func queryEstablishedSockets(_ net.IP, peerIP, localPort string) ([]SocketTuple, error) {
-	if _, err := exec.LookPath("ss"); err != nil {
-		return nil, fmt.Errorf("ss: command not found")
+// queryEstablishedSockets uses the kernelapi SocketManager to find established
+// connections matching peerIP and localPort.
+func queryEstablishedSockets(peerIP string, localPort int) ([]SocketTuple, error) {
+	if socketMgr == nil {
+		return nil, fmt.Errorf("socket manager not initialized")
 	}
 
-	// Do NOT pass -4 or -6: services like sshd listen on [::] which creates
-	// IPv4-mapped IPv6 sockets (::ffff:x.x.x.x). Using -4 would miss them.
-	out, err := exec.Command("ss", "-tnp", "state", "established").CombinedOutput()
+	kTuples, err := socketMgr.QueryEstablished(peerIP, localPort)
 	if err != nil {
-		return nil, fmt.Errorf("ss query: %w", err)
+		return nil, err
 	}
 
-	normalizedPeer := strings.TrimPrefix(peerIP, "::ffff:")
-	lines := strings.Split(string(out), "\n")
-	seen := make(map[string]struct{})
-	var tuples []SocketTuple
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "Recv-Q") {
-			continue
-		}
-
-		localAddr, remoteAddr, ok := parseSSLine(line)
-		if !ok {
-			continue
-		}
-
-		localIP, localP, ok := splitHostPort(localAddr)
-		if !ok || localP != localPort {
-			continue
-		}
-
-		remoteIP, remoteP, ok := splitHostPort(remoteAddr)
-		if !ok {
-			continue
-		}
-
-		// Normalize and compare peer IP.
-		normalizedRemote := strings.TrimPrefix(remoteIP, "::ffff:")
-		if normalizedRemote != normalizedPeer {
-			continue
-		}
-
-		localPortInt, err := strconv.Atoi(localP)
-		if err != nil {
-			continue
-		}
-		remotePortInt, err := strconv.Atoi(remoteP)
-		if err != nil {
-			continue
-		}
-
-		key := fmt.Sprintf("%s|%d|%s|%d", localIP, localPortInt, remoteIP, remotePortInt)
-		if _, exists := seen[key]; exists {
-			continue
-		}
-		seen[key] = struct{}{}
-
-		tuples = append(tuples, SocketTuple{
-			LocalIP:    localIP,
-			LocalPort:  localPortInt,
-			RemoteIP:   remoteIP,
-			RemotePort: remotePortInt,
-		})
-	}
-
-	return tuples, nil
+	return fromKernelSocketTuples(kTuples), nil
 }
 
-// parseSSLine extracts local and remote address fields from a single ss output line.
-// Expected format: "Recv-Q Send-Q Local:Port Peer:Port [Process]"
-// Fields are whitespace-separated; we need fields at index 2 and 3
-// (0=RecvQ, 1=SendQ, 2=Local, 3=Peer).
-func parseSSLine(line string) (localAddr, remoteAddr string, ok bool) {
-	fields := strings.Fields(line)
-	if len(fields) < 4 {
-		return "", "", false
-	}
-	return fields[2], fields[3], true
-}
-
-// splitHostPort splits "addr:port" handling IPv6 bracket notation.
-// Examples: "10.0.0.1:8080" -> ("10.0.0.1", "8080")
-//
-//	"[::1]:8080"    -> ("::1", "8080")
-func splitHostPort(addrPort string) (host, port string, ok bool) {
-	// IPv6 bracket notation: [::1]:port
-	if strings.HasPrefix(addrPort, "[") {
-		idx := strings.LastIndex(addrPort, "]:")
-		if idx < 0 {
-			return "", "", false
-		}
-		return addrPort[1:idx], addrPort[idx+2:], true
-	}
-
-	// IPv4 or bare IPv6: last colon separates host and port.
-	idx := strings.LastIndex(addrPort, ":")
-	if idx < 0 {
-		return "", "", false
-	}
-	return addrPort[:idx], addrPort[idx+1:], true
-}
-
-// KillSockets tries to close exact established sockets with ss -K.
+// KillSockets tries to close exact established sockets via the kernelapi SocketManager.
 // Returns nil if at least one socket was closed or if there are no tuples.
 func KillSockets(tuples []SocketTuple) error {
 	if len(tuples) == 0 {
@@ -439,155 +189,32 @@ func KillSockets(tuples []SocketTuple) error {
 }
 
 func killSocketExact(tuple SocketTuple) error {
-	if _, err := exec.LookPath("ss"); err != nil {
-		return fmt.Errorf("ss: command not found")
+	if socketMgr == nil {
+		return fmt.Errorf("socket manager not initialized")
 	}
 
-	localIP, localV4, err := normalizeIPForSS(tuple.LocalIP)
+	return socketMgr.KillSocket(toKernelSocketTuple(tuple))
+}
+
+func killSocketByPeerAndPort(peerIP, port string) error {
+	if socketMgr == nil {
+		return fmt.Errorf("socket manager not initialized")
+	}
+
+	portInt, err := strconv.Atoi(port)
 	if err != nil {
-		return fmt.Errorf("local ip: %w", err)
-	}
-	remoteIP, remoteV4, err := normalizeIPForSS(tuple.RemoteIP)
-	if err != nil {
-		return fmt.Errorf("remote ip: %w", err)
-	}
-	if localV4 != remoteV4 {
-		return fmt.Errorf("ip family mismatch: %s <-> %s", localIP, remoteIP)
+		return fmt.Errorf("invalid port: %s", port)
 	}
 
-	base := []string{}
-	if localV4 {
-		base = append(base, "-4")
-	} else {
-		base = append(base, "-6")
-	}
-	base = append(base, "-K")
-
-	core := []string{
-		"src", localIP,
-		"sport", "=", ":" + strconv.Itoa(tuple.LocalPort),
-		"dst", remoteIP,
-		"dport", "=", ":" + strconv.Itoa(tuple.RemotePort),
-	}
-
-	candidates := [][]string{
-		append([]string{"state", "established"}, core...),
-		core,
-	}
-
-	var lastErr string
-	for _, c := range candidates {
-		args := append(append([]string{}, base...), c...)
-		out, err := exec.Command("ss", args...).CombinedOutput()
-		if err == nil {
-			return nil
-		}
-		msg := strings.TrimSpace(string(out))
-		if msg == "" {
-			msg = err.Error()
-		}
-		lastErr = msg
-	}
-	if lastErr == "" {
-		lastErr = "unknown error"
-	}
-
-	return fmt.Errorf("%s:%d<->%s:%d (%s)", localIP, tuple.LocalPort, remoteIP, tuple.RemotePort, lastErr)
+	return socketMgr.KillByPeerAndPort(peerIP, portInt)
 }
 
-func killSocketByPeerAndPort(ip net.IP, peerIP, port string) error {
-	if _, err := exec.LookPath("ss"); err != nil {
-		return fmt.Errorf("ss: command not found")
+func deleteConntrackFlows(peerIP string, port int) error {
+	if conntrackMgr == nil {
+		return fmt.Errorf("conntrack manager not initialized")
 	}
 
-	base := []string{}
-	if ip.To4() != nil {
-		base = append(base, "-4")
-	} else {
-		base = append(base, "-6")
-	}
-	base = append(base, "-K")
-
-	// Try multiple tuple directions. iproute2 filter semantics differ across versions.
-	candidates := [][]string{
-		{"dst", peerIP, "sport", "=", ":" + port},
-		{"src", peerIP, "dport", "=", ":" + port},
-		{"dst", peerIP, "dport", "=", ":" + port},
-		{"src", peerIP, "sport", "=", ":" + port},
-	}
-	statePrefixes := [][]string{
-		{"state", "established"},
-		{},
-	}
-
-	var lastErr string
-	for _, prefix := range statePrefixes {
-		for _, c := range candidates {
-			args := append(append(append([]string{}, base...), prefix...), c...)
-			out, err := exec.Command("ss", args...).CombinedOutput()
-			if err == nil {
-				return nil
-			}
-			msg := strings.TrimSpace(string(out))
-			if msg == "" {
-				msg = err.Error()
-			}
-			lastErr = msg
-		}
-	}
-
-	if lastErr == "" {
-		lastErr = "unknown error"
-	}
-	return fmt.Errorf("ss: %s", lastErr)
-}
-
-func deleteConntrackFlows(ip net.IP, peerIP, port string) error {
-	if _, err := exec.LookPath("conntrack"); err != nil {
-		return fmt.Errorf("conntrack: command not found")
-	}
-
-	commonTCP := []string{"-D", "-p", "tcp"}
-	if ip.To4() == nil {
-		commonTCP = append(commonTCP, "-f", "ipv6")
-	}
-	commands := [][]string{
-		append(append([]string{}, commonTCP...), "-s", peerIP, "--dport", port),
-		append(append([]string{}, commonTCP...), "-d", peerIP, "--sport", port),
-		append(append([]string{}, commonTCP...), "-d", peerIP, "--dport", port),
-		append(append([]string{}, commonTCP...), "-s", peerIP, "--sport", port),
-	}
-
-	var errs []string
-	deleted := false
-	for _, args := range commands {
-		out, err := exec.Command("conntrack", args...).CombinedOutput()
-		if err == nil {
-			deleted = true
-			continue
-		}
-		msg := strings.TrimSpace(string(out))
-		if strings.Contains(msg, "0 flow entries have been deleted") {
-			continue
-		}
-		if msg == "" {
-			msg = err.Error()
-		}
-		errs = append(errs, msg)
-	}
-	if deleted || len(errs) == 0 {
-		return nil
-	}
-	return fmt.Errorf("conntrack: %s", strings.Join(errs, " | "))
-}
-
-func isRuleMissingError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "Bad rule") ||
-		strings.Contains(msg, "No chain/target/match by that name")
+	return conntrackMgr.DeleteFlows(peerIP, port)
 }
 
 func validateSpec(spec PeerBlockSpec) (ip net.IP, normalized string, err error) {
@@ -609,88 +236,4 @@ func validateSpec(spec PeerBlockSpec) (ip net.IP, normalized string, err error) 
 		return v4, v4.String(), nil
 	}
 	return ip, ip.String(), nil
-}
-
-func firewallBinary(ip net.IP) (string, error) {
-	bin := "iptables"
-	if ip.To4() == nil {
-		bin = "ip6tables"
-	}
-
-	if _, err := exec.LookPath(bin); err != nil {
-		return "", fmt.Errorf("%s not found", bin)
-	}
-
-	return bin, nil
-}
-
-func runCommand(name string, args ...string) error {
-	out, err := exec.Command(name, args...).CombinedOutput()
-	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if msg == "" {
-			msg = err.Error()
-		}
-		return fmt.Errorf("%s %s", name, msg)
-	}
-	return nil
-}
-
-func normalizeIPForSS(raw string) (string, bool, error) {
-	ipStr := strings.TrimSpace(raw)
-
-	// If the address has an ::ffff: prefix it came from an IPv4-mapped IPv6
-	// socket. The kernel keeps these in the IPv6 space, so we must preserve
-	// the prefix and use ss -6 -K to kill them.
-	hasMappedPrefix := strings.HasPrefix(ipStr, "::ffff:")
-
-	stripped := strings.TrimPrefix(ipStr, "::ffff:")
-	ip := net.ParseIP(stripped)
-	if ip == nil {
-		ip = net.ParseIP(ipStr)
-		if ip == nil {
-			return "", false, fmt.Errorf("invalid ip: %s", raw)
-		}
-	}
-
-	if v4 := ip.To4(); v4 != nil {
-		if hasMappedPrefix {
-			// IPv4-mapped IPv6 — treat as IPv6 for ss -K.
-			return "::ffff:" + v4.String(), false, nil
-		}
-		return v4.String(), true, nil
-	}
-	return ip.String(), false, nil
-}
-
-func ruleCommentForPort(port string) string {
-	return ruleComment + ":" + port
-}
-
-func argValue(fields []string, key string) string {
-	for i := 0; i < len(fields)-1; i++ {
-		if fields[i] == key {
-			return strings.Trim(fields[i+1], "\"")
-		}
-	}
-	return ""
-}
-
-func normalizeRuleIP(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if ip, _, err := net.ParseCIDR(raw); err == nil {
-		if v4 := ip.To4(); v4 != nil {
-			return v4.String()
-		}
-		return ip.String()
-	}
-
-	ip := net.ParseIP(strings.TrimPrefix(raw, "::ffff:"))
-	if ip == nil {
-		return raw
-	}
-	if v4 := ip.To4(); v4 != nil {
-		return v4.String()
-	}
-	return ip.String()
 }

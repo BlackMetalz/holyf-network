@@ -13,10 +13,9 @@ type panelInfo struct {
 }
 
 var defaultPanels = []panelInfo{
-	{title: " 2. Connection States ", text: "  Loading..."},
-	{title: " 3. Interface Stats ", text: "  Loading..."},
+	{title: " 2. System Health ", text: "  Loading..."},
+	{title: "", text: ""},
 	{title: " 1. Top Incoming ", text: "  Loading..."},
-	{title: " 4. Conntrack ", text: "  Loading..."},
 }
 
 func CreatePanels() []*tview.TextView {
@@ -46,13 +45,21 @@ func CreateStatusBar(interfaceName string) *tview.TextView {
 
 func CreateGrid(panels []*tview.TextView, statusBar *tview.TextView) *tview.Grid {
 	grid := tview.NewGrid()
-	grid.SetRows(-4, -3, -6, 1)
+	grid.SetRows(-3, -2, 1)
 	grid.SetColumns(-3, -2)
-	grid.AddItem(panels[2], 0, 0, 3, 1, 0, 0, false)
-	grid.AddItem(panels[0], 0, 1, 1, 1, 0, 0, false)
-	grid.AddItem(panels[1], 1, 1, 1, 1, 0, 0, false)
-	grid.AddItem(panels[3], 2, 1, 1, 1, 0, 0, false)
-	grid.AddItem(statusBar, 3, 0, 1, 2, 0, 0, false)
+	grid.AddItem(panels[2], 0, 0, 2, 1, 0, 0, false) // Top Connections spans 2 rows
+	grid.AddItem(panels[0], 0, 1, 2, 1, 0, 0, false) // System Health spans 2 rows
+	grid.AddItem(statusBar, 2, 0, 1, 2, 0, 0, false) // Status bar
+	return grid
+}
+
+func CreateChartGrid(rxPanel, txPanel *tview.TextView, statusBar *tview.TextView) *tview.Grid {
+	grid := tview.NewGrid()
+	grid.SetRows(0, 1)
+	grid.SetColumns(-1, -1)
+	grid.AddItem(rxPanel, 0, 0, 1, 1, 0, 0, false)
+	grid.AddItem(txPanel, 0, 1, 1, 1, 0, 0, false)
+	grid.AddItem(statusBar, 1, 0, 1, 2, 0, 0, false)
 	return grid
 }
 

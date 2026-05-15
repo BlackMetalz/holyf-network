@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/BlackMetalz/holyf-network/internal/kernelapi"
 )
 
 // SocketCounter holds monotonic TCP counters from ss/tcp_info for one tuple.
@@ -15,8 +17,46 @@ type SocketCounter struct {
 	BytesReceived int64 // Local bytes received.
 }
 
-// CollectSocketTCPCounters reads TCP per-socket counters from ss.
+// CollectSocketTCPCounters reads TCP per-socket counters.
+// When a SocketManager is available it uses the kernel API; otherwise it
+// falls back to exec.Command("ss", ...).
 func CollectSocketTCPCounters() ([]SocketCounter, error) {
+	if socketMgr != nil {
+		return collectSocketTCPCountersKernel()
+	}
+	return collectSocketTCPCountersExec()
+}
+
+// collectSocketTCPCountersKernel uses the kernelapi SocketManager.
+func collectSocketTCPCountersKernel() ([]SocketCounter, error) {
+	kaCounters, err := socketMgr.CollectTCPCounters()
+	if err != nil {
+		return nil, err
+	}
+	counters := make([]SocketCounter, len(kaCounters))
+	for i, c := range kaCounters {
+		counters[i] = convertKernelSocketCounter(c)
+	}
+	return counters, nil
+}
+
+// convertKernelSocketCounter converts a kernelapi.SocketCounter to a
+// collector.SocketCounter.
+func convertKernelSocketCounter(c kernelapi.SocketCounter) SocketCounter {
+	return SocketCounter{
+		Tuple: FlowTuple{
+			SrcIP:   c.Tuple.SrcIP,
+			SrcPort: c.Tuple.SrcPort,
+			DstIP:   c.Tuple.DstIP,
+			DstPort: c.Tuple.DstPort,
+		},
+		BytesAcked:    c.BytesAcked,
+		BytesReceived: c.BytesReceived,
+	}
+}
+
+// collectSocketTCPCountersExec reads TCP per-socket counters from ss.
+func collectSocketTCPCountersExec() ([]SocketCounter, error) {
 	out, err := exec.Command("ss", "-tinHn").CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))

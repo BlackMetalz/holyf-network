@@ -20,7 +20,7 @@ func TestRenderSystemUsageLineReady(t *testing.T) {
 		},
 	})
 
-	checks := []string{"CPU 0.24 cores", "Mem 3.0 MiB RSS"}
+	checks := []string{"CPU 0.24", "Mem 3.0 MiB RSS"}
 	for _, want := range checks {
 		if !strings.Contains(line, want) {
 			t.Fatalf("renderSystemUsageLine missing %q in %q", want, line)

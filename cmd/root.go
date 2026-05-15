@@ -6,7 +6,10 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"github.com/BlackMetalz/holyf-network/internal/actions"
+	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/config"
+	"github.com/BlackMetalz/holyf-network/internal/kernelapi"
 	"github.com/BlackMetalz/holyf-network/internal/network"
 	"github.com/BlackMetalz/holyf-network/internal/tui"
 	"github.com/spf13/cobra"
@@ -70,6 +73,22 @@ var rootCmd = &cobra.Command{
 			healthThresholds = loadedThresholds
 		}
 
+		// Initialize kernel API managers
+		sm := kernelapi.NewSocketManager()
+		cm := kernelapi.NewConntrackManager()
+		fw := kernelapi.NewFirewall()
+		actions.SetManagers(sm, cm, fw)
+		collector.SetManagers(sm, cm)
+
+		// Build backend indicator for status bar
+		bi := kernelapi.GetBackendInfo(sm, cm, fw)
+		var backendLabel string
+		if bi.IsAllKernel() {
+			backendLabel = "[green]API:kernel[white]"
+		} else {
+			backendLabel = "[yellow]API:" + bi.Summary() + "[white]"
+		}
+
 		// Launch the TUI dashboard
 		app := tui.NewApp(
 			ifaceName,
@@ -78,6 +97,7 @@ var rootCmd = &cobra.Command{
 			resolveBuildVersion(Version),
 			healthThresholds,
 		)
+		app.SetBackendLabel(backendLabel)
 		return app.Run()
 	},
 }

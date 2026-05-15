@@ -76,8 +76,8 @@ func TestAggregateConnectionsGroupsAndSums(t *testing.T) {
 	}
 
 	second := rows[1]
-	if second.ProcName != "unknown" {
-		t.Fatalf("expected unknown proc fallback, got=%q", second.ProcName)
+	if second.ProcName != "-" {
+		t.Fatalf("expected dash proc fallback, got=%q", second.ProcName)
 	}
 }
 

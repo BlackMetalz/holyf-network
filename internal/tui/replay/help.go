@@ -7,7 +7,7 @@ const HelpText = `[yellow]Replay Shortcuts[white]
 [yellow]a / e[white]         Jump to oldest / latest snapshot
 [yellow]t[white]             Jump to specific time
 [yellow]Shift+S[white]       Search timeline (all loaded snapshots)
-[yellow]L[white]             Follow latest snapshots
+[yellow]L[white]             Live tail (auto-jump to newest snapshot as daemon writes)
 [yellow]o[white]             Toggle replay IN/OUT direction
 [yellow]Up/Down[white]     Select row
 [yellow]f[white]           Port filter / clear all filters
