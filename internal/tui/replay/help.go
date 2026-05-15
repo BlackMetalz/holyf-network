@@ -6,8 +6,6 @@ const HelpText = `[yellow]Replay Shortcuts[white]
 [yellow][[white]             Previous snapshot
 [yellow]a / e[white]         Jump to oldest / latest snapshot
 [yellow]t[white]             Jump to specific time
-[yellow]g[white]             Toggle replay view CONN <-> TRACE
-[yellow]h[white]             Open replay trace history modal (c=compare inside)
 [yellow]Shift+S[white]       Search timeline (all loaded snapshots)
 [yellow]L[white]             Follow latest snapshots
 [yellow]o[white]             Toggle replay IN/OUT direction
@@ -25,7 +23,6 @@ const HelpText = `[yellow]Replay Shortcuts[white]
 [yellow]q[white]           Quit
 
 [dim]Replay is read-only (no kill/block actions)[white]
-[dim]Trace-only fallback auto-enables when no connections snapshots exist.[white]
 [dim]Press Esc or any key to close[white]`
 
 func StatusHotkeysForPage(page string) (styled string, plain string) {
@@ -38,11 +35,9 @@ func StatusHotkeysForPage(page string) (styled string, plain string) {
 		return "[dim]Enter[white]=search [dim]Esc[white]=cancel", "Enter=search Esc=cancel"
 	case "history-timeline-results":
 		return "[dim]Up/Down[white]=select [dim]Enter[white]=jump [dim]Esc[white]=close", "Up/Down=select Enter=jump Esc=close"
-	case "history-trace-history":
-		return "[dim]Up/Down[white]=select [dim]Enter[white]=detail [dim]c[white]=compare [dim]Esc[white]=close", "Up/Down=select Enter=detail c=compare Esc=close"
-	case "history-trace-history-detail", "history-trace-history-compare", "history-socket-queue-explain":
+	case "history-socket-queue-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	default:
-		return "[dim][=prev ]=next a e t f / Shift+S Shift+B/C/P o g h m i Shift+I x z L ? q[white]", "[=prev ]=next a e t f / Shift+S Shift+B/C/P o g h m i Shift+I x z L ? q"
+		return "[dim][=prev ]=next a e t f / Shift+S Shift+B/C/P o m i Shift+I x z L ? q[white]", "[=prev ]=next a e t f / Shift+S Shift+B/C/P o m i Shift+I x z L ? q"
 	}
 }

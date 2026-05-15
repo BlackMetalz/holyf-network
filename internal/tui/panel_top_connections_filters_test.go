@@ -8,7 +8,6 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
-	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
 	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
 	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 )
@@ -97,7 +96,6 @@ func TestVisiblePeerGroupsPortFilterAffectsGroupedResultsAndClearingRestoresAll(
 		latestTalkers: topConnectionFixtures(),
 		portFilter:    "443",
 		actionLogger:  actionlog.NewLogger(""),
-		traceEngine:   livetrace.NewEngineLoaded(),
 	}
 
 	filtered := a.visiblePeerGroups()

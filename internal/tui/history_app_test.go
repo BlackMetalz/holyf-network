@@ -1,9 +1,6 @@
 package tui
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +10,6 @@ import (
 	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
 	tuireplay "github.com/BlackMetalz/holyf-network/internal/tui/replay"
 	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
-	tuitrace "github.com/BlackMetalz/holyf-network/internal/tui/trace"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -68,30 +64,6 @@ func appendDirectionalSnapshotFixture(t *testing.T, writer *history.SnapshotWrit
 	}
 }
 
-func appendTraceHistoryFixture(t *testing.T, dataDir string, entry tuitrace.Entry) {
-	t.Helper()
-	if entry.CapturedAt.IsZero() {
-		t.Fatalf("trace history fixture requires captured_at")
-	}
-
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
-		t.Fatalf("mkdir trace data dir: %v", err)
-	}
-	path := filepath.Join(dataDir, tuitrace.SegmentFileName(entry.CapturedAt))
-	raw, err := json.Marshal(entry)
-	if err != nil {
-		t.Fatalf("marshal trace history fixture: %v", err)
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		t.Fatalf("open trace history fixture file: %v", err)
-	}
-	defer f.Close()
-	if _, err := f.Write(append(raw, '\n')); err != nil {
-		t.Fatalf("append trace history fixture: %v", err)
-	}
-}
-
 func TestHistoryHandleKeyEventBracketNavigation(t *testing.T) {
 	t.Parallel()
 
@@ -122,140 +94,6 @@ func TestHistoryHandleKeyEventBracketNavigation(t *testing.T) {
 	h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, ']', 0))
 	if h.currentIndex != 1 {
 		t.Fatalf("expected next snapshot index=1, got=%d", h.currentIndex)
-	}
-}
-
-func TestHistoryReplayRendersTraceTimelineEvents(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	writer, err := history.NewSnapshotWriter(history.WriterConfig{DataDir: dir, RetentionHours: 24, PruneEverySnapshots: 10})
-	if err != nil {
-		t.Fatalf("new snapshot writer: %v", err)
-	}
-	defer writer.Close()
-
-	base := time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC)
-	appendSnapshotFixture(t, writer, base, []history.SnapshotGroup{{PeerIP: "203.0.113.10", LocalPort: 22, ProcName: "sshd", ConnCount: 1}})
-	appendSnapshotFixture(t, writer, base.Add(30*time.Second), []history.SnapshotGroup{{PeerIP: "203.0.113.20", LocalPort: 443, ProcName: "nginx", ConnCount: 1}})
-
-	appendTraceHistoryFixture(t, dir, tuitrace.Entry{
-		CapturedAt: base.Add(3 * time.Second),
-		PeerIP:     "203.0.113.10",
-		Port:       22,
-		Preset:     "SYN/RST only",
-		Scope:      "SYN/RST only",
-		Severity:   "WARN",
-		Issue:      "RST pressure observed",
-	})
-	appendTraceHistoryFixture(t, dir, tuitrace.Entry{
-		CapturedAt: base.Add(28 * time.Second),
-		PeerIP:     "203.0.113.20",
-		Port:       443,
-		Preset:     "Peer only",
-		Scope:      "Peer only",
-		Severity:   "INFO",
-		Issue:      "No strong packet-level anomaly",
-	})
-
-	h := newHistoryTestApp(dir)
-	h.reloadIndex(true)
-	h.renderPanel()
-	h.updateStatusBar()
-
-	text := h.panel.GetText(true)
-	if !strings.Contains(text, "Trace timeline: 1 event(s) near this snapshot") {
-		t.Fatalf("expected trace timeline section on first snapshot, got=%q", text)
-	}
-	if !strings.Contains(text, "SYN/RST only") {
-		t.Fatalf("expected first snapshot category, got=%q", text)
-	}
-	status := h.statusBar.GetText(true)
-	if !strings.Contains(status, "TRACE 1/2") {
-		t.Fatalf("expected trace count in status bar, got=%q", status)
-	}
-
-	h.navigateNext()
-	text = h.panel.GetText(true)
-	if !strings.Contains(text, "Trace timeline: 1 event(s) near this snapshot") {
-		t.Fatalf("expected trace timeline section on second snapshot, got=%q", text)
-	}
-	if !strings.Contains(text, "Peer only") {
-		t.Fatalf("expected second snapshot category, got=%q", text)
-	}
-}
-
-func TestHistoryReplayFallsBackToTraceOnlyMode(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	capturedAt := time.Date(2026, 3, 22, 10, 30, 0, 0, time.UTC)
-	appendTraceHistoryFixture(t, dir, tuitrace.Entry{
-		CapturedAt: capturedAt,
-		PeerIP:     "203.0.113.40",
-		Port:       443,
-		Preset:     "Custom",
-		Scope:      "Custom (Peer+Port)",
-		Severity:   "INFO",
-		Issue:      "No strong packet-level anomaly",
-	})
-
-	h := newHistoryTestApp(dir)
-	h.reloadIndex(true)
-	h.renderPanel()
-	h.updateStatusBar()
-
-	if !h.traceOnlyMode {
-		t.Fatalf("expected trace-only mode when no snapshots exist")
-	}
-	if len(h.refs) != 1 || h.currentIndex != 0 {
-		t.Fatalf("expected one synthetic trace ref selected at index 0, refs=%d idx=%d", len(h.refs), h.currentIndex)
-	}
-	if got := h.currentRecord.Interface; got != "trace-history" {
-		t.Fatalf("expected synthetic trace interface, got=%q", got)
-	}
-
-	panel := h.panel.GetText(true)
-	if !strings.Contains(panel, "Trace-only replay mode") {
-		t.Fatalf("expected trace-only hint in panel, got=%q", panel)
-	}
-	if !strings.Contains(panel, "Trace timeline: 1 event(s) at current slot") {
-		t.Fatalf("expected trace timeline section in panel, got=%q", panel)
-	}
-
-	status := h.statusBar.GetText(true)
-	if !strings.Contains(status, "TRACE-ONLY") || !strings.Contains(status, "Trace: 1/1") {
-		t.Fatalf("expected trace-only status bar markers, got=%q", status)
-	}
-}
-
-func TestHistoryTraceOnlyModeDisablesTimelineSearch(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	appendTraceHistoryFixture(t, dir, tuitrace.Entry{
-		CapturedAt: time.Date(2026, 3, 22, 10, 45, 0, 0, time.UTC),
-		PeerIP:     "203.0.113.41",
-		Port:       22,
-		Preset:     "SYN/RST only",
-		Scope:      "SYN/RST only",
-		Severity:   "WARN",
-		Issue:      "RST pressure observed",
-	})
-
-	h := newHistoryTestApp(dir)
-	h.reloadIndex(true)
-
-	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'S', 0))
-	if ret != nil {
-		t.Fatalf("Shift+S should be consumed in trace-only mode")
-	}
-	if !strings.Contains(h.statusNote, "unavailable in trace-only replay") {
-		t.Fatalf("expected trace-only timeline-search note, got=%q", h.statusNote)
-	}
-	name, _ := h.pages.GetFrontPage()
-	if name != "main" {
-		t.Fatalf("trace-only timeline search should not open modal, front page=%q", name)
 	}
 }
 
@@ -362,99 +200,6 @@ func TestHistoryHandleKeyEventShiftSShowsTimelineSearchModal(t *testing.T) {
 	name, _ := h.pages.GetFrontPage()
 	if name != "history-timeline-search" {
 		t.Fatalf("expected timeline-search modal, got front page=%q", name)
-	}
-}
-
-func TestHistoryHandleKeyEventHShowsReplayTraceHistoryModal(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	appendTraceHistoryFixture(t, dir, tuitrace.Entry{
-		CapturedAt: time.Date(2026, 3, 22, 11, 0, 0, 0, time.UTC),
-		PeerIP:     "203.0.113.60",
-		Port:       443,
-		Preset:     "Peer + Port",
-		Scope:      "Peer + Port",
-		Severity:   "INFO",
-		Issue:      "No strong packet-level anomaly",
-	})
-
-	h := newHistoryTestApp(dir)
-	h.refs = []history.SnapshotRef{{CapturedAt: time.Now().UTC()}}
-	h.currentIndex = 0
-
-	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'h', 0))
-	if ret != nil {
-		t.Fatalf("h should be handled in replay mode")
-	}
-
-	name, _ := h.pages.GetFrontPage()
-	if name != tuireplay.HistoryTracePage {
-		t.Fatalf("expected replay trace-history modal, got front page=%q", name)
-	}
-}
-
-func TestShowReplayTraceHistoryCompareOpensComparePage(t *testing.T) {
-	t.Parallel()
-
-	h := newHistoryTestApp(t.TempDir())
-	baseline := tuitrace.Entry{
-		CapturedAt:       time.Date(2026, 3, 22, 10, 0, 0, 0, time.UTC),
-		PeerIP:           "203.0.113.10",
-		Port:             443,
-		DecodedPackets:   100,
-		ReceivedByFilter: 100,
-		DroppedByKernel:  1,
-		SynCount:         20,
-		SynAckCount:      18,
-		RstCount:         2,
-	}
-	incident := tuitrace.Entry{
-		CapturedAt:       time.Date(2026, 3, 22, 10, 5, 0, 0, time.UTC),
-		PeerIP:           "203.0.113.10",
-		Port:             443,
-		DecodedPackets:   120,
-		ReceivedByFilter: 120,
-		DroppedByKernel:  12,
-		SynCount:         30,
-		SynAckCount:      12,
-		RstCount:         24,
-	}
-
-	tuireplay.ShowReplayTraceHistoryCompare(h, baseline, incident, nil)
-	name, _ := h.pages.GetFrontPage()
-	if name != tuireplay.HistoryTraceComparePage {
-		t.Fatalf("expected replay trace compare page %q, got %q", tuireplay.HistoryTraceComparePage, name)
-	}
-}
-
-func TestHistoryHandleKeyEventGTogglesReplayViewMode(t *testing.T) {
-	t.Parallel()
-
-	h := newHistoryTestApp(t.TempDir())
-	h.refs = []history.SnapshotRef{{CapturedAt: time.Now().UTC(), IncomingCount: 1}}
-	h.currentIndex = 0
-	h.currentRecord = history.SnapshotRecord{
-		CapturedAt:      time.Now().UTC(),
-		Interface:       "eth0",
-		TopLimitPerSide: 500,
-		IncomingGroups:  []history.SnapshotGroup{{PeerIP: "198.51.100.10", Port: 22, ProcName: "sshd", ConnCount: 1}},
-	}
-
-	ret := h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
-	if ret != nil {
-		t.Fatalf("g should be handled in replay mode")
-	}
-	if h.replayViewMode != replayViewTrace {
-		t.Fatalf("expected replay view mode TRACE, got=%v", h.replayViewMode)
-	}
-
-	ret = h.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'g', 0))
-	if ret != nil {
-		t.Fatalf("g should be handled in replay mode")
-	}
-	if h.replayViewMode != replayViewConnections {
-		t.Fatalf("expected replay view mode CONN after toggle back, got=%v", h.replayViewMode)
 	}
 }
 

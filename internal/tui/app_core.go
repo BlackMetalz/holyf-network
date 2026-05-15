@@ -13,9 +13,7 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
 	"github.com/BlackMetalz/holyf-network/internal/tui/blocking"
-	"github.com/BlackMetalz/holyf-network/internal/tui/diagnosis"
 	tuilayout "github.com/BlackMetalz/holyf-network/internal/tui/layout"
-	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
 	tuioverlays "github.com/BlackMetalz/holyf-network/internal/tui/overlays"
 	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
 	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
@@ -69,8 +67,6 @@ type App struct {
 	// Current top-connection bandwidth sample metadata.
 	topSampleSeconds float64
 	topBandwidthNote string
-	topDiagnosis     *tuishared.Diagnosis
-	diagnosisEngine  *diagnosis.Engine
 
 	// Selected row in Top Connections (within currently visible rows).
 	selectedTalkerIndex int
@@ -94,9 +90,6 @@ type App struct {
 	actionLogger *actionlog.Logger
 
 
-	// Live trace engine (captures, history, and pause state)
-	traceEngine *livetrace.Engine
-
 	// Blocking and firewall state
 	blockManager *blocking.Manager
 
@@ -113,7 +106,7 @@ type App struct {
 	trafficManager   *traffic.Manager
 }
 
-var livePanelFocusOrder = []int{2, 0, 1, 3, 4} // 1=Top, 2=States, 3=Interface, 4=Conntrack, 5=Diagnosis
+var livePanelFocusOrder = []int{2, 0, 1, 3} // 1=Top, 2=States, 3=Interface, 4=Conntrack
 
 // NewApp creates a new TUI application.
 func NewApp(
@@ -138,8 +131,6 @@ func NewApp(
 		sensitiveIP:         sensitiveIP,
 		blockManager:        blocking.NewManager(),
 		trafficManager:      traffic.NewManager(healthThresholds),
-		diagnosisEngine:     diagnosis.NewEngine(),
-		traceEngine:         livetrace.NewEngine(defaultTraceHistoryDataDir()),
 		stopChan:            make(chan struct{}),
 		refreshChan:         make(chan struct{}, 1), // Buffered: so send never blocks
 		healthThresholds:    healthThresholds,
@@ -360,7 +351,6 @@ func (a *App) refreshData() {
 	// Panel 0: Connection States + Retransmits
 	var retransRates *collector.RetransmitRates
 	var connData collector.ConnectionData
-	connDataAvailable := false
 	retransData, retransErr := collector.CollectRetransmits()
 	if retransErr == nil {
 		r := collector.CalculateRetransmitRates(retransData, a.prevRetransmit)
@@ -372,7 +362,6 @@ func (a *App) refreshData() {
 	if err != nil {
 		a.panels[0].SetText(fmt.Sprintf("  [red]%v[white]", err))
 	} else {
-		connDataAvailable = true
 		a.panels[0].SetText(tuipanels.RenderConnectionsPanelWithStateSort(connData, retransRates, conntrackRates, activeThresholds, a.connStateSortDesc))
 	}
 
@@ -392,7 +381,6 @@ func (a *App) refreshData() {
 		a.latestTalkers = nil
 		a.topSampleSeconds = 0
 		a.topBandwidthNote = ""
-		a.topDiagnosis = nil
 		a.resetTopConnectionsCursor()
 		a.updateTopConnectionsPanelTitle()
 		a.panels[2].SetText(fmt.Sprintf("  [red]%v[white]", err))
@@ -426,15 +414,8 @@ func (a *App) refreshData() {
 		a.topSampleSeconds = bwSample.SampleSeconds
 
 		a.latestTalkers = talkers
-		if connDataAvailable {
-			a.topDiagnosis = diagnosis.BuildTopDiagnosis(connData, retransRates, conntrackRates, activeThresholds, talkers, a.sensitiveIP)
-			a.appendDiagnosisHistory(a.lastRefresh, a.topDiagnosis)
-		} else {
-			a.topDiagnosis = nil
-		}
 		a.renderTopConnectionsPanel()
 	}
-	a.renderDiagnosisPanel()
 
 	a.updateStatusBar()
 }
@@ -509,7 +490,6 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		// tcell.KeyRune means a regular character key (not special key)
 		switch event.Rune() {
 		case 'q':
-			a.cancelTracePacketCapture()
 			a.blockManager.CleanupActiveBlocks()
 			close(a.stopChan) // Signal goroutines to stop
 			a.app.Stop()
@@ -564,20 +544,11 @@ func (a *App) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 		case 'h':
 			a.promptActionLog()
 			return nil
-		case 'd':
-			a.promptDiagnosisHistory()
-			return nil
-		case 't':
-			a.promptTraceHistory()
-			return nil
 		case 'i':
 			a.promptSocketQueueExplain()
 			return nil
 		case 'I':
 			a.promptInterfaceStatsExplain()
-			return nil
-		case 'T':
-			a.promptTracePacket()
 			return nil
 		case 'B', 'C', 'P':
 			mode, ok := directSortModeForRune(event.Rune())
@@ -669,9 +640,6 @@ func (a *App) handleCtrlPanelShortcut(r rune) bool {
 		return true
 	case '4':
 		a.focusPanel(3)
-		return true
-	case '5':
-		a.focusPanel(4)
 		return true
 	default:
 		return false
@@ -877,24 +845,10 @@ func (a *App) statusHotkeysForPage(page string) (styled string, plain string) {
 		return "[dim]Tab[white]=field [dim]Enter[white]=next [dim]Esc[white]=cancel", "Tab=field Enter=next Esc=cancel"
 	case "kill-peer":
 		return "[dim]<-/->[white]=choose [dim]Enter[white]=confirm [dim]Esc[white]=cancel", "<-/->=choose Enter=confirm Esc=cancel"
-	case tracePacketPageForm:
-		return "[dim]Tab[white]=field [dim]Enter[white]=start [dim]Esc[white]=cancel", "Tab=field Enter=start Esc=cancel"
-	case tracePacketPageProgress:
-		return "[dim]Esc[white]=abort [dim]q[white]=abort", "Esc=abort q=abort"
-	case tracePacketPageResult:
-		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "blocked-peers":
 		return "[dim]Up/Down[white]=select [dim]Enter[white]=remove [dim]Del[white]=remove [dim]Tab[white]=buttons [dim]Esc[white]=close",
 			"Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"
 	case "action-log":
-		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
-	case "diagnosis-history":
-		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
-	case traceHistoryPage:
-		return "[dim]Up/Down[white]=select [dim]Enter[white]=detail [dim]c[white]=compare [dim]Esc[white]=close", "Up/Down=select Enter=detail c=compare Esc=close"
-	case traceHistoryDetailPage:
-		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
-	case traceHistoryComparePage:
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
 	case "socket-queue-explain":
 		return "[dim]Enter[white]=close [dim]Esc[white]=close", "Enter=close Esc=close"
@@ -996,11 +950,3 @@ func (a *App) promptInterfaceStatsExplain() {
 	a.app.SetFocus(modal)
 }
 
-func (a *App) renderDiagnosisPanel() {
-	if len(a.panels) <= 4 || a.panels[4] == nil {
-		return
-	}
-
-	_, _, width, _ := a.panels[4].GetInnerRect()
-	a.panels[4].SetText(tuipanels.RenderDiagnosisPanel(a.topDiagnosis, width))
-}

@@ -8,8 +8,6 @@ import (
 	"testing"
 
 	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
-	"github.com/BlackMetalz/holyf-network/internal/tui/diagnosis"
-	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
 )
 
 func TestAddActionLogPersistsAndRotatesHistory(t *testing.T) {
@@ -17,9 +15,7 @@ func TestAddActionLogPersistsAndRotatesHistory(t *testing.T) {
 
 	historyPath := filepath.Join(t.TempDir(), actionHistoryDirName, actionHistoryFileName)
 	a := &App{
-		actionLogger:    actionlog.NewLogger(historyPath),
-		diagnosisEngine: diagnosis.NewEngine(),
-		traceEngine:     livetrace.NewEngineLoaded(),
+		actionLogger: actionlog.NewLogger(historyPath),
 	}
 
 	total := actionLogRotateLimit + 5
@@ -59,9 +55,7 @@ func TestAddActionLogSkipsEmptyMessage(t *testing.T) {
 
 	historyPath := filepath.Join(t.TempDir(), actionHistoryDirName, actionHistoryFileName)
 	a := &App{
-		actionLogger:    actionlog.NewLogger(historyPath),
-		diagnosisEngine: diagnosis.NewEngine(),
-		traceEngine:     livetrace.NewEngineLoaded(),
+		actionLogger: actionlog.NewLogger(historyPath),
 	}
 
 	a.addActionLog("   ")

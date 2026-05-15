@@ -80,3 +80,14 @@ func TruncateRight(s string, width int) string {
 	}
 	return s[:width-3] + "..."
 }
+
+// ShortStatus truncates s to at most max runes, appending "..." when truncated.
+func ShortStatus(s string, max int) string {
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	if max <= 3 {
+		return s[:max]
+	}
+	return s[:max-3] + "..."
+}

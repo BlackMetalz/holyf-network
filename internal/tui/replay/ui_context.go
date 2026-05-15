@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/BlackMetalz/holyf-network/internal/history"
-	tuitrace "github.com/BlackMetalz/holyf-network/internal/tui/trace"
 	"github.com/rivo/tview"
 )
 
@@ -24,16 +23,7 @@ type UIContext interface {
 	UpdateStatusBar()
 	SetStatusNote(msg string, ttl time.Duration)
 	TopDisplayLimit() int
-	TraceHistoryStorageSummary() string
 
-	// Trace Timeline State
-	TraceTimelineBySnapshot() map[int][]tuitrace.Entry
-	TraceTimelineTotal() int
-	TraceTimelineAssociated() int
-	TraceTimelineWindow() time.Duration
-	TraceOnlyMode() bool
-	TraceReplayEntries() []tuitrace.Entry
 	SnapshotRefs() []history.SnapshotRef
 	CurrentIndex() int
-	SetTraceTimeline(bySnapshot map[int][]tuitrace.Entry, total, associated int, window time.Duration)
 }

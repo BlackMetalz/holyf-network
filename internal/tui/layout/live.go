@@ -17,7 +17,6 @@ var defaultPanels = []panelInfo{
 	{title: " 3. Interface Stats ", text: "  Loading..."},
 	{title: " 1. Top Incoming ", text: "  Loading..."},
 	{title: " 4. Conntrack ", text: "  Loading..."},
-	{title: " 5. Diagnosis ", text: "  Loading..."},
 }
 
 func CreatePanels() []*tview.TextView {
@@ -47,14 +46,13 @@ func CreateStatusBar(interfaceName string) *tview.TextView {
 
 func CreateGrid(panels []*tview.TextView, statusBar *tview.TextView) *tview.Grid {
 	grid := tview.NewGrid()
-	grid.SetRows(-4, -3, -2, -4, 1)
+	grid.SetRows(-4, -3, -6, 1)
 	grid.SetColumns(-3, -2)
-	grid.AddItem(panels[2], 0, 0, 4, 1, 0, 0, false)
+	grid.AddItem(panels[2], 0, 0, 3, 1, 0, 0, false)
 	grid.AddItem(panels[0], 0, 1, 1, 1, 0, 0, false)
 	grid.AddItem(panels[1], 1, 1, 1, 1, 0, 0, false)
 	grid.AddItem(panels[3], 2, 1, 1, 1, 0, 0, false)
-	grid.AddItem(panels[4], 3, 1, 1, 1, 0, 0, false)
-	grid.AddItem(statusBar, 4, 0, 1, 2, 0, 0, false)
+	grid.AddItem(statusBar, 3, 0, 1, 2, 0, 0, false)
 	return grid
 }
 

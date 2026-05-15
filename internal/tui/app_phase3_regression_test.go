@@ -10,8 +10,6 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
 	"github.com/BlackMetalz/holyf-network/internal/tui/blocking"
-	"github.com/BlackMetalz/holyf-network/internal/tui/diagnosis"
-	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
 	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/BlackMetalz/holyf-network/internal/tui/traffic"
 	"github.com/gdamore/tcell/v2"
@@ -24,29 +22,25 @@ func newPhase3TestApp() *App {
 		tview.NewTextView(),
 		tview.NewTextView(),
 		tview.NewTextView(),
-		tview.NewTextView(),
 	}
 	pages := tview.NewPages()
 	pages.AddPage("main", tview.NewBox(), true, true)
 	pages.AddPage("help", tview.NewBox(), true, false)
 
 	return &App{
-		app:          tview.NewApplication(),
-		pages:        pages,
-		panels:       panels,
-		statusBar:    tview.NewTextView(),
-		focusIndex:   2,
-		ifaceName:    "eth0",
-		refreshSec:   5,
-		appVersion:   "test",
-		stopChan:     make(chan struct{}),
-		refreshChan:  make(chan struct{}, 1),
-		blockManager:  blocking.NewManager(),
+		app:            tview.NewApplication(),
+		pages:          pages,
+		panels:         panels,
+		statusBar:      tview.NewTextView(),
+		focusIndex:     2,
+		ifaceName:      "eth0",
+		refreshSec:     5,
+		appVersion:     "test",
+		stopChan:       make(chan struct{}),
+		refreshChan:    make(chan struct{}, 1),
+		blockManager:   blocking.NewManager(),
 		trafficManager: traffic.NewManager(config.DefaultHealthThresholds()),
-		actionLogger:    actionlog.NewLogger(""),
-		diagnosisEngine: diagnosis.NewEngine(),
-		traceEngine:     livetrace.NewEngineLoaded(),
-		// Keep tests hermetic: do not read user-level trace history file.
+		actionLogger:   actionlog.NewLogger(""),
 	}
 }
 
@@ -143,51 +137,12 @@ func TestHandleKeyEventEnterAndKAreDisabledInOutgoingMode(t *testing.T) {
 	}
 }
 
-func TestHandleKeyEventTRequiresTopConnectionsFocus(t *testing.T) {
-	t.Parallel()
-
-	a := newPhase3TestApp()
-	a.focusIndex = 0
-
-	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'T', 0))
-	if ret != nil {
-		t.Fatalf("T should be handled")
-	}
-	if !strings.Contains(a.statusNote, "Focus Top Connections before trace-packet") {
-		t.Fatalf("unexpected status note: %q", a.statusNote)
-	}
-	name, _ := a.pages.GetFrontPage()
-	if name != "main" {
-		t.Fatalf("should stay on main page, got=%q", name)
-	}
-}
-
-func TestHandleKeyEventTRequiresSelectedRow(t *testing.T) {
-	t.Parallel()
-
-	a := newPhase3TestApp()
-	a.focusIndex = 2
-
-	ret := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyRune, 'T', 0))
-	if ret != nil {
-		t.Fatalf("T should be handled")
-	}
-	if !strings.Contains(a.statusNote, "No row selected for trace-packet") {
-		t.Fatalf("unexpected status note: %q", a.statusNote)
-	}
-	name, _ := a.pages.GetFrontPage()
-	if name != "main" {
-		t.Fatalf("should stay on main page when no row is selected, got=%q", name)
-	}
-}
 
 func TestRecentActionLogsDefaultLimitIsModalLimit(t *testing.T) {
 	t.Parallel()
 
 	a := &App{
-		actionLogger:    actionlog.NewLogger(""),
-		diagnosisEngine: diagnosis.NewEngine(),
-		traceEngine:     livetrace.NewEngineLoaded(),
+		actionLogger: actionlog.NewLogger(""),
 	}
 	for i := 1; i <= 30; i++ {
 		a.addActionLog(fmt.Sprintf("line-%02d", i))
@@ -214,15 +169,8 @@ func TestStatusHotkeysForModalPages(t *testing.T) {
 	}{
 		{page: "kill-peer-form", wantPlain: "Tab=field Enter=next Esc=cancel"},
 		{page: "kill-peer", wantPlain: "<-/->=choose Enter=confirm Esc=cancel"},
-		{page: tracePacketPageForm, wantPlain: "Tab=field Enter=start Esc=cancel"},
-		{page: tracePacketPageProgress, wantPlain: "Esc=abort q=abort"},
-		{page: tracePacketPageResult, wantPlain: "Enter=close Esc=close"},
 		{page: "blocked-peers", wantPlain: "Up/Down=select Enter=remove Del=remove Tab=buttons Esc=close"},
 		{page: "action-log", wantPlain: "Enter=close Esc=close"},
-		{page: "diagnosis-history", wantPlain: "Enter=close Esc=close"},
-		{page: traceHistoryPage, wantPlain: "Up/Down=select Enter=detail c=compare Esc=close"},
-		{page: traceHistoryDetailPage, wantPlain: "Enter=close Esc=close"},
-		{page: traceHistoryComparePage, wantPlain: "Enter=close Esc=close"},
 		{page: "socket-queue-explain", wantPlain: "Enter=close Esc=close"},
 		{page: "interface-stats-explain", wantPlain: "Enter=close Esc=close"},
 		{page: "blocked-peers-remove-result", wantPlain: "Enter=close Esc=close"},
@@ -321,7 +269,6 @@ func TestSelectedPeerKillTargetGroupViewUsesSelectedPeerContext(t *testing.T) {
 		groupView:           true,
 		sortDesc:            true,
 		selectedTalkerIndex: 0,
-		traceEngine:         livetrace.NewEngineLoaded(),
 	}
 
 	target, ok := a.selectedPeerKillTarget()
@@ -458,10 +405,6 @@ func TestFocusOrderFollowsRequestedPanelSequence(t *testing.T) {
 		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 3)
 	}
 	a.focusNext()
-	if a.focusIndex != 4 { // Diagnosis
-		t.Fatalf("next focus mismatch: got=%d want=%d", a.focusIndex, 4)
-	}
-	a.focusNext()
 	if a.focusIndex != 2 { // wrap Top
 		t.Fatalf("next wrap mismatch: got=%d want=%d", a.focusIndex, 2)
 	}
@@ -479,7 +422,6 @@ func TestHandleKeyEventCtrlNumberFocusShortcuts(t *testing.T) {
 		{rune: '2', wantFocus: 0}, // States
 		{rune: '3', wantFocus: 1}, // Interface
 		{rune: '4', wantFocus: 3}, // Conntrack
-		{rune: '5', wantFocus: 4}, // Diagnosis
 	}
 
 	for _, tc := range tests {
@@ -524,7 +466,7 @@ func TestHandleKeyEventArrowKeysAreBlockedOutsideTopConnections(t *testing.T) {
 	t.Parallel()
 
 	a := newPhase3TestApp()
-	a.focusIndex = 4 // Diagnosis
+	a.focusIndex = 3 // Conntrack
 	a.selectedTalkerIndex = 1
 
 	up := a.handleKeyEvent(tcell.NewEventKey(tcell.KeyUp, 0, 0))
@@ -565,7 +507,6 @@ func TestSelectedPeerKillTargetGroupViewRespectsLocalPortFilter(t *testing.T) {
 		groupView:           true,
 		portFilter:          "443",
 		selectedTalkerIndex: 0,
-		traceEngine:         livetrace.NewEngineLoaded(),
 	}
 
 	target, ok := a.selectedPeerKillTarget()

@@ -84,36 +84,13 @@ func (h *HistoryApp) handleKeyEvent(event *tcell.EventKey) *tcell.EventKey {
 			h.renderPanel()
 			h.updateStatusBar()
 			return nil
-		case 'g', 'G':
-			if h.replayViewMode == replayViewConnections {
-				h.replayViewMode = replayViewTrace
-				if h.traceTimelineAssociated == 0 {
-					h.setStatusNote("Replay view: TRACE (no trace events in current scope/range)", 5*time.Second)
-				} else {
-					h.setStatusNote("Replay view: TRACE", 4*time.Second)
-				}
-			} else {
-				if h.traceOnlyMode {
-					h.setStatusNote("Connection view unavailable in trace-only replay", 5*time.Second)
-					return nil
-				}
-				h.replayViewMode = replayViewConnections
-				h.setStatusNote("Replay view: CONN", 4*time.Second)
-			}
-			h.renderPanel()
-			h.updateStatusBar()
-			return nil
 		case 'h', 'H':
-			tuireplay.PromptReplayTraceHistory(h)
+			h.setStatusNote("Trace history unavailable", 4*time.Second)
 			return nil
 		case 't', 'T':
 			h.promptJumpToTime()
 			return nil
 		case 'S':
-			if h.traceOnlyMode {
-				h.setStatusNote("Timeline search is unavailable in trace-only replay", 5*time.Second)
-				return nil
-			}
 			h.promptTimelineSearch()
 			return nil
 		case 'B', 'C', 'P':

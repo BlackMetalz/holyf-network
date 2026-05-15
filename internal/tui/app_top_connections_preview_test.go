@@ -8,8 +8,6 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
-	"github.com/BlackMetalz/holyf-network/internal/tui/diagnosis"
-	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
 	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
 	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
 	"github.com/gdamore/tcell/v2"
@@ -58,8 +56,6 @@ func TestBuildSelectedConnectionPreviewRespectsMasking(t *testing.T) {
 		sensitiveIP:         true,
 		selectedTalkerIndex: 0,
 		actionLogger:        actionlog.NewLogger(""),
-		diagnosisEngine:     diagnosis.NewEngine(),
-		traceEngine:         livetrace.NewEngineLoaded(),
 		latestTalkers: []collector.Connection{
 			{
 				LocalIP:       "10.0.0.10",
@@ -106,8 +102,6 @@ func TestBuildSelectedPeerGroupPreviewShowsFullStateAndPorts(t *testing.T) {
 		sortDesc:            true,
 		selectedTalkerIndex: 0,
 		actionLogger:        actionlog.NewLogger(""),
-diagnosisEngine:     diagnosis.NewEngine(),
-		traceEngine:         livetrace.NewEngineLoaded(),
 	}
 
 	preview := a.buildSelectedPeerGroupPreview(a.filteredPeerGroups())
@@ -369,8 +363,6 @@ func TestBuildSelectedPeerGroupPreviewOutgoingShowsRemotePortsAndDisabledAction(
 		sortDesc:            true,
 		selectedTalkerIndex: 0,
 		actionLogger:        actionlog.NewLogger(""),
-diagnosisEngine:     diagnosis.NewEngine(),
-		traceEngine:         livetrace.NewEngineLoaded(),
 	}
 
 	preview := a.buildSelectedPeerGroupPreview(a.filteredPeerGroups())

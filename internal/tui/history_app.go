@@ -13,24 +13,9 @@ import (
 	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
 	tuireplay "github.com/BlackMetalz/holyf-network/internal/tui/replay"
 	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
-	tuitrace "github.com/BlackMetalz/holyf-network/internal/tui/trace"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
-
-type replayViewMode int
-
-const (
-	replayViewConnections replayViewMode = iota
-	replayViewTrace
-)
-
-func (m replayViewMode) Label() string {
-	if m == replayViewTrace {
-		return "TRACE"
-	}
-	return "CONN"
-}
 
 // HistoryApp is read-only replay UI for persisted connection snapshots.
 type HistoryApp struct {
@@ -68,14 +53,6 @@ type HistoryApp struct {
 	timelineSearchResults  []tuireplay.SearchResult
 	timelineSearchSelected int
 	timelineSearchRunning  bool
-	replayViewMode         replayViewMode
-
-	traceOnlyMode           bool
-	traceReplayEntries      []tuitrace.Entry
-	traceTimelineBySnapshot map[int][]tuitrace.Entry
-	traceTimelineTotal      int
-	traceTimelineAssociated int
-	traceTimelineWindow     time.Duration
 
 	statusNote       string
 	statusNoteUntil  time.Time
@@ -105,7 +82,6 @@ func NewHistoryApp(dataDir, segmentFile string, sensitiveIP bool, appVersion str
 		topDirection:     tuishared.TopConnectionIncoming,
 		skipEmpty:        true,
 		currentIndex:     -1,
-		replayViewMode:   replayViewConnections,
 		stopChan:         make(chan struct{}),
 		healthThresholds: config.DefaultHealthThresholds(),
 	}
@@ -172,17 +148,6 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 		return
 	}
 	refs = tuireplay.FilterSnapshotRefsByRange(refs, h.rangeBegin, h.rangeEnd)
-	h.traceOnlyMode = false
-	h.traceReplayEntries = nil
-	if len(refs) == 0 {
-		if traceRefs, traceEntries, err := tuireplay.LoadTraceOnlyRefs(h.dataDir, h.rangeBegin, h.rangeEnd); err == nil && len(traceRefs) > 0 {
-			refs = traceRefs
-			h.traceOnlyMode = true
-			h.traceReplayEntries = traceEntries
-			h.replayViewMode = replayViewTrace
-			h.setStatusNote(fmt.Sprintf("Trace-only replay mode (%d events)", len(traceEntries)), 6*time.Second)
-		}
-	}
 
 	prevFile := ""
 	prevOffset := int64(-1)
@@ -195,7 +160,6 @@ func (h *HistoryApp) reloadIndex(selectStart bool) {
 	h.refs = refs
 	h.filesCount = stats.Files
 	h.corruptSkipped = stats.Corrupt
-	tuireplay.RebuildTraceTimeline(h)
 
 	if stats.Corrupt > 0 && stats.Corrupt != h.lastCorruptNoticed {
 		h.lastCorruptNoticed = stats.Corrupt
@@ -254,20 +218,6 @@ func (h *HistoryApp) loadSnapshotAt(index int) {
 		index = len(h.refs) - 1
 	}
 
-	if h.traceOnlyMode {
-		h.currentIndex = index
-		h.currentRecord = history.SnapshotRecord{
-			CapturedAt:      h.refs[index].CapturedAt,
-			Interface:       "trace-history",
-			TopLimitPerSide: 0,
-			IncomingGroups:  []history.SnapshotGroup{},
-			OutgoingGroups:  []history.SnapshotGroup{},
-			Version:         h.appVersion,
-		}
-		h.selectedIndex = 0
-		return
-	}
-
 	record, err := history.ReadSnapshot(h.refs[index])
 	if err != nil {
 		h.setStatusNote("Read snapshot failed: "+shortStatus(err.Error(), 72), 8*time.Second)
@@ -313,9 +263,6 @@ func (h *HistoryApp) currentRows() []history.SnapshotGroup {
 }
 
 func (h *HistoryApp) refCountForDirection(ref history.SnapshotRef, direction tuishared.TopConnectionDirection) int {
-	if h.traceOnlyMode {
-		return 1
-	}
 	if ref.IncomingCount == 0 && ref.OutgoingCount == 0 && ref.ConnCount > 0 {
 		return ref.ConnCount
 	}
@@ -431,14 +378,13 @@ func (h *HistoryApp) renderPanel() {
 	}
 
 	header := fmt.Sprintf(
-		"  [dim]%s | %s | %s | rows=in:%d out:%d | dir=%s | view=%s | scope=%s | range=%s[white]\n",
+		"  [dim]%s | %s | %s | rows=in:%d out:%d | dir=%s | scope=%s | range=%s[white]\n",
 		h.headerSnapshotLabel(),
 		captured,
 		iface,
 		len(rec.IncomingGroups),
 		len(rec.OutgoingGroups),
 		h.topDirection.Label(),
-		h.replayViewMode.Label(),
 		h.replayScopeLabel(),
 		h.replayRangeLabel(),
 	)
@@ -450,21 +396,7 @@ func (h *HistoryApp) renderPanel() {
 	if strings.TrimSpace(h.snapshotMessage) != "" {
 		header += fmt.Sprintf("  [yellow]%s[white]\n", shortStatus(h.snapshotMessage, 160))
 	}
-	traceSection := tuireplay.RenderCurrentTraceTimelineSection(h)
-	traceOnlyHint := ""
-	if h.traceOnlyMode {
-		traceOnlyHint = "  [yellow]Trace-only replay mode[white] (no connection snapshots in selected scope/range)\n\n"
-	}
-	if h.replayViewMode == replayViewTrace {
-		h.panel.SetText(header + "\n" + traceOnlyHint + traceSection + tuireplay.RenderTraceReplayViewBody(h))
-		return
-	}
-
 	if len(h.currentRows()) == 0 {
-		if h.traceOnlyMode {
-			h.panel.SetText(header + "\n" + traceOnlyHint + traceSection + "  [dim]Use [ / ] to move between trace events. Snapshot rows are unavailable in this mode.[white]")
-			return
-		}
 		start, end, count, approx := h.idleStreak()
 		idleLine := fmt.Sprintf("  [dim]Idle streak: %d snapshots[white]", count)
 		if approx > 0 {
@@ -484,7 +416,7 @@ func (h *HistoryApp) renderPanel() {
 			idleLine,
 			rangeLine,
 		)
-		h.panel.SetText(header + "\n" + traceSection + emptyBody)
+		h.panel.SetText(header + "\n" + emptyBody)
 		return
 	}
 
@@ -503,7 +435,7 @@ func (h *HistoryApp) renderPanel() {
 		rec.BandwidthAvailable,
 	)
 
-	h.panel.SetText(header + "\n" + traceSection + body)
+	h.panel.SetText(header + "\n" + body)
 }
 
 func (h *HistoryApp) replayScopeLabel() string {
@@ -575,9 +507,7 @@ func (h *HistoryApp) updateStatusBar() {
 
 	snapshotPart := "Snapshot: 0/0"
 	if len(h.refs) > 0 && h.currentIndex >= 0 {
-		if h.traceOnlyMode {
-			snapshotPart = fmt.Sprintf("Trace: %d/%d", h.currentIndex+1, len(h.refs))
-		} else if h.skipEmpty {
+		if h.skipEmpty {
 			activePos, activeTotal := h.activeTimelinePosition()
 			snapshotPart = fmt.Sprintf("Active: %d/%d Raw: %d/%d", activePos, activeTotal, h.currentIndex+1, len(h.refs))
 		} else {
@@ -596,17 +526,9 @@ func (h *HistoryApp) updateStatusBar() {
 	if h.sensitiveIP {
 		stateText += " [yellow]IP MASK[white] |"
 	}
-	if h.traceOnlyMode {
-		stateText += " [aqua]TRACE-ONLY[white] |"
-	} else {
-		stateText += fmt.Sprintf(" [aqua]DIR-%s[white] |", h.topDirection.Label())
-		if h.skipEmpty {
-			stateText += " [aqua]SKIP-EMPTY[white] |"
-		}
-	}
-	stateText += fmt.Sprintf(" [aqua]VIEW-%s[white] |", h.replayViewMode.Label())
-	if h.traceTimelineAssociated > 0 {
-		stateText += fmt.Sprintf(" [aqua]TRACE %d/%d[white] |", tuireplay.CurrentTraceTimelineCount(h), h.traceTimelineAssociated)
+	stateText += fmt.Sprintf(" [aqua]DIR-%s[white] |", h.topDirection.Label())
+	if h.skipEmpty {
+		stateText += " [aqua]SKIP-EMPTY[white] |"
 	}
 	if time.Now().Before(h.statusNoteUntil) && h.statusNote != "" {
 		stateText += fmt.Sprintf(" [yellow]%s[white] |", h.statusNote)
@@ -655,9 +577,6 @@ func (h *HistoryApp) setSnapshotMessage(msg string) {
 func (h *HistoryApp) headerSnapshotLabel() string {
 	if len(h.refs) == 0 || h.currentIndex < 0 || h.currentIndex >= len(h.refs) {
 		return "Snapshot 0/0"
-	}
-	if h.traceOnlyMode {
-		return fmt.Sprintf("Trace Event %d/%d", h.currentIndex+1, len(h.refs))
 	}
 	if !h.skipEmpty {
 		return fmt.Sprintf("Snapshot %d/%d", h.currentIndex+1, len(h.refs))

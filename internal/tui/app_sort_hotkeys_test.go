@@ -7,9 +7,7 @@ import (
 	"github.com/BlackMetalz/holyf-network/internal/collector"
 	"github.com/BlackMetalz/holyf-network/internal/config"
 	"github.com/BlackMetalz/holyf-network/internal/tui/actionlog"
-"github.com/BlackMetalz/holyf-network/internal/tui/diagnosis"
 	"github.com/BlackMetalz/holyf-network/internal/tui/blocking"
-	"github.com/BlackMetalz/holyf-network/internal/tui/livetrace"
 	tuioverlays "github.com/BlackMetalz/holyf-network/internal/tui/overlays"
 	tuipanels "github.com/BlackMetalz/holyf-network/internal/tui/panels"
 	tuishared "github.com/BlackMetalz/holyf-network/internal/tui/shared"
@@ -39,11 +37,9 @@ func newSortHotkeyTestApp(startMode tuishared.SortMode, startDesc bool, selected
 		sortMode:            startMode,
 		sortDesc:            startDesc,
 		selectedTalkerIndex: selectedIndex,
-		blockManager:        blocking.NewManager(),
-		trafficManager:      traffic.NewManager(config.DefaultHealthThresholds()),
-		actionLogger:        actionlog.NewLogger(""),
-diagnosisEngine:     diagnosis.NewEngine(),
-		traceEngine:         livetrace.NewEngineLoaded(),
+		blockManager:   blocking.NewManager(),
+		trafficManager: traffic.NewManager(config.DefaultHealthThresholds()),
+		actionLogger:   actionlog.NewLogger(""),
 	}
 }
 
@@ -168,12 +164,6 @@ func TestTopConnectionsSortHintsIncludeDirectOnly(t *testing.T) {
 	if !strings.Contains(panel, "Shift+B/C/P sort") {
 		t.Fatalf("hint line should mention direct sort keys")
 	}
-	if !strings.Contains(panel, "T=trace packet") {
-		t.Fatalf("hint line should mention trace hotkey")
-	}
-	if !strings.Contains(panel, "t=trace history") {
-		t.Fatalf("hint line should mention trace history hotkey")
-	}
 }
 
 func TestStatusHotkeysIncludeHelp(t *testing.T) {
@@ -185,10 +175,9 @@ func TestStatusHotkeysIncludeHelp(t *testing.T) {
 		direction tuishared.TopConnectionDirection
 		want      []string
 	}{
-		{name: "top incoming", focus: 2, direction: tuishared.TopConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "T=trace", "t=traces", "Enter/k=act", "?=help"}},
-		{name: "top outgoing", focus: 2, direction: tuishared.TopConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "T=trace", "t=traces", "Enter/k=disabled", "?=help"}},
-		{name: "states", focus: 0, direction: tuishared.TopConnectionIncoming, want: []string{"s=sort", "Ctrl+1..5=focus", "?=help"}},
-		{name: "diagnosis", focus: 4, direction: tuishared.TopConnectionIncoming, want: []string{"d=history", "Ctrl+1..5=focus", "?=help"}},
+		{name: "top incoming", focus: 2, direction: tuishared.TopConnectionIncoming, want: []string{"Up/Down=select", "o=OUT", "Enter/k=act", "?=help"}},
+		{name: "top outgoing", focus: 2, direction: tuishared.TopConnectionOutgoing, want: []string{"Up/Down=select", "o=IN", "Enter/k=disabled", "?=help"}},
+		{name: "states", focus: 0, direction: tuishared.TopConnectionIncoming, want: []string{"s=sort", "Ctrl+1..4=focus", "?=help"}},
 	}
 
 	for _, tc := range tests {
