@@ -62,14 +62,16 @@ On K8s worker nodes, connections often come from container network namespaces, s
 1. User presses `K` → input modal with port number (pre-filled from selected row).
 2. Background goroutine scans all network namespaces:
    - Enumerate unique namespaces via `/proc/*/ns/net` symlink inodes.
-   - For each NS, read `/proc/{representative_pid}/net/tcp{,6}` to match the target port.
-3. On match, resolve the owning PID via socket inode → `/proc/{pid}/fd/` scan (scoped to same netns).
+   - For each NS, read `/proc/{representative_pid}/net/tcp{,6}` and collect every socket whose local or remote port equals the target.
+3. For every namespace that yields at least one match, resolve the owning PID via socket inode → `/proc/{pid}/fd/` scan (scoped to same netns). All matching namespaces are returned so multiple pods on the same node (e.g. several clients reaching different MongoDB instances on 27017) appear together.
 4. Resolve pod info via layered strategy:
    - Parse `/proc/{pid}/cgroup` for pod UID + container ID (containerd/CRI-O formats).
    - Read `HOSTNAME` from `/proc/{pid}/environ`.
+   - Match pod UID against `/var/log/pods/<namespace>_<podname>_<uid>/` (kubelet layout) — supplies namespace when `crictl` isn't available.
    - Fallback: `crictl inspect` + `crictl inspectp` for pod name, namespace, labels.
    - Infer deployment name from pod name or labels (`app`, `app.kubernetes.io/name`).
-5. Result modal shows: PID, process, container ID, pod, namespace, deployment, network NS.
+5. Per namespace: pick the owner socket (LISTEN preferred), and treat the remaining non-LISTEN sockets as peers.
+6. Result modal renders one numbered block per pod with PID, process, container ID, pod, namespace, deployment, network NS, plus peers aggregated by remote IP with connection counts. Modal scrolls (↑/↓, j/k, PgUp/PgDn) when multiple pods match.
 
 Implementation: `internal/podlookup/` (core logic) + `internal/tui/podlookup/` (UI modals).
 

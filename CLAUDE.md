@@ -57,10 +57,12 @@ Three async refresh lanes: main (full refresh at `-r` interval), fast (interface
 
 ### K8s Pod Lookup (`internal/podlookup/`)
 
-On-demand feature (`K` hotkey in live TUI) to identify which K8s pod owns a network port:
+On-demand feature (`K` hotkey in live TUI) to identify which K8s pods touch a network port:
 - Enumerates all network namespaces via `/proc/*/ns/net` (pure Go, no `setns`)
-- Scans `/proc/{pid}/net/tcp{,6}` per namespace using `collector.ParseTCPConnections`
-- Resolves PID → pod name → deployment via cgroup parsing, `/proc/{pid}/environ`, and `crictl` fallback
+- Scans `/proc/{pid}/net/tcp{,6}` per namespace using `collector.ParseAllTCPConnections` (LISTEN included)
+- Returns one result per namespace that has any socket touching the port (so multiple client pods on the same node — e.g. several apps talking to different MongoDB instances on 27017 — all appear in the modal)
+- Per namespace: picks the owner socket (LISTEN preferred), and lists every other non-LISTEN socket touching the port as peers (aggregated by remote IP; client-side connections keep `RemoteIP:targetPort` so distinct upstream servers are visible)
+- Resolves PID → pod name → namespace → deployment via cgroup parsing, `/proc/{pid}/environ`, `/var/log/pods/<ns>_<pod>_<uid>/` lookup, and `crictl` fallback
 
 ### TUI Structure (`internal/tui/`)
 

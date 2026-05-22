@@ -12,6 +12,17 @@ type PodLookupResult struct {
 	Port         int
 	LocalIP      string
 	State        string
+	Peers        []PeerConnection // ESTABLISHED peers in the same namespace touching Port
+}
+
+// PeerConnection describes a single non-LISTEN socket touching the target port
+// within the resolved network namespace.
+type PeerConnection struct {
+	LocalIP    string
+	LocalPort  int
+	RemoteIP   string
+	RemotePort int
+	State      string
 }
 
 // NetNSEntry represents a unique network namespace with a representative PID.

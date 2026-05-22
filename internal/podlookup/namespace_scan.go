@@ -49,68 +49,110 @@ func EnumerateNetworkNamespaces() []NetNSEntry {
 	return result
 }
 
-// FindPortOwner scans all network namespaces for a socket using the target port.
-// It returns the first match with resolved pod info, or nil if not found.
-func FindPortOwner(targetPort int) (*PodLookupResult, int) {
+// FindPortOwners scans every network namespace and returns one PodLookupResult
+// per namespace that has at least one socket touching targetPort. Useful when a
+// node hosts multiple pods that all interact with the same well-known port
+// (e.g. several clients connecting to different MongoDB instances on 27017).
+// The second return value is the total namespace count scanned.
+func FindPortOwners(targetPort int) ([]*PodLookupResult, int) {
 	namespaces := EnumerateNetworkNamespaces()
 
+	var results []*PodLookupResult
 	for _, ns := range namespaces {
-		result := findPortInNamespace(ns, targetPort)
-		if result != nil {
-			return result, len(namespaces)
+		if result := findPortInNamespace(ns, targetPort); result != nil {
+			results = append(results, result)
 		}
 	}
 
-	return nil, len(namespaces)
+	return results, len(namespaces)
 }
 
 // findPortInNamespace reads /proc/{pid}/net/tcp{,6} and searches for targetPort.
+// It collects every socket touching the port (as local or remote), picks the
+// owner (preferring LISTEN, else first match where LocalPort == targetPort),
+// and returns the rest as peer connections.
 func findPortInNamespace(ns NetNSEntry, targetPort int) *PodLookupResult {
 	files := []string{
 		fmt.Sprintf("/proc/%d/net/tcp", ns.PID),
 		fmt.Sprintf("/proc/%d/net/tcp6", ns.PID),
 	}
 
+	var matches []collector.Connection
 	for _, file := range files {
 		conns, err := collector.ParseAllTCPConnections(file)
 		if err != nil {
 			continue
 		}
-
 		for _, conn := range conns {
 			if conn.LocalPort != targetPort && conn.RemotePort != targetPort {
 				continue
 			}
-
-			// Found a match. Resolve the owning PID via inode.
-			ownerPID := resolveSocketOwnerPID(ns.PID, conn.Inode)
-			if ownerPID == 0 {
-				ownerPID = ns.PID
-			}
-
-			result := &PodLookupResult{
-				PID:      ownerPID,
-				ProcName: collector.GetProcessName(ownerPID),
-				Port:     targetPort,
-				LocalIP:  conn.LocalIP,
-				State:    conn.State,
-				NetNS:    fmt.Sprintf("net:[%s]", ns.Inode),
-			}
-
-			// Resolve pod info from cgroup/environ/crictl.
-			podInfo := ResolvePodInfo(ownerPID)
-			if podInfo != nil {
-				result.ContainerID = podInfo.ContainerID
-				result.PodName = podInfo.PodName
-				result.PodNamespace = podInfo.PodNamespace
-				result.Deployment = podInfo.Deployment
-			}
-
-			return result
+			matches = append(matches, conn)
 		}
 	}
 
-	return nil
+	if len(matches) == 0 {
+		return nil
+	}
+
+	// Pick the owner socket: LISTEN wins; else first socket with LocalPort == targetPort;
+	// else fall back to the first match (client-side socket).
+	ownerIdx := -1
+	for i := range matches {
+		if matches[i].State == "LISTEN" {
+			ownerIdx = i
+			break
+		}
+	}
+	if ownerIdx < 0 {
+		for i := range matches {
+			if matches[i].LocalPort == targetPort {
+				ownerIdx = i
+				break
+			}
+		}
+	}
+	if ownerIdx < 0 {
+		ownerIdx = 0
+	}
+	owner := matches[ownerIdx]
+
+	ownerPID := resolveSocketOwnerPID(ns.PID, owner.Inode)
+	if ownerPID == 0 {
+		ownerPID = ns.PID
+	}
+
+	result := &PodLookupResult{
+		PID:      ownerPID,
+		ProcName: collector.GetProcessName(ownerPID),
+		Port:     targetPort,
+		LocalIP:  owner.LocalIP,
+		State:    owner.State,
+		NetNS:    fmt.Sprintf("net:[%s]", ns.Inode),
+	}
+
+	for i, c := range matches {
+		if i == ownerIdx || c.State == "LISTEN" {
+			continue
+		}
+		result.Peers = append(result.Peers, PeerConnection{
+			LocalIP:    c.LocalIP,
+			LocalPort:  c.LocalPort,
+			RemoteIP:   c.RemoteIP,
+			RemotePort: c.RemotePort,
+			State:      c.State,
+		})
+	}
+
+	// Resolve pod info from cgroup/environ/crictl/var-log.
+	if podInfo := ResolvePodInfo(ownerPID); podInfo != nil {
+		result.ContainerID = podInfo.ContainerID
+		result.PodName = podInfo.PodName
+		result.PodNamespace = podInfo.PodNamespace
+		result.Deployment = podInfo.Deployment
+	}
+
+	return result
 }
 
 // resolveSocketOwnerPID finds the PID that owns a specific socket inode

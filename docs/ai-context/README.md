@@ -34,7 +34,7 @@ go test ./...
 - Linux-first TUI network observability tool.
 - Core runtime data comes from `/proc` and `/sys`.
 - For Docker/NAT traffic, live/replay can show synthetic process label `ct/nat` (conntrack-derived visibility path).
-- K8s pod lookup (`K` hotkey) scans container network namespaces via `/proc/{pid}/net/tcp`, resolves pod/deployment via cgroup + `crictl`.
+- K8s pod lookup (`K` hotkey) scans container network namespaces via `/proc/{pid}/net/tcp`, resolves pod/deployment via cgroup + `/var/log/pods/` + `crictl`, and lists peer IPs connected on that port.
 - Active mitigation uses kernel netlink APIs on Linux 4.9+ (nftables, SOCK_DESTROY, nfnetlink_conntrack). Falls back to `iptables`/`ss`/`conntrack` CLI tools when kernel API unavailable.
 - Optional external tools: `crictl` (K8s pod lookup enrichment).
 - Full functionality expects `sudo` (or `CAP_NET_ADMIN` for netlink access).

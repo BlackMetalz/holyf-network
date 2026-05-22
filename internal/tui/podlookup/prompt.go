@@ -80,16 +80,20 @@ func PromptPodLookup(ctx blocking.UIContext, prefilledPort string) {
 
 func runPodLookup(ctx blocking.UIContext, port int) {
 	start := time.Now()
-	result, nsCount := podlookup.FindPortOwner(port)
+	results, nsCount := podlookup.FindPortOwners(port)
 	elapsed := time.Since(start)
 
 	ctx.QueueUpdateDraw(func() {
-		if result != nil {
-			ctx.SetStatusNote(fmt.Sprintf("Found port %d owner: %s", port, result.PodName), 6*time.Second)
-			ShowPodLookupResult(ctx, result)
-		} else {
+		if len(results) == 0 {
 			ctx.SetStatusNote(fmt.Sprintf("Port %d not found in %d namespaces", port, nsCount), 6*time.Second)
 			ShowPodLookupNotFound(ctx, port, nsCount, elapsed)
+			return
 		}
+		if len(results) == 1 {
+			ctx.SetStatusNote(fmt.Sprintf("Found port %d owner: %s", port, results[0].PodName), 6*time.Second)
+		} else {
+			ctx.SetStatusNote(fmt.Sprintf("Found %d pods on port %d", len(results), port), 6*time.Second)
+		}
+		ShowPodLookupResults(ctx, port, results)
 	})
 }

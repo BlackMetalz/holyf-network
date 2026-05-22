@@ -19,7 +19,7 @@ type PodInfo struct {
 }
 
 // ResolvePodInfo attempts to resolve K8s pod info from a PID.
-// It tries multiple strategies: cgroup parsing, /proc/environ, crictl.
+// It tries multiple strategies: cgroup parsing, /proc/environ, /var/log/pods, crictl.
 func ResolvePodInfo(pid int) *PodInfo {
 	podUID, containerID := parseCgroupForPodUID(pid)
 	if podUID == "" && containerID == "" {
@@ -34,7 +34,17 @@ func ResolvePodInfo(pid int) *PodInfo {
 		info.Deployment = InferDeploymentFromPodName(podName)
 	}
 
-	// Strategy 2: Try crictl for richer info.
+	// Strategy 2: /var/log/pods/<namespace>_<podname>_<uid>/ — kubelet-managed
+	// directory layout. Works without exec'ing crictl.
+	if ns, podName := resolvePodFromVarLogPods(podUID); ns != "" {
+		info.PodNamespace = ns
+		if info.PodName == "" && podName != "" {
+			info.PodName = podName
+			info.Deployment = InferDeploymentFromPodName(podName)
+		}
+	}
+
+	// Strategy 3: Try crictl for richer info (e.g. deployment from labels).
 	if containerID != "" {
 		if crictlInfo := resolvePodViaCrictl(containerID); crictlInfo != nil {
 			if crictlInfo.PodName != "" {
@@ -52,6 +62,32 @@ func ResolvePodInfo(pid int) *PodInfo {
 	}
 
 	return info
+}
+
+// resolvePodFromVarLogPods matches the given pod UID against the kubelet pod-log
+// directory layout: /var/log/pods/<namespace>_<podname>_<uid>/. Returns namespace
+// and pod name when a directory matches.
+func resolvePodFromVarLogPods(podUID string) (namespace, podName string) {
+	if podUID == "" {
+		return "", ""
+	}
+	entries, err := os.ReadDir("/var/log/pods")
+	if err != nil {
+		return "", ""
+	}
+	suffix := "_" + podUID
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, suffix) {
+			continue
+		}
+		rest := strings.TrimSuffix(name, suffix)
+		parts := strings.SplitN(rest, "_", 2)
+		if len(parts) == 2 {
+			return parts[0], parts[1]
+		}
+	}
+	return "", ""
 }
 
 // podUIDPattern matches pod UID in cgroup paths.
